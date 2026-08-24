@@ -18,7 +18,8 @@
 
 - The main body stacks playback controls above the editor.
 - The editor shows line numbers.
-- The playback controls include a playback button and a playback speed button.
+- The playback controls include a playback button. Playback speed is configured
+  in the settings dialog's Speed tab and applies live during playback.
 
 ## Playback
 
@@ -41,6 +42,14 @@
   highlighted while playing.
 - The panel is empty before any playback.
 - The panel's column headers are localized with the rest of the interface.
+- Activating a row (pointer or keyboard) replays the session starting from that
+  sentence.
+- A search field filters rows by text, offset, or language.
+- A follow toggle scrolls the panel to keep the spoken row visible; scrolling
+  respects reduced-motion preferences.
+- Editing the editor content clears the rows and refreshes them in the
+  background after a short pause; a status hint reflects refreshing and cleared
+  states.
 
 ## Settings dialog
 
@@ -49,7 +58,9 @@
 - Languages with one spoken-language group show one voice-model dropdown.
 - Languages with multiple spoken-language groups show a spoken-language
   dropdown and a voice-model dropdown.
-- The Speed tab shows the default speed field with `1x` as the default.
+- The Speed tab shows the default speed field with `1x` as the default and a
+  Synthesis concurrency field that caps how many segments synthesize in
+  parallel.
 
 ## Responsive behavior
 
@@ -62,5 +73,9 @@
 - All controls are keyboard operable.
 - Icon-only buttons expose accessible names.
 - Focus states are clearly visible.
+- The language menu supports full arrow-key navigation and returns focus to its
+  trigger on close.
+- Live announcements cover playback state changes only; per-second progress
+  details are hidden from assistive technology.
 - Motion during panel and playback-state transitions respects reduced-motion
   preferences.

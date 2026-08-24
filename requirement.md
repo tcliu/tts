@@ -17,7 +17,7 @@ tts.mjs
 ### Main body
 - Button panel and editor position vertically.
 - Editor uses CodeEditor which shows the line number on the left.
-- Button panel contains playback button, and playback speed button.
+- Button panel contains the playback button. Playback speed is configured in the Settings dialog's Speed tab; during playback it applies to subsequent segments and live-adjusts the current one.
 - The playback button is enabled when there is input text. When there is text selection, the input text is the selected text. Otherwise, the input text is all text in the editor. When clicked, the input text is divided into multiple segments and speech is delivered for each segment sequentially. 
 - During playback, the text for the current segment is selected. The playback button turns into a Stop button. When the Stop button is clicked, the playback is stopped and the text selection stays for the current segment.
 - When the playback for all segments are finished, clear the text selection if there is no text selection before playback.

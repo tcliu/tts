@@ -21,6 +21,16 @@ coherent system instead of a new parallel one.
   right.
 - A main column containing playback controls and the editor.
 - A settings dialog built on the shared `BaseDialog` pattern.
+- Domain logic lives in composable factories under `src/lib/`:
+  - `use-settings.svelte.ts` owns user preferences, persistence, and voice
+    resolution.
+  - `use-playback.svelte.ts` owns the playback engine, session state, progress,
+    and status messaging.
+  - `use-metadata.svelte.ts` owns boundary rows, search/follow state, staleness,
+    and background resync.
+  - `tts-client.ts` is the non-reactive synthesis API with its LRU cache.
+- The route component stays a thin orchestration layer that wires composables
+  to view components.
 
 ## Shared component reuse
 
@@ -36,10 +46,29 @@ coherent system instead of a new parallel one.
   is the full editor content.
 - The selected playback text is segmented using the same rules as `tts.mjs`.
 - Segments are played sequentially.
+- Upcoming segments synthesize in parallel while the current one plays, capped
+  by the Synthesis concurrency setting; cancellation (Stop or unmount) aborts
+  in-flight synthesis requests and settles the active audio element.
 - While a segment is active, the matching editor text range is selected.
 - Stopping playback preserves the current selection.
 - When playback finishes, restore the pre-playback selection state described in
   `requirement.md`.
+- A metadata pipeline records per-sentence boundaries for the session. Editing
+  the content invalidates it and re-synthesizes segments in a bounded,
+  cancellable background pass to refresh boundaries.
+
+## Synthesis service
+
+- The client posts `{ text, voice, rate }` to `POST /api/tts/synthesize`.
+- The endpoint validates the voice against the reference voice list, caps text
+  length, and returns base64 MP3 audio with sentence-boundary metadata.
+- `$lib/server/edge-tts` speaks to the Edge read-aloud WebSocket service with
+  an overall timeout; any close that bypasses the completion signal fails the
+  request rather than leaving it pending.
+- `$lib/server/tts-cache` persists synthesis results on disk under `.tts/`
+  behind an injectable directory, keyed by the shared `$lib/tts-cache-key`
+  builder, with a time-to-live envelope. The client keeps a small LRU of
+  decoded blobs for the session.
 
 ## Settings model
 
