@@ -6,6 +6,7 @@ import { parseEdgeMetadata, type TtsBoundary } from '$lib/tts-reference'
 const EDGE_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4'
 const EDGE_CHROMIUM = '143.0.3650.75'
 const WINDOWS_FILE_TIME_EPOCH = 11644473600n
+const SYNTHESIS_TIMEOUT_MS = 30_000
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0'
 
@@ -47,6 +48,18 @@ export async function synthesizeEdgeTts(
     const boundaries: TtsBoundary[] = []
     let wordCursor = 0
     let closed = false
+
+    const timeout = setTimeout(() => {
+      if (closed) return
+      closed = true
+      ws.terminate()
+      reject(new Error('Edge TTS synthesis timed out'))
+    }, SYNTHESIS_TIMEOUT_MS)
+
+    const settle = (fn: () => void) => {
+      clearTimeout(timeout)
+      fn()
+    }
 
     ws.on('open', () => {
       const config = JSON.stringify({
@@ -111,19 +124,23 @@ export async function synthesizeEdgeTts(
           offset += chunk.length
         }
         boundaries.sort((a, b) => a.at - b.at)
-        resolve({ audio: output, boundaries })
+        settle(() => resolve({ audio: output, boundaries }))
       }
     })
 
     ws.on('error', (error: Error) => {
       if (!closed) {
-        reject(new Error(error.message || 'Edge WebSocket error'))
+        closed = true
+        settle(() => reject(new Error(error.message || 'Edge WebSocket error')))
       }
     })
 
+    // Any close that did not go through turn.end is abnormal for this flow;
+    // reject so callers never wait on a pending promise.
     ws.on('close', (code: number) => {
-      if (!closed && audioChunks.length === 0 && code !== 1000) {
-        reject(new Error(`Edge WebSocket closed with code ${code}`))
+      if (!closed) {
+        closed = true
+        settle(() => reject(new Error(`Edge WebSocket closed unexpectedly (code ${code})`)))
       }
     })
   })
