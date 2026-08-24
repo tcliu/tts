@@ -47,6 +47,8 @@ Project-specific development conventions for the TTS web app.
 - Follow `references/portals.md` for portal and overlay positioning
   (dropdown panels, tooltips, dialogs) including viewport clamping and
   flip-when-crowded placement.
+- Follow `references/git.md` for commit message conventions and worktree
+  isolation.
 
 ## Quality checks
 
