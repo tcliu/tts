@@ -4,7 +4,7 @@
   import NumberInput from '$lib/components/NumberInput.svelte'
   import Tabs from '$lib/components/Tabs.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
-  import { REFERENCE_LANGUAGES, SPEEDS, getVoiceGroups, getVoiceOptions } from '$lib/tts-reference'
+  import { REFERENCE_LANGUAGES, SPEED_OPTIONS, getVoiceGroups, getVoiceOptions } from '$lib/tts-reference'
 
   interface Props {
     locale: UiLocale
@@ -33,7 +33,6 @@
   }: Props = $props()
 
   const text = $derived(UI_TEXT[locale])
-  const speedOptions = $derived(SPEEDS.map(value => ({ value: String(value), label: `${value}x` })))
 
   function voiceGroups(languageCode: string) {
     return getVoiceGroups(languageCode)
@@ -44,7 +43,7 @@
   }
 </script>
 
-<BaseDialog title={text.settingsTitle} maxWidth="2xl" onCancel={onCancel}>
+<BaseDialog title={text.settingsTitle} maxWidth="2xl" closeLabel={text.close} onCancel={onCancel}>
   <Tabs
     ariaLabel={text.settingsTitle}
     state={{}}
@@ -97,7 +96,7 @@
           ariaLabel={text.defaultSpeed}
           buttonLabel={`${speed}x`}
           activeValue={String(speed)}
-          options={speedOptions}
+          options={SPEED_OPTIONS}
           size="sm"
           onSelect={value => onSelectSpeed(Number(value))} />
       </div>

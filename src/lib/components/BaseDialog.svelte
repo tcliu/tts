@@ -10,11 +10,12 @@
     title?: string
     className?: string
     maxWidth?: 'md' | 'lg' | 'xl' | '2xl' | 'fit'
+    closeLabel?: string
     onCancel: () => void
     children?: import('svelte').Snippet
   }
 
-  let { title, className = '', maxWidth = 'md', onCancel, children }: Props = $props()
+  let { title, className = '', maxWidth = 'md', closeLabel = 'Close dialog', onCancel, children }: Props = $props()
 
   let dialogIndex = 0
   let dialogRef = $state<HTMLElement | null>(null)
@@ -108,7 +109,7 @@
 <div class="fixed inset-0 z-50 px-3 py-4">
   <button
     type="button"
-    aria-label="Close dialog"
+    aria-label={closeLabel}
     class="absolute inset-0 bg-slate-950/80 outline-none"
     onclick={handleCancelRequest}></button>
   <div class="relative flex min-h-full items-center justify-center">
@@ -121,7 +122,7 @@
       class={`relative flex max-h-[90vh] flex-col overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/95 p-4 shadow-2xl shadow-slate-950/60 outline-none backdrop-blur ${sizeClass} ${className}`}>
       <button
         type="button"
-        aria-label="Close dialog"
+        aria-label={closeLabel}
         onclick={handleCancelRequest}
         class="absolute right-3 top-3 flex items-center justify-center p-1 text-slate-500 outline-none transition hover:text-slate-100 focus:text-slate-100 motion-reduce:transition-none before:absolute before:-inset-1.5 before:content-['']">
         <CloseIcon className="h-3.5 w-3.5" />

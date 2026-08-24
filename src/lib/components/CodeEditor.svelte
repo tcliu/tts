@@ -94,6 +94,10 @@
           indentUnit.of('  '),
           EditorState.tabSize.of(2),
           EditorView.lineWrapping,
+          EditorView.contentAttributes.of({
+            'aria-label': editorAriaLabel,
+            'aria-multiline': 'true',
+          }),
           EditorView.theme({
             '&': {
               height: '100%',
@@ -219,5 +223,5 @@
 </script>
 
 <div class={containerClass}>
-  <div bind:this={editorContainerRef} role="textbox" aria-label={editorAriaLabel} class={editorClass}></div>
+  <div bind:this={editorContainerRef} class={editorClass}></div>
 </div>
