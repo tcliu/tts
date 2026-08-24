@@ -44,6 +44,9 @@ Project-specific development conventions for the TTS web app.
   labels, and reduced motion.
 - Follow `references/responsive-design.md` for breakpoint and touch-target
   behavior.
+- Follow `references/portals.md` for portal and overlay positioning
+  (dropdown panels, tooltips, dialogs) including viewport clamping and
+  flip-when-crowded placement.
 
 ## Quality checks
 

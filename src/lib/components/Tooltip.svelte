@@ -10,13 +10,13 @@
   let { children, align = 'center', class: extraClass = '' }: Props = $props()
 
   let anchor = $state<HTMLElement | null>(null)
+  let tooltipEl = $state<HTMLElement | null>(null)
   let visible = $state(false)
   let top = $state(0)
   let left = $state(0)
 
-  const transformClass = $derived(
-    align === 'left' ? 'translate-x-0' : align === 'right' ? '-translate-x-full' : '-translate-x-1/2',
-  )
+  const VIEWPORT_MARGIN = 8
+  const PLACEMENT_GAP = 8
 
   function place() {
     const trigger = anchor?.parentElement
@@ -24,9 +24,51 @@
       return
     }
     const rect = trigger.getBoundingClientRect()
-    top = Math.round(rect.bottom + 8)
-    left = Math.round(align === 'left' ? rect.left : align === 'right' ? rect.right : rect.left + rect.width / 2)
+    // Size is unknown on the very first pass; the follow-up placement corrects
+    // both axes once rendered dimensions are measurable.
+    const measured = tooltipEl?.isConnected ? tooltipEl : null
+    const width = measured ? measured.offsetWidth : 0
+    const height = measured ? measured.offsetHeight : 0
+
+    // Open below by default; flip above when there is no room below and the
+    // space above is larger (mirrors the positionPanel auto-placement rule).
+    let targetTop = rect.bottom + PLACEMENT_GAP
+    if (
+      height > 0 &&
+      targetTop + height > window.innerHeight - VIEWPORT_MARGIN &&
+      rect.top > window.innerHeight - rect.bottom
+    ) {
+      targetTop = rect.top - PLACEMENT_GAP - height
+    }
+    if (height > 0) {
+      const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - VIEWPORT_MARGIN - height)
+      targetTop = Math.min(Math.max(targetTop, VIEWPORT_MARGIN), maxTop)
+    }
+    top = Math.round(targetTop)
+
+    // Alignment shifts are folded into the left offset instead of CSS
+    // transforms so the box can be clamped to the viewport horizontally.
+    const start =
+      align === 'left'
+        ? rect.left
+        : align === 'right'
+          ? rect.right - width
+          : rect.left + rect.width / 2 - width / 2
+    const min = VIEWPORT_MARGIN
+    const max = window.innerWidth - VIEWPORT_MARGIN - width
+    left = Math.round(Math.min(Math.max(start, min), Math.max(min, max)))
   }
+
+  // Re-place once the tooltip is rendered and measured so first-paint
+  // positioning (unknown width) gets corrected.
+  $effect(() => {
+    if (!visible || !tooltipEl) {
+      return
+    }
+    place()
+    const raf = requestAnimationFrame(() => place())
+    return () => cancelAnimationFrame(raf)
+  })
 
   function show() {
     hideQueued = false
@@ -176,9 +218,10 @@
 
 {#if visible}
   <span
+    bind:this={tooltipEl}
     use:portal
     role="tooltip"
-    class={`st-tooltip ${transformClass} ${extraClass}`}
+    class={`st-tooltip ${extraClass}`}
     style={`top:${top}px; left:${left}px; opacity:1;`}>
     {@render children()}
   </span>
