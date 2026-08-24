@@ -5,6 +5,7 @@ export interface UiText {
   settings: string
   playback: string
   stop: string
+  close: string
   playbackRunning: string
   info: string
   synthesisConcurrency: string
@@ -30,7 +31,6 @@ export interface UiText {
   ready: string
   playbackStopped: string
   playbackFinished: string
-  browserSpeechUnavailable: string
   tableSeg: string
   tableTime: string
   tableOffset: string
@@ -44,12 +44,23 @@ export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [
   { value: 'zh-CN', label: '简体中文' },
 ]
 
+export const LANGUAGE_DISPLAY_NAMES: Record<UiLocale, Record<string, string>> = {
+  en: { en: 'English', zh: 'Chinese', yue: 'Cantonese', ja: 'Japanese', ko: 'Korean', es: 'Spanish', fr: 'French', ru: 'Russian' },
+  'zh-TW': { en: '英文', zh: '中文', yue: '粵語', ja: '日文', ko: '韓文', es: '西班牙文', fr: '法文', ru: '俄文' },
+  'zh-CN': { en: '英文', zh: '中文', yue: '粤语', ja: '日文', ko: '韩文', es: '西班牙文', fr: '法文', ru: '俄文' },
+}
+
+export function segmentLanguageName(locale: UiLocale, lang: string): string {
+  return LANGUAGE_DISPLAY_NAMES[locale]?.[lang] ?? lang
+}
+
 export const UI_TEXT: Record<UiLocale, UiText> = {
   en: {
     language: 'Language',
     settings: 'Settings',
     playback: 'Play',
     stop: 'Stop',
+    close: 'Close',
     playbackRunning: 'Speaking',
     info: 'Info',
     synthesisConcurrency: 'Synthesis concurrency',
@@ -75,7 +86,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     ready: 'Ready to speak.',
     playbackStopped: 'Playback stopped.',
     playbackFinished: 'Playback finished.',
-    browserSpeechUnavailable: 'This browser does not support speech playback.',
     tableSeg: 'Seg',
     tableTime: 'Time',
     tableOffset: 'Offset',
@@ -87,6 +97,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     settings: '設定',
     playback: '播放',
     stop: '停止',
+    close: '關閉',
     playbackRunning: '播放中',
     info: '資訊',
     synthesisConcurrency: '並行合成數',
@@ -112,7 +123,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     ready: '可以開始播放。',
     playbackStopped: '已停止播放。',
     playbackFinished: '播放完成。',
-    browserSpeechUnavailable: '這個瀏覽器不支援語音播放。',
     tableSeg: '段',
     tableTime: '時間',
     tableOffset: '位移',
@@ -124,6 +134,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     settings: '设置',
     playback: '播放',
     stop: '停止',
+    close: '关闭',
     playbackRunning: '播放中',
     info: '信息',
     synthesisConcurrency: '并行合成数',
@@ -149,7 +160,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     ready: '可以开始播放。',
     playbackStopped: '已停止播放。',
     playbackFinished: '播放完成。',
-    browserSpeechUnavailable: '这个浏览器不支持语音播放。',
     tableSeg: '段',
     tableTime: '时间',
     tableOffset: '位移',

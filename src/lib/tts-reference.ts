@@ -60,6 +60,8 @@ export function parseEdgeMetadata(message: string): EdgeBoundaryEvent[] {
 
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
 
+export const SPEED_OPTIONS = SPEEDS.map(value => ({ value: String(value), label: `${value}x` }))
+
 export const REFERENCE_LANGUAGES: TtsLanguage[] = [
   {
     code: 'en',
