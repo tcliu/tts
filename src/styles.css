@@ -1,0 +1,41 @@
+@import 'tailwindcss';
+
+@theme {
+  --text-xs: 0.6875rem; /* 11px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-md: 0.9375rem; /* 15px */
+  --text-lg: 1.125rem; /* 18px */
+}
+
+@source inline("text-xs text-sm text-md text-lg");
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: rgb(2 6 23);
+  color: rgb(226 232 240);
+}
+
+body {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+[role="button"],
+a {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.st-tooltip {
+  @apply pointer-events-none fixed z-[60] whitespace-nowrap rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200 shadow-lg transition-opacity duration-150;
+  opacity: 0;
+}

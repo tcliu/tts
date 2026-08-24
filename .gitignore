@@ -1,0 +1,7 @@
+.venv/
+.tts/
+archive/
+node_modules/
+.svelte-kit/
+.tmp/
+.commandcode/

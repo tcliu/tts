@@ -1,0 +1,130 @@
+import { createHash, randomUUID } from 'node:crypto'
+import WebSocket from 'ws'
+import type { RawData } from 'ws'
+import { parseEdgeMetadata, type TtsBoundary } from '$lib/tts-reference'
+
+const EDGE_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4'
+const EDGE_CHROMIUM = '143.0.3650.75'
+const WINDOWS_FILE_TIME_EPOCH = 11644473600n
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0'
+
+function edgeSecMsGecToken() {
+  const ticks = BigInt(Math.floor(Date.now() / 1000 + Number(WINDOWS_FILE_TIME_EPOCH))) * 10000000n
+  const roundedTicks = ticks - (ticks % 3000000000n)
+  return createHash('sha256').update(`${roundedTicks}${EDGE_TOKEN}`, 'ascii').digest('hex').toUpperCase()
+}
+
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+export async function synthesizeEdgeTts(
+  text: string,
+  edgeVoice: string,
+  rate = 1,
+): Promise<{ audio: Uint8Array; boundaries: TtsBoundary[] }> {
+  const ratePercent = `${Math.round((rate - 1) * 100)}%`
+  const url =
+    'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1' +
+    `?TrustedClientToken=${EDGE_TOKEN}&Sec-MS-GEC=${edgeSecMsGecToken()}&Sec-MS-GEC-Version=1-${EDGE_CHROMIUM}` +
+    `&ConnectionId=${randomUUID().replaceAll('-', '')}`
+
+  const ws = new WebSocket(url, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      Origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
+    },
+  })
+
+  return new Promise<{ audio: Uint8Array; boundaries: TtsBoundary[] }>((resolve, reject) => {
+    const audioChunks: Uint8Array[] = []
+    const boundaries: TtsBoundary[] = []
+    let wordCursor = 0
+    let closed = false
+
+    ws.on('open', () => {
+      const config = JSON.stringify({
+        context: {
+          synthesis: {
+            audio: {
+              metadataoptions: { sentenceBoundaryEnabled: true, wordBoundaryEnabled: false },
+              outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
+            },
+          },
+        },
+      })
+
+      ws.send(
+        `X-Timestamp:${new Date().toString()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n${config}`,
+      )
+
+      const ssml =
+        `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
+        `<voice name='${edgeVoice}'><prosody pitch='+0Hz' rate='${ratePercent}' volume='+0%'>` +
+        `${escapeXml(text)}</prosody></voice></speak>`
+
+      ws.send(
+        `X-RequestId:${randomUUID().replaceAll('-', '')}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}\r\nPath:ssml\r\n\r\n${ssml}`,
+      )
+    })
+
+    ws.on('message', (data: RawData) => {
+      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer)
+      const str = buffer.toString('utf-8')
+
+      if (str.includes('audio.metadata')) {
+        for (const event of parseEdgeMetadata(str)) {
+           if (!event.text) continue
+           if (event.type !== 'SentenceBoundary') continue
+          let index = text.indexOf(event.text, wordCursor)
+          if (index < 0) index = text.indexOf(event.text)
+          if (index < 0) continue
+          wordCursor = index + event.text.length
+          boundaries.push({ offset: index, at: event.offset * 1e-7, text: event.text })
+        }
+        return
+      }
+
+      if (buffer.includes(Buffer.from('Path:audio\r\n'))) {
+        const separator = Buffer.from('Path:audio\r\n')
+        const index = buffer.indexOf(separator)
+        if (index >= 0) {
+          audioChunks.push(buffer.subarray(index + separator.length))
+        }
+        return
+      }
+
+      if (str.includes('turn.end')) {
+        closed = true
+        ws.close()
+        const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.length, 0)
+        const output = new Uint8Array(totalLength)
+        let offset = 0
+        for (const chunk of audioChunks) {
+          output.set(chunk, offset)
+          offset += chunk.length
+        }
+        boundaries.sort((a, b) => a.at - b.at)
+        resolve({ audio: output, boundaries })
+      }
+    })
+
+    ws.on('error', (error: Error) => {
+      if (!closed) {
+        reject(new Error(error.message || 'Edge WebSocket error'))
+      }
+    })
+
+    ws.on('close', (code: number) => {
+      if (!closed && audioChunks.length === 0 && code !== 1000) {
+        reject(new Error(`Edge WebSocket closed with code ${code}`))
+      }
+    })
+  })
+}
