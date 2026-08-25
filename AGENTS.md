@@ -41,11 +41,25 @@ Project-specific development conventions for the TTS web app.
   visibility (`focusEditor` in `+page.svelte`); synchronous focus into a
   just-hidden or not-yet-shown subtree is silently dropped.
 
+## Theming
+
+- Theme palettes live only in `src/styles.css` as `[data-theme]` overrides of
+  the Tailwind palette variables; do not add per-component theme conditionals
+  or duplicate palette values.
+- Ink on vivid accent fills uses the fixed `text-onaccent` token, never a
+  remapped slate grade.
+- Adding or renaming a theme means updating every sync point in one change
+  (see `docs/spec.md` § Theming); missed sync points silently fall back to the
+  default palette.
+
 ## References
 
-- Follow `references/svelte.md` for Svelte 5 runes and effect rules.
+- Follow `references/svelte.md` for Svelte 5 runes and effect rules; component
+  attributes stay camelCase in this project.
 - Follow `references/tailwind.md` for literal utility classes and runtime style
   values.
+- Follow `references/tailwind-theming.md` for the attribute-driven palette
+  remapping that powers the app's themes.
 - Follow `references/accessibility.md` for focus management, keyboard access,
   labels, and reduced motion.
 - Follow `references/responsive-design.md` for breakpoint and touch-target

@@ -8,11 +8,17 @@
 ## Top row
 
 - The left side shows a Documents button and the `TTS` title.
-- The right side shows a toolbar with a language button and a settings button.
+- The right side shows a toolbar with a language button, a theme button, and a
+  settings button.
 - Activating the Documents button toggles the documents drawer.
 - Activating the language button opens a language panel.
 - The language panel lists English, Traditional Chinese, and Simplified Chinese
   in their respective languages.
+- Activating the theme button opens a color-theme panel.
+- The theme panel lists Dark, Ember, and Nebula, then Light, Sepia, and Sky;
+  the active theme shows a selected marker.
+- Dark is the default theme, and the choice persists across reloads.
+- The theme button's icon reflects the active theme.
 - Activating the settings button opens the settings dialog.
 
 ## Main body
@@ -121,8 +127,8 @@
 - All controls are keyboard operable.
 - Icon-only buttons expose accessible names.
 - Focus states are clearly visible.
-- The language menu supports full arrow-key navigation and returns focus to its
-  trigger on close.
+- The language and theme menus support full arrow-key navigation and return
+  focus to their trigger on close.
 - Live announcements cover playback state changes only; per-second progress
   details are hidden from assistive technology.
 - Motion during panel and playback-state transitions respects reduced-motion

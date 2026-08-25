@@ -17,8 +17,8 @@ coherent system instead of a new parallel one.
 ## Planned app structure
 
 - A root page containing a full-height shell.
-- A top toolbar with the title on the left and language/settings actions on the
-  right.
+- A top toolbar with the title on the left and language/theme/settings actions
+  on the right.
 - A main column containing playback controls and the editor.
 - A settings dialog built on the shared `BaseDialog` pattern.
 - Domain logic lives in composable factories under `src/lib/`:
@@ -114,6 +114,28 @@ coherent system instead of a new parallel one.
 - Languages with multiple spoken-language groups expose a spoken-language
   dropdown plus a voice-model dropdown scoped to that spoken language.
 - Default speed options must match the speed list in `tts.mjs`.
+
+## Theming
+
+- `use-settings` owns the theme preference (`dark`, `light`, `ember`, `sepia`,
+  `nebula`, `sky`) through the same persisted, validated settings flow as the
+  other preferences. Dark is the default and needs no DOM attribute; every
+  other theme sets `data-theme` on `<html>`.
+- A pre-paint inline script in `app.html` applies the stored theme before first
+  paint; its allowlist must stay in lockstep with the theme union and its
+  validation in `use-settings`.
+- Components keep literal default-theme utility classes. `src/styles.css`
+  re-themes centrally by overriding Tailwind palette variables per
+  `[data-theme='…']` block; the mapping rules are documented there. Ink on
+  vivid accent fills uses the fixed `text-onaccent` token, never a remapped
+  slate grade.
+- The editor swaps its CodeMirror base theme and chrome colors through a
+  compartment driven by the same theme value.
+- The theme menu's option list, localized labels, and trigger-icon map
+  enumerate the themes; extend them together with the union.
+- Both header radio menus render through the shared `HeaderRadioMenu`
+  component, which owns open state, portal placement, dismissal, and roving
+  keyboard handling via `$lib/menu-keyboard`.
 
 ## Constraints
 
