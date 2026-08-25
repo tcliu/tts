@@ -8,6 +8,7 @@ export interface UiText {
   close: string
   playbackRunning: string
   info: string
+  infoCollapse: string
   synthesisConcurrency: string
   synthesized: string
   noMetadata: string
@@ -36,6 +37,31 @@ export interface UiText {
   tableOffset: string
   tableLang: string
   tableText: string
+  documents: string
+  documentSearch: string
+  noSavedDocuments: string
+  noMatchingDocuments: string
+  save: string
+  saveDialogTitle: string
+  documentNameLabel: string
+  documentNamePlaceholder: string
+  documentNameRequired: string
+  overwriteTitle: string
+  overwriteMessage: string
+  reset: string
+  newDocument: string
+  moreActions: string
+  copy: string
+  clone: string
+  edit: string
+  editText: string
+  doubleClickToEdit: string
+  delete: string
+  deleteConfirmTitle: string
+  deleteConfirmMessage: string
+  discardTitle: string
+  discardMessage: string
+  discardConfirm: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [
@@ -63,6 +89,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     close: 'Close',
     playbackRunning: 'Speaking',
     info: 'Info',
+    infoCollapse: 'Collapse info',
     synthesisConcurrency: 'Synthesis concurrency',
     synthesized: 'Synthesized',
     noMetadata: 'No playback metadata.',
@@ -91,6 +118,31 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     tableOffset: 'Offset',
     tableLang: 'Lang',
     tableText: 'Text',
+    documents: 'Documents',
+    documentSearch: 'Search documents',
+    noSavedDocuments: 'No saved documents.',
+    noMatchingDocuments: 'No matching documents.',
+    save: 'Save',
+    saveDialogTitle: 'Save document',
+    documentNameLabel: 'Document name',
+    documentNamePlaceholder: 'Untitled',
+    documentNameRequired: 'Enter a document name.',
+    overwriteTitle: 'Replace document?',
+    overwriteMessage: 'A document with this name already exists. Saving will replace it.',
+    reset: 'Reset',
+    newDocument: 'New document',
+    moreActions: 'More actions',
+    copy: 'Copy',
+    clone: 'Clone',
+    edit: 'Edit',
+    editText: 'Edit text',
+    doubleClickToEdit: 'Double-click to edit',
+    delete: 'Delete',
+    deleteConfirmTitle: 'Delete document?',
+    deleteConfirmMessage: `This document will be permanently deleted.`,
+    discardTitle: 'Discard unsaved changes?',
+    discardMessage: 'You have unsaved changes that will be lost.',
+    discardConfirm: 'Discard',
   },
   'zh-TW': {
     language: '語言',
@@ -100,6 +152,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     close: '關閉',
     playbackRunning: '播放中',
     info: '資訊',
+    infoCollapse: '收合資訊',
     synthesisConcurrency: '並行合成數',
     synthesized: '已合成',
     noMetadata: '尚無播放中繼資料。',
@@ -128,6 +181,31 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     tableOffset: '位移',
     tableLang: '語言',
     tableText: '文字',
+    documents: '文件',
+    documentSearch: '搜尋文件',
+    noSavedDocuments: '尚無已儲存的文件。',
+    noMatchingDocuments: '沒有符合的文件。',
+    save: '儲存',
+    saveDialogTitle: '儲存文件',
+    documentNameLabel: '文件名稱',
+    documentNamePlaceholder: '未命名',
+    documentNameRequired: '請輸入文件名稱。',
+    overwriteTitle: '取代文件？',
+    overwriteMessage: '已有同名稱的文件，儲存將會取代它。',
+    reset: '重設',
+    newDocument: '新增文件',
+    moreActions: '更多動作',
+    copy: '複製',
+    clone: '建立副本',
+    edit: '編輯',
+    editText: '編輯文字',
+    doubleClickToEdit: '按兩下以編輯',
+    delete: '刪除',
+    deleteConfirmTitle: '刪除文件？',
+    deleteConfirmMessage: '此文件將被永久刪除。',
+    discardTitle: '放棄未儲存的變更？',
+    discardMessage: '有未儲存的變更，放棄後將會遺失。',
+    discardConfirm: '放棄',
   },
   'zh-CN': {
     language: '语言',
@@ -137,6 +215,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     close: '关闭',
     playbackRunning: '播放中',
     info: '信息',
+    infoCollapse: '收起信息',
     synthesisConcurrency: '并行合成数',
     synthesized: '已合成',
     noMetadata: '尚无播放元数据。',
@@ -162,8 +241,33 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     playbackFinished: '播放完成。',
     tableSeg: '段',
     tableTime: '时间',
-    tableOffset: '位移',
+    tableOffset: '偏移',
     tableLang: '语言',
-    tableText: '文字',
+    tableText: '文本',
+    documents: '文档',
+    documentSearch: '搜索文档',
+    noSavedDocuments: '尚无已保存的文档。',
+    noMatchingDocuments: '没有匹配的文档。',
+    save: '保存',
+    saveDialogTitle: '保存文档',
+    documentNameLabel: '文档名称',
+    documentNamePlaceholder: '未命名',
+    documentNameRequired: '请输入文档名称。',
+    overwriteTitle: '替换文档？',
+    overwriteMessage: '已存在同名文档，保存将替换它。',
+    reset: '重置',
+    newDocument: '新建文档',
+    moreActions: '更多操作',
+    copy: '复制',
+    clone: '创建副本',
+    edit: '编辑',
+    editText: '编辑文字',
+    doubleClickToEdit: '双击以编辑',
+    delete: '删除',
+    deleteConfirmTitle: '删除文档？',
+    deleteConfirmMessage: '此文档将被永久删除。',
+    discardTitle: '放弃未保存的更改？',
+    discardMessage: '有未保存的更改，放弃后将丢失。',
+    discardConfirm: '放弃',
   },
 }
