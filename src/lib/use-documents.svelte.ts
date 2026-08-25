@@ -80,6 +80,9 @@ export function useDocuments() {
     const trimmedName = name.trim()
     const updatedAt = Date.now()
     const existing = findByName(trimmedName)
+    if (existing && existing.name === trimmedName && existing.content === content) {
+      return existing
+    }
     let saved: StoredDocument
     if (existing) {
       saved = { ...existing, name: trimmedName, content, updatedAt }
