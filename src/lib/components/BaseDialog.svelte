@@ -106,7 +106,7 @@
   })
 </script>
 
-<div class="fixed inset-0 z-50 px-3 py-4">
+<div class="fixed inset-0 z-50 px-3 py-4 max-sm:p-0">
   <button
     type="button"
     aria-label={closeLabel}
@@ -119,7 +119,7 @@
       aria-modal="true"
       aria-labelledby={title ? titleId : undefined}
       tabindex="-1"
-      class={`relative flex max-h-[90vh] flex-col overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/95 p-4 shadow-2xl shadow-slate-950/60 outline-none backdrop-blur ${sizeClass} ${className}`}>
+      class={`relative flex max-h-[90vh] flex-col overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/95 p-4 shadow-2xl shadow-slate-950/60 outline-none backdrop-blur max-sm:h-dvh max-sm:max-h-full max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-x-0 ${sizeClass} ${className}`}>
       <button
         type="button"
         aria-label={closeLabel}
