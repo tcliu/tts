@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import CodeEditor from '$lib/components/CodeEditor.svelte'
   import Button from '$lib/components/Button.svelte'
   import BaseDialog from '$lib/components/BaseDialog.svelte'
@@ -63,7 +63,11 @@
       }
     },
     closeDrawer: () => drawer.closeDrawer(),
-    focusEditor: () => editorRef?.focus(),
+    focusEditor: () => {
+      // Focus must land after the drawer-close render: on narrow screens the
+      // open drawer hides <main>, and focus into a hidden subtree is dropped.
+      void tick().then(() => editorRef?.focus())
+    },
     openFilePicker: () => fileInputRef?.click(),
   })
 
@@ -387,7 +391,7 @@
   <title>TTS</title>
 </svelte:head>
 
-<div class="flex h-dvh min-h-screen flex-col bg-slate-950 text-slate-100">
+<div class="flex h-dvh flex-col bg-slate-950 text-slate-100">
   {#snippet copyIcon()}
     {#if editor.copyFeedback === 'copied'}
       <CheckIcon className="h-4 w-4 text-emerald-400" />
@@ -398,7 +402,7 @@
     {/if}
   {/snippet}
 
-  <header class="flex items-center justify-between gap-4 border-b border-slate-800 px-3 py-3 sm:px-4">
+  <header class="flex shrink-0 items-center justify-between gap-4 border-b border-slate-800 px-3 py-3 sm:px-4">
     <div class="flex items-center gap-2">
       <span bind:this={drawerButtonRef} class="inline-flex">
         <Button
@@ -453,11 +457,11 @@
 
     <main class={`flex min-w-0 flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4 ${drawer.drawerOpen ? 'max-md:hidden' : ''}`}>
       {#if editor.currentDocId}
-        <div class="mb-2 flex min-w-0 items-center">
+        <div class="mb-2 flex flex-none min-w-0 items-center">
           <EditableText locale={settings.locale} text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
         </div>
       {/if}
-      <section aria-label="Playback controls" class="@container flex flex-wrap items-center gap-1.5">
+      <section aria-label="Playback controls" class="@container flex flex-none flex-wrap items-center gap-1.5">
       <Button
         variant="outline"
         accent="cyan"
