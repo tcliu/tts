@@ -1,7 +1,12 @@
 import type { SettingsHandle } from './use-settings.svelte'
 import type { DocumentsHandle } from './use-documents.svelte'
+import { readTextFile } from './upload-text'
 
-export type DiscardKind = 'new' | 'open' | 'delete' | 'clone'
+export type DiscardKind = 'new' | 'open' | 'delete' | 'clone' | 'upload'
+
+export type UploadNotice = 'uploaded' | 'too-large' | 'read-failed'
+
+const UPLOAD_NOTICE_MS = 4000
 
 interface DocumentEditorDeps {
   settings: SettingsHandle
@@ -9,6 +14,7 @@ interface DocumentEditorDeps {
   stopPlayback: () => void
   closeDrawer: () => void
   focusEditor: () => void
+  openFilePicker: () => void
 }
 
 export function useDocumentEditor(deps: DocumentEditorDeps) {
@@ -33,6 +39,9 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   type CopyFeedback = 'idle' | 'copied' | 'failed'
   let copyFeedback = $state<CopyFeedback>('idle')
   let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+
+  let uploadNotice = $state<UploadNotice | null>(null)
+  let uploadNoticeTimer: ReturnType<typeof setTimeout> | null = null
 
   const isDirty = $derived(baselineContent !== null && settings.content !== baselineContent)
   // Nothing to persist: the editor is empty, or a document is loaded in its
@@ -170,6 +179,36 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     copyFeedbackTimer = setTimeout(() => (copyFeedback = 'idle'), 1500)
   }
 
+  function showUploadNotice(kind: UploadNotice) {
+    if (uploadNoticeTimer) {
+      clearTimeout(uploadNoticeTimer)
+    }
+    uploadNotice = kind
+    uploadNoticeTimer = setTimeout(() => (uploadNotice = null), UPLOAD_NOTICE_MS)
+  }
+
+  function requestUpload() {
+    if (isDirty) {
+      pendingDiscardKind = 'upload'
+      pendingDocumentId = null
+      discardDialogOpen = true
+      return
+    }
+    deps.openFilePicker()
+  }
+
+  async function importFile(file: File) {
+    const result = await readTextFile(file)
+    if (!result.ok) {
+      showUploadNotice(result.reason)
+      return
+    }
+    // Replacing the buffer invalidates any running playback session.
+    deps.stopPlayback()
+    settings.content = result.text
+    showUploadNotice('uploaded')
+  }
+
   function openSaveDialog() {
     if (saveDisabled) {
       return
@@ -249,6 +288,8 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
         settings.content = source.content
         cloneCurrentDocument()
       }
+    } else if (kind === 'upload') {
+      deps.openFilePicker()
     } else {
       createNewDocument()
     }
@@ -306,6 +347,9 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     get copyFeedback() {
       return copyFeedback
     },
+    get uploadNotice() {
+      return uploadNotice
+    },
     markBaseline,
     requestOpenDocument,
     requestDeleteDocument,
@@ -317,6 +361,8 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     loadDocument,
     renameDocument: handleRenameDocument,
     requestCloneDocument,
+    requestUpload,
+    importFile,
     resetEditor,
     copyEditorContent,
     openSaveDialog,
