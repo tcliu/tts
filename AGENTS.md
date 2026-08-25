@@ -31,6 +31,15 @@ Project-specific development conventions for the TTS web app.
   visibly selected while audio is active.
 - All user-facing strings must go through `UI_TEXT` (keyed by `UiLocale`); add
   each new string to every locale (`en`, `zh-TW`, `zh-CN`).
+- The app shell fills the dynamic viewport with `h-dvh` over the
+  `html/body { min-height: 100% }` base, with non-shrinking chrome
+  (`shrink-0` header, `flex-none` rows) and one flexible editor region; do not
+  add `min-h-screen`, clip the shell with `overflow-hidden`, or chase mobile
+  keyboard gaps with viewport-unit workarounds — those differences are owned by
+  the browser (see `references/cross-browser.md`).
+- Defer editor focus with `tick()` whenever drawer or dialog state changes
+  visibility (`focusEditor` in `+page.svelte`); synchronous focus into a
+  just-hidden or not-yet-shown subtree is silently dropped.
 
 ## References
 
