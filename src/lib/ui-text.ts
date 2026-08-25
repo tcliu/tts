@@ -67,6 +67,8 @@ export interface UiText {
   discardTitle: string
   discardMessage: string
   discardConfirm: string
+  voiceNotConfigured: string
+  playbackFailed: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [
@@ -153,6 +155,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     discardTitle: 'Discard unsaved changes?',
     discardMessage: 'You have unsaved changes that will be lost.',
     discardConfirm: 'Discard',
+    voiceNotConfigured: 'No voice is configured for this language.',
+    playbackFailed: 'Playback failed.',
   },
   'zh-TW': {
     language: '語言',
@@ -221,6 +225,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     discardTitle: '放棄未儲存的變更？',
     discardMessage: '有未儲存的變更，放棄後將會遺失。',
     discardConfirm: '放棄',
+    voiceNotConfigured: '此語言尚未設定語音。',
+    playbackFailed: '播放失敗。',
   },
   'zh-CN': {
     language: '语言',
@@ -289,5 +295,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     discardTitle: '放弃未保存的更改？',
     discardMessage: '有未保存的更改，放弃后将丢失。',
     discardConfirm: '放弃',
+    voiceNotConfigured: '此语言尚未设置语音。',
+    playbackFailed: '播放失败。',
   },
 }

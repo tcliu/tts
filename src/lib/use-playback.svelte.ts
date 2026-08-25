@@ -6,7 +6,7 @@ import {
   type TtsBoundary,
 } from './tts-reference'
 import { getCachedSynthesis } from './tts-client'
-import { UI_TEXT, type UiLocale } from './ui-text'
+import { UI_TEXT, segmentLanguageName, type UiLocale } from './ui-text'
 import type { SettingsHandle } from './use-settings.svelte'
 
 export type CodeEditorHandle = {
@@ -32,6 +32,8 @@ interface PlaybackController {
   abort: AbortController
   cancelAudio?: () => void
 }
+
+class LocalizedPlaybackError extends Error {}
 
 export interface PlaybackHandle {
   readonly isPlaying: boolean
@@ -93,7 +95,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let currentSynthesisRate = $state(1)
   let playbackElapsed = $state(0)
   let playbackDuration = $state(0)
-  let statusMessage = $state(UI_TEXT.en.ready)
+  let statusMessage = $state(UI_TEXT[deps.settings.locale].ready)
 
   let lastStatusReason = $state<'ready' | 'stopped' | 'finished' | 'error'>('ready')
   let currentController: PlaybackController | null = null
@@ -255,7 +257,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           resolve()
           return
         }
-        reject(new Error('Audio playback failed.'))
+        reject(new Error(UI_TEXT[deps.settings.locale].playbackFailed))
       }
 
       audio.play().then(() => {
@@ -330,7 +332,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           await acquire()
           try {
             if (!voice?.edge) {
-              throw new Error(`No voice configured for segment language '${segment.lang}'.`)
+              throw new LocalizedPlaybackError(
+                `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, segment.lang)})`,
+              )
             }
             const synth = await getCachedSynthesis(segment.text, voice.edge, rate, controller.abort.signal)
             return { blob: synth.blob, boundaries: synth.boundaries, rate, voiceName: voice.name }
@@ -436,7 +440,11 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       isPlaying = false
       lastStatusReason = 'error'
       metadataAvailable = false
-      statusMessage = error instanceof Error ? error.message : 'Playback failed.'
+      console.error(error)
+      statusMessage =
+        error instanceof LocalizedPlaybackError
+          ? error.message
+          : UI_TEXT[deps.settings.locale].playbackFailed
     }
   }
 
@@ -487,7 +495,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   function setSegmentDuration(index: number, duration: number) {
     const recorded = segmentMetaMap[index]
     if (recorded) {
-      recorded.duration = duration
+      segmentMetaMap[index] = { ...recorded, duration }
     }
   }
 
