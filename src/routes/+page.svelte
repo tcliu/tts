@@ -2,21 +2,38 @@
   import { onMount } from 'svelte'
   import CodeEditor from '$lib/components/CodeEditor.svelte'
   import Button from '$lib/components/Button.svelte'
-  import SettingsDialog from '$lib/components/SettingsDialog.svelte'
+  import BaseDialog from '$lib/components/BaseDialog.svelte'
+  import EditableText from '$lib/components/EditableText.svelte'
+  import SearchInput from '$lib/components/SearchInput.svelte'
+  import PanelMenu, { type PanelAction } from '$lib/components/PanelMenu.svelte'
+  import DocumentsDrawer from '$lib/components/DocumentsDrawer.svelte'
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
   import SettingsIcon from '$lib/icons/SettingsIcon.svelte'
   import InfoIcon from '$lib/icons/InfoIcon.svelte'
   import FollowIcon from '$lib/icons/FollowIcon.svelte'
+  import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
   import SpeakerIcon from '$lib/icons/SpeakerIcon.svelte'
   import StopIcon from '$lib/icons/StopIcon.svelte'
+  import MenuIcon from '$lib/icons/MenuIcon.svelte'
+  import SaveIcon from '$lib/icons/SaveIcon.svelte'
+  import DocumentIcon from '$lib/icons/DocumentIcon.svelte'
+  import DeleteIcon from '$lib/icons/DeleteIcon.svelte'
+  import RefreshIcon from '$lib/icons/RefreshIcon.svelte'
+  import CopyIcon from '$lib/icons/CopyIcon.svelte'
+  import CheckIcon from '$lib/icons/CheckIcon.svelte'
 
   import { positionPanel } from '$lib/position-panel.svelte'
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
   import { formatClock, usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
   import { useMetadata } from '$lib/use-metadata.svelte'
   import { useSettings } from '$lib/use-settings.svelte'
+  import { useDocuments } from '$lib/use-documents.svelte'
+  import { useDocumentEditor } from '$lib/use-document-editor.svelte'
+  import { useDocumentsDrawer } from '$lib/use-documents-drawer.svelte'
 
   const settings = useSettings()
+  const documents = useDocuments()
+  const drawer = useDocumentsDrawer(documents)
 
   // Late-bound so playback can notify the metadata layer without a circular
   // factory dependency; assigned once the metadata composable exists below.
@@ -36,9 +53,27 @@
   })
   hooks.prepareForPlayback = () => metadata.prepareForPlayback()
 
+  const editor = useDocumentEditor({
+    settings,
+    documents,
+    stopPlayback: () => {
+      if (playback.isPlaying) {
+        playback.stopPlayback()
+      }
+    },
+    closeDrawer: () => drawer.closeDrawer(),
+    focusEditor: () => editorRef?.focus(),
+  })
+
   let settingsOpen = $state(false)
   let showMetadata = $state(false)
   let languageMenuOpen = $state(false)
+
+  let drawerButtonRef = $state<HTMLElement | null>(null)
+  let drawerPanelRef = $state<HTMLElement | null>(null)
+  let drawerSearchRef = $state<HTMLInputElement | null>(null)
+
+  let saveNameInputRef = $state<HTMLInputElement | null>(null)
 
   let editorRef = $state<CodeEditorHandle | null>(null)
   let languageButtonRef = $state<HTMLElement | null>(null)
@@ -61,6 +96,56 @@
   })
 
   const text = $derived(UI_TEXT[settings.locale])
+
+  // Very small containers: Play plus one menu holding everything else.
+  const compactMenuActions = $derived<PanelAction[]>(
+    editor.currentDocId ? ['reset', 'save', 'delete', 'info', 'copy', 'clone'] : ['reset', 'save', 'info', 'copy'],
+  )
+  // Narrow containers: Save moves inline, the rest stay collapsed.
+  const narrowMenuActions = $derived<PanelAction[]>(
+    editor.currentDocId ? ['reset', 'delete', 'info', 'copy', 'clone'] : ['reset', 'info', 'copy'],
+  )
+  // Small containers: base row moves out of the menu, extras stay collapsed.
+  const smallMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'copy', 'clone'] : ['info'])
+  // Medium containers: base row stays inline, Copy moves out of the menu,
+  // the rest collapse (menu holds "4 buttons + menu" overflow).
+  const mediumMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'clone'] : ['info'])
+
+  function panelActionDisabled(action: PanelAction): boolean {
+    if (action === 'copy') {
+      return !settings.canPlay
+    }
+    if (action === 'save') {
+      return editor.saveDisabled
+    }
+    if (action === 'reset') {
+      return editor.currentDocId ? !editor.isDirty : !settings.canPlay
+    }
+    return false
+  }
+
+  function toggleDrawer() {
+    const opened = drawer.toggleDrawer()
+    if (!opened) {
+      drawerButtonRef?.focus()
+    }
+  }
+
+  function handlePanelAction(action: PanelAction) {
+    if (action === 'reset') {
+      editor.resetEditor()
+    } else if (action === 'save') {
+      editor.openSaveDialog()
+    } else if (action === 'copy') {
+      void editor.copyEditorContent()
+    } else if (action === 'info') {
+      showMetadata = !showMetadata
+    } else if (action === 'clone') {
+      editor.requestCloneDocument()
+    } else if (editor.currentDocId) {
+      editor.requestDeleteDocument(editor.currentDocId)
+    }
+  }
 
   function toggleLanguageMenu() {
     if (languageMenuOpen) {
@@ -107,6 +192,8 @@
 
   onMount(() => {
     const disposeSettings = settings.hydrate()
+    documents.hydrate()
+    editor.markBaseline()
     playback.initStatus()
     return () => {
       disposeSettings()
@@ -125,6 +212,10 @@
       }
     }
     function handleEscape(event: KeyboardEvent) {
+      // Open dialogs own Escape; the menu yields so it cannot double-close.
+      if (settingsOpen || editor.saveDialogOpen || editor.discardDialogOpen || editor.deleteDialogOpen) {
+        return
+      }
       if (event.key === 'Escape') {
         languageMenuOpen = false
         languageButtonRef?.focus()
@@ -145,6 +236,90 @@
     const items = languagePanelRef.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')
     items?.[languageMenuIndex]?.focus()
   })
+
+  $effect(() => {
+    if (!drawer.drawerOpen) {
+      return
+    }
+    function handleEscape(event: KeyboardEvent) {
+      if (settingsOpen || editor.saveDialogOpen || editor.discardDialogOpen || editor.deleteDialogOpen) {
+        return
+      }
+      if (event.key !== 'Escape') {
+        return
+      }
+      const target = event.target
+      // Two-stage Escape while focus is in the drawer: clear the search query
+      // first, close the drawer once it is empty.
+      if (target instanceof Node && drawerPanelRef?.contains(target) && drawer.documentSearch) {
+        event.preventDefault()
+        drawer.documentSearch = ''
+        return
+      }
+      event.preventDefault()
+      drawer.closeDrawer()
+      drawerButtonRef?.focus()
+    }
+    // Document capture (not window) so the overflow menu's window-level
+    // Escape handler can stop propagation before this runs while it is open.
+    document.addEventListener('keydown', handleEscape, true)
+    return () => document.removeEventListener('keydown', handleEscape, true)
+  })
+
+  $effect(() => {
+    if (!drawer.drawerOpen) {
+      return
+    }
+    const input = drawerSearchRef
+    if (!input) {
+      return
+    }
+    requestAnimationFrame(() => input.focus())
+  })
+
+  $effect(() => {
+    if (!editor.saveDialogOpen) {
+      return
+    }
+    const input = saveNameInputRef
+    if (!input) {
+      return
+    }
+    requestAnimationFrame(() => {
+      input.focus()
+      input.select()
+    })
+  })
+
+  $effect(() => {
+    function handleGlobalKeydown(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
+        return
+      }
+      if (event.key.toLowerCase() !== 's') {
+        return
+      }
+      event.preventDefault()
+      if (editor.saveDialogOpen || settingsOpen || editor.discardDialogOpen || editor.deleteDialogOpen) {
+        return
+      }
+      editor.openSaveDialog()
+    }
+    window.addEventListener('keydown', handleGlobalKeydown)
+    return () => window.removeEventListener('keydown', handleGlobalKeydown)
+  })
+
+  $effect(() => {
+    if (!editor.isDirty) {
+      return
+    }
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  })
 </script>
 
 <svelte:head>
@@ -152,8 +327,33 @@
 </svelte:head>
 
 <div class="flex h-dvh min-h-screen flex-col bg-slate-950 text-slate-100">
+  {#snippet copyIcon()}
+    {#if editor.copyFeedback === 'copied'}
+      <CheckIcon className="h-4 w-4 text-emerald-400" />
+    {:else if editor.copyFeedback === 'failed'}
+      <CopyIcon className="h-4 w-4 text-rose-400" />
+    {:else}
+      <CopyIcon className="h-4 w-4" />
+    {/if}
+  {/snippet}
+
   <header class="flex items-center justify-between gap-4 border-b border-slate-800 px-3 py-3 sm:px-4">
-    <h1 class="text-base font-semibold tracking-tight sm:text-lg">TTS</h1>
+    <div class="flex items-center gap-2">
+      <span bind:this={drawerButtonRef} class="inline-flex">
+        <Button
+          variant="secondary"
+          size="sm"
+          ariaLabel={text.documents}
+          ariaExpanded={drawer.drawerOpen}
+          tooltip={text.documents}
+          onClick={toggleDrawer}>
+          {#snippet icon()}
+            <MenuIcon className="h-4 w-4" />
+          {/snippet}
+        </Button>
+      </span>
+      <h1 class="text-base font-semibold tracking-tight sm:text-lg">TTS</h1>
+    </div>
     <div class="flex items-center gap-2">
       <span bind:this={languageButtonRef} class="inline-flex">
         <Button
@@ -176,8 +376,27 @@
     </div>
   </header>
 
-  <main class="flex min-h-0 flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4">
-    <section aria-label="Playback controls" class="flex flex-wrap items-center gap-1.5">
+  <div class="flex min-h-0 flex-1 overflow-hidden">
+    {#if drawer.drawerOpen}
+      <DocumentsDrawer
+        locale={settings.locale}
+        documents={drawer.visibleDocuments}
+        bind:search={() => drawer.documentSearch, v => (drawer.documentSearch = v)}
+        currentDocId={editor.currentDocId}
+        bind:panelRef={drawerPanelRef}
+        bind:inputRef={drawerSearchRef}
+        onNew={editor.requestNewDocument}
+        onOpen={editor.requestOpenDocument}
+        onDelete={editor.requestDeleteDocument} />
+    {/if}
+
+    <main class={`flex min-w-0 flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4 ${drawer.drawerOpen ? 'max-md:hidden' : ''}`}>
+      {#if editor.currentDocId}
+        <div class="mb-2 flex min-w-0 items-center">
+          <EditableText locale={settings.locale} text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
+        </div>
+      {/if}
+      <section aria-label="Playback controls" class="@container flex flex-wrap items-center gap-1.5">
       <Button
         variant="outline"
         accent="cyan"
@@ -198,134 +417,264 @@
         {playback.isPlaying ? text.stop : text.playback}
       </Button>
 
-      <Button
-        variant="secondary"
-        size="sm"
-        ariaPressed={showMetadata}
-        ariaLabel={text.info}
-        tooltip={text.info}
-        onClick={() => (showMetadata = !showMetadata)}>
-        {#snippet icon()}
-          <InfoIcon className="h-4 w-4" />
-        {/snippet}
-      </Button>
+      <span class="hidden @sm:inline-flex">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={editor.currentDocId ? !editor.isDirty : !settings.canPlay}
+          ariaLabel={text.reset}
+          tooltip={text.reset}
+          onClick={editor.resetEditor}
+          className="px-2.5 py-1.5 text-sm">
+          {#snippet icon()}
+            <RefreshIcon className="h-4 w-4" />
+          {/snippet}
+          {text.reset}
+        </Button>
+      </span>
+
+      <span class="hidden @xs:inline-flex">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={editor.saveDisabled}
+          ariaLabel={text.save}
+          tooltip={text.save}
+          onClick={editor.openSaveDialog}
+          className="px-2.5 py-1.5 text-sm">
+          {#snippet icon()}
+            <SaveIcon className="h-4 w-4" />
+          {/snippet}
+          {text.save}
+        </Button>
+      </span>
+
+      <span class="hidden @md:inline-flex @2xl:hidden">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!settings.canPlay}
+          ariaLabel={text.copy}
+          tooltip={text.copy}
+          onClick={() => void editor.copyEditorContent()}
+          className="px-2.5 py-1.5 text-sm"
+          icon={copyIcon}>
+          {text.copy}
+        </Button>
+      </span>
+
+      <div class="hidden @2xl:flex flex-wrap items-center gap-1.5">
+        {#if editor.currentDocId}
+          <Button
+            variant="secondary"
+            size="sm"
+            ariaLabel={text.delete}
+            tooltip={text.delete}
+            onClick={() => {
+              if (editor.currentDocId) {
+                editor.requestDeleteDocument(editor.currentDocId)
+              }
+            }}
+            className="px-2.5 py-1.5 text-sm">
+            {#snippet icon()}
+              <DeleteIcon className="h-4 w-4" />
+            {/snippet}
+            {text.delete}
+          </Button>
+        {/if}
+
+        <Button
+          variant="secondary"
+          size="sm"
+          ariaPressed={showMetadata}
+          disabled={!settings.canPlay}
+          ariaLabel={text.info}
+          tooltip={text.info}
+          onClick={() => (showMetadata = !showMetadata)}
+          className="px-2.5 py-1.5 text-sm">
+          {#snippet icon()}
+            <InfoIcon className="h-4 w-4" />
+          {/snippet}
+          {text.info}
+        </Button>
+
+        <Button
+          variant="secondary"
+          size="sm"
+          ariaLabel={text.copy}
+          tooltip={text.copy}
+          onClick={() => void editor.copyEditorContent()}
+          className="px-2.5 py-1.5 text-sm"
+          icon={copyIcon}>
+          {text.copy}
+        </Button>
+
+        {#if editor.currentDocId}
+          <Button
+            variant="secondary"
+            size="sm"
+            ariaLabel={text.clone}
+            tooltip={text.clone}
+            onClick={editor.requestCloneDocument}
+            className="px-2.5 py-1.5 text-sm">
+            {#snippet icon()}
+              <DocumentIcon className="h-4 w-4" />
+            {/snippet}
+            {text.clone}
+          </Button>
+        {/if}
+      </div>
+
+      <span class="inline-flex @xs:hidden">
+        <PanelMenu locale={settings.locale} actions={compactMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+      </span>
+
+      <span class="hidden @xs:inline-flex @sm:hidden">
+        <PanelMenu locale={settings.locale} actions={narrowMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+      </span>
+
+      <span class="hidden @sm:inline-flex @md:hidden">
+        <PanelMenu locale={settings.locale} actions={smallMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+      </span>
+
+      <span class="hidden @md:inline-flex @2xl:hidden">
+        <PanelMenu locale={settings.locale} actions={mediumMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+      </span>
     </section>
 
-    <div class="mt-3 flex min-h-0 flex-1 flex-col gap-3">
-      <div class="flex flex-none items-center gap-2 text-sm text-slate-400">
-        <span aria-live="polite">{playback.isPlaying ? text.playbackRunning : playback.statusMessage}</span>
+      <div class="mt-3 flex min-h-0 flex-1 flex-col gap-3">
+        <div class="flex flex-none items-center gap-2 text-sm text-slate-400">
+          <span aria-live="polite">{playback.isPlaying ? text.playbackRunning : playback.statusMessage}</span>
+          {#if playback.isPlaying}
+            <span aria-hidden="true" class="truncate">
+              {`· ${playback.currentSegmentIndex}/${playback.totalSegments} · ${playback.currentSegmentLabel} · ${playback.currentVoiceName} · ${
+                playback.totalDuration > 0 ? `${formatClock(playback.totalElapsed)}/${formatClock(playback.totalDuration)}` : formatClock(playback.totalElapsed)
+              }`}
+            </span>
+          {/if}
+        </div>
         {#if playback.isPlaying}
-          <span aria-hidden="true" class="truncate">
-            {`· ${playback.currentSegmentIndex}/${playback.totalSegments} · ${playback.currentSegmentLabel} · ${playback.currentVoiceName} · ${
-              playback.totalDuration > 0 ? `${formatClock(playback.totalElapsed)}/${formatClock(playback.totalDuration)}` : formatClock(playback.totalElapsed)
-            }`}
-          </span>
-        {/if}
-      </div>
-      {#if playback.isPlaying}
-        <div class="flex-none">
-          <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-valuemin={0} aria-valuemax={playback.totalSegments} aria-valuenow={playback.synthesizedCount}>
-            <div
-              class="h-full rounded-full bg-cyan-500 transition-[width] duration-200 motion-reduce:transition-none"
-              style={`width: ${playback.totalSegments > 0 ? (playback.synthesizedCount / playback.totalSegments) * 100 : 0}%`}></div>
+          <div class="flex-none">
+            <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-valuemin={0} aria-valuemax={playback.totalSegments} aria-valuenow={playback.synthesizedCount}>
+              <div
+                class="h-full rounded-full bg-cyan-500 transition-[width] duration-200 motion-reduce:transition-none"
+                style={`width: ${playback.totalSegments > 0 ? (playback.synthesizedCount / playback.totalSegments) * 100 : 0}%`}></div>
+            </div>
+            <div class="mt-1 text-xs text-slate-400">{text.synthesized} {playback.synthesizedCount}/{playback.totalSegments}</div>
           </div>
-          <div class="mt-1 text-xs text-slate-400">{text.synthesized} {playback.synthesizedCount}/{playback.totalSegments}</div>
-        </div>
-      {/if}
-      <div class="flex min-h-0 flex-1 gap-2 {showMetadata ? (isWide ? 'flex-row' : 'flex-col') : 'flex-col'}">
-        <div
-          class="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70 shadow-2xl shadow-slate-950/30">
-          <CodeEditor
-            bind:this={editorRef}
-            bind:content={settings.content}
-            editable={!playback.isPlaying}
-            autoFocus={true}
-            editorAriaLabel="TTS editor"
-            containerClass="min-h-0 flex-1"
-            editorClass="h-full" />
-        </div>
+        {/if}
+        <div class="flex min-h-0 flex-1 gap-2 {showMetadata ? (isWide ? 'flex-row' : 'flex-col') : 'flex-col'}">
+          <div
+            class="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70 shadow-2xl shadow-slate-950/30">
+            <CodeEditor
+              bind:this={editorRef}
+              bind:content={settings.content}
+              editable={!playback.isPlaying}
+              autoFocus={true}
+              editorAriaLabel="TTS editor"
+              containerClass="min-h-0 flex-1"
+              editorClass="h-full" />
+          </div>
 
-        {#if showMetadata}
-          <section aria-label={text.info} class="flex min-h-0 min-w-0 {isWide ? 'w-[32%] min-w-[18rem]' : 'flex-1'} flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-            <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
-              <div class="flex flex-none items-center gap-2">
-                <label class="relative block flex-1">
-                  <span class="sr-only">{text.metadataSearch}</span>
-                  <input
-                    type="search"
-                    bind:value={metadata.search}
-                    placeholder={text.metadataSearch}
-                    aria-label={text.metadataSearch}
-                    class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50" />
-                </label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  ariaPressed={metadata.followSentence}
-                  ariaLabel={text.followSentence}
-                  tooltip={text.followSentence}
-                  onClick={() => (metadata.followSentence = !metadata.followSentence)}
-                  className={metadata.followSentence ? 'border border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border border-slate-700 text-slate-400 hover:text-slate-200'}>
-                  {#snippet icon()}
-                    <FollowIcon className="h-4 w-4" />
-                  {/snippet}
-                </Button>
-              </div>
-              <div class="flex flex-none flex-wrap items-center gap-2 text-xs text-slate-400">
-                <span>{text.synthesized} {playback.synthesizedCount}/{playback.totalSegments}</span>
-                <span aria-hidden="true">·</span>
-                {#if metadata.syncing}
-                  <span>{text.metadataRefreshing}</span>
-                {:else if metadata.stale}
-                  <span>{text.metadataStale}</span>
+          {#if showMetadata}
+            <section aria-label={text.info} class="flex min-h-0 min-w-0 {isWide ? 'w-[32%] min-w-[18rem]' : 'flex-1'} flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
+                <div class="flex flex-none items-center gap-2">
+                  <label class="relative block flex-1">
+                    <span class="sr-only">{text.metadataSearch}</span>
+                    <input
+                      type="search"
+                      bind:value={metadata.search}
+                      placeholder={text.metadataSearch}
+                      aria-label={text.metadataSearch}
+                      class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50" />
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    ariaPressed={metadata.followSentence}
+                    ariaLabel={text.followSentence}
+                    tooltip={text.followSentence}
+                    onClick={() => (metadata.followSentence = !metadata.followSentence)}
+                    className={metadata.followSentence ? 'border border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border border-slate-700 text-slate-400 hover:text-slate-200'}>
+                    {#snippet icon()}
+                      <FollowIcon className="h-4 w-4" />
+                    {/snippet}
+                  </Button>
+                  <!-- Mobile only: the panel stacks below the editor, so it
+                       needs an in-panel collapse control; desktop toggles via
+                       the Info button in the toolbar. -->
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    ariaLabel={text.infoCollapse}
+                    tooltip={text.infoCollapse}
+                    onClick={() => {
+                      showMetadata = false
+                      editorRef?.focus()
+                    }}
+                    className="border border-slate-700 text-slate-400 hover:text-slate-200 lg:hidden">
+                    {#snippet icon()}
+                      <ChevronDownIcon className="h-4 w-4" />
+                    {/snippet}
+                  </Button>
+                </div>
+                <div class="flex flex-none flex-wrap items-center gap-2 text-xs text-slate-400">
+                  <span>{text.synthesized} {playback.synthesizedCount}/{playback.totalSegments}</span>
+                  <span aria-hidden="true">·</span>
+                  {#if metadata.syncing}
+                    <span>{text.metadataRefreshing}</span>
+                  {:else if metadata.stale}
+                    <span>{text.metadataStale}</span>
+                  {:else}
+                    <span>{text.segmentHint}</span>
+                  {/if}
+                </div>
+                {#if metadata.rows.length === 0}
+                  <p class="text-xs text-slate-500">{metadata.search.trim() ? text.metadataNoResults : text.noMetadata}</p>
                 {:else}
-                  <span>{text.segmentHint}</span>
+                  <div bind:this={tableBodyRef} class="min-h-0 flex-1 overflow-auto">
+                    <table class="w-full border-collapse text-sm">
+                      <thead class="sticky top-0 z-10 bg-slate-950">
+                        <tr class="text-left text-xs text-slate-400">
+                          <th scope="col" class="px-2 py-1 font-medium">{text.tableSeg}</th>
+                          <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
+                          <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
+                          <th scope="col" class="px-2 py-1 font-medium">{text.tableLang}</th>
+                          <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {#each metadata.rows as row}
+                          <tr
+                            data-active={row.active}
+                            class="border-t border-slate-800 align-top {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
+                            <td class="px-2 py-1 whitespace-nowrap">
+                              <button
+                                type="button"
+                                aria-label={`${text.playSegment} ${row.segmentIndex + 1}`}
+                                onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
+                                class="cursor-pointer rounded px-1 py-0.5 font-mono outline-none transition hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 motion-reduce:transition-none -mx-1">
+                                {row.segmentIndex + 1}
+                              </button>
+                            </td>
+                            <td class="px-2 py-1 font-mono whitespace-nowrap">{row.at.toFixed(2)}s</td>
+                            <td class="px-2 py-1 font-mono whitespace-nowrap">{row.offset}</td>
+                            <td class="px-2 py-1 whitespace-nowrap">{row.lang}</td>
+                            <td class="px-2 py-1">{row.text}</td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  </div>
                 {/if}
               </div>
-              {#if metadata.rows.length === 0}
-                <p class="text-xs text-slate-500">{metadata.search.trim() ? text.metadataNoResults : text.noMetadata}</p>
-              {:else}
-                <div bind:this={tableBodyRef} class="min-h-0 flex-1 overflow-auto">
-                  <table class="w-full border-collapse text-sm">
-                    <thead class="sticky top-0 z-10 bg-slate-950">
-                      <tr class="text-left text-xs text-slate-400">
-                        <th scope="col" class="px-2 py-1 font-medium">{text.tableSeg}</th>
-                        <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
-                        <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
-                        <th scope="col" class="px-2 py-1 font-medium">{text.tableLang}</th>
-                        <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each metadata.rows as row}
-                        <tr
-                          data-active={row.active}
-                          class="border-t border-slate-800 align-top {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
-                          <td class="px-2 py-1 whitespace-nowrap">
-                            <button
-                              type="button"
-                              aria-label={`${text.playSegment} ${row.segmentIndex + 1}`}
-                              onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
-                              class="cursor-pointer rounded px-1 py-0.5 font-mono outline-none transition hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 motion-reduce:transition-none -mx-1">
-                              {row.segmentIndex + 1}
-                            </button>
-                          </td>
-                          <td class="px-2 py-1 font-mono whitespace-nowrap">{row.at.toFixed(2)}s</td>
-                          <td class="px-2 py-1 font-mono whitespace-nowrap">{row.offset}</td>
-                          <td class="px-2 py-1 whitespace-nowrap">{row.lang}</td>
-                          <td class="px-2 py-1">{row.text}</td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-              {/if}
-            </div>
-          </section>
-        {/if}
+            </section>
+          {/if}
+        </div>
       </div>
-    </div>
-  </main>
+    </main>
+  </div>
 
   {#if languageMenuOpen}
     <div
@@ -351,16 +700,102 @@
   {/if}
 
   {#if settingsOpen}
-    <SettingsDialog
-      locale={settings.locale}
-      speed={settings.speed}
-      synthesisConcurrency={settings.synthesisConcurrency}
-      voiceSelections={settings.voiceSelections}
-      groupSelections={settings.groupSelections}
-      onCancel={() => (settingsOpen = false)}
-      onSelectVoice={settings.selectVoice}
-      onSelectGroup={settings.selectGroup}
-      onSelectSpeed={settings.setSpeed}
-      onSelectConcurrent={settings.setSynthesisConcurrency} />
+    {#await import('$lib/components/SettingsDialog.svelte') then { default: SettingsDialog }}
+      <SettingsDialog
+        locale={settings.locale}
+        speed={settings.speed}
+        synthesisConcurrency={settings.synthesisConcurrency}
+        voiceSelections={settings.voiceSelections}
+        groupSelections={settings.groupSelections}
+        onCancel={() => (settingsOpen = false)}
+        onSelectVoice={settings.selectVoice}
+        onSelectGroup={settings.selectGroup}
+        onSelectSpeed={settings.setSpeed}
+        onSelectConcurrent={settings.setSynthesisConcurrency} />
+    {:catch}
+      <!-- Chunk load failed; drop the dialog instead of leaving an unhandled rejection. -->
+      {settingsOpen = false}
+    {/await}
+  {/if}
+
+  {#if editor.saveDialogOpen}
+    <BaseDialog title={text.saveDialogTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelSave}>
+      <form
+        class="flex flex-col gap-4"
+        onsubmit={event => {
+          event.preventDefault()
+          editor.confirmSave()
+        }}>
+        <label class="flex flex-col gap-1.5 text-sm text-slate-300">
+          <span>{text.documentNameLabel}</span>
+          <input
+            bind:this={saveNameInputRef}
+            type="text"
+            bind:value={() => editor.saveName, v => (editor.saveName = v)}
+            required
+            oninput={() => {
+              if (editor.saveName.trim()) {
+                editor.showNameError = false
+              }
+            }}
+            placeholder={text.documentNamePlaceholder}
+            aria-label={text.documentNameLabel}
+            class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50" />
+          {#if editor.showNameError}
+            <p role="alert" class="text-xs text-rose-400">{text.documentNameRequired}</p>
+          {/if}
+        </label>
+        <div class="flex justify-end gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              editor.resetSaveDraft()
+              saveNameInputRef?.focus()
+            }}
+            disabled={!editor.saveDirty}>
+            {text.reset}
+          </Button>
+          <Button variant="primary" accent="cyan" type="submit" disabled={editor.saveDisabled || (!editor.saveDirty && !editor.isDirty)}>
+            {text.save}
+          </Button>
+        </div>
+      </form>
+    </BaseDialog>
+  {/if}
+
+  {#if editor.saveDialogOpen && editor.overwriteConfirmOpen}
+    <BaseDialog title={text.overwriteTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelOverwrite}>
+      <div class="flex flex-col gap-4">
+        <p class="text-sm leading-6 text-slate-400">{text.overwriteMessage}</p>
+        <div class="flex flex-wrap items-center justify-end gap-3">
+          <Button variant="primary" accent="rose" onClick={editor.applyOverwrite}>{text.save}</Button>
+        </div>
+      </div>
+    </BaseDialog>
+  {/if}
+
+  {#if editor.discardDialogOpen}
+    <BaseDialog title={text.discardTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelDiscard}>
+      <div class="flex flex-col gap-4">
+        <p class="text-sm leading-6 text-slate-400">{text.discardMessage}</p>
+        <div class="flex flex-wrap items-center justify-end gap-3">
+          <Button variant="primary" accent="rose" onClick={editor.confirmDiscard}>{text.discardConfirm}</Button>
+        </div>
+      </div>
+    </BaseDialog>
+  {/if}
+
+  {#if editor.deleteDialogOpen}
+    <BaseDialog title={text.deleteConfirmTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelDelete}>
+      <div class="flex flex-col gap-4">
+        <div class="flex min-w-0 flex-col gap-1">
+          <p class="truncate text-sm font-medium text-slate-100">{editor.deleteTargetName}</p>
+          <p class="text-sm leading-6 text-slate-400">{text.deleteConfirmMessage}</p>
+        </div>
+        <div class="flex flex-wrap items-center justify-end gap-3">
+          <Button variant="primary" accent="rose" onClick={editor.confirmDelete}>{text.delete}</Button>
+        </div>
+      </div>
+    </BaseDialog>
   {/if}
 </div>
