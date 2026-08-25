@@ -53,6 +53,10 @@ export interface UiText {
   moreActions: string
   copy: string
   clone: string
+  upload: string
+  uploadSuccess: string
+  uploadTooLarge: string
+  uploadFailed: string
   edit: string
   editText: string
   doubleClickToEdit: string
@@ -134,6 +138,10 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     moreActions: 'More actions',
     copy: 'Copy',
     clone: 'Clone',
+    upload: 'Upload',
+    uploadSuccess: 'File loaded.',
+    uploadTooLarge: 'File is too large. The limit is 1 MiB of text.',
+    uploadFailed: 'Could not read the file.',
     edit: 'Edit',
     editText: 'Edit text',
     doubleClickToEdit: 'Double-click to edit',
@@ -197,6 +205,10 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     moreActions: '更多動作',
     copy: '複製',
     clone: '建立副本',
+    upload: '上傳',
+    uploadSuccess: '已載入檔案。',
+    uploadTooLarge: '檔案太大，上限為 1 MiB 文字。',
+    uploadFailed: '無法讀取檔案。',
     edit: '編輯',
     editText: '編輯文字',
     doubleClickToEdit: '按兩下以編輯',
@@ -260,6 +272,10 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     moreActions: '更多操作',
     copy: '复制',
     clone: '创建副本',
+    upload: '上传',
+    uploadSuccess: '已加载文件。',
+    uploadTooLarge: '文件过大，上限为 1 MiB 文本。',
+    uploadFailed: '无法读取文件。',
     edit: '编辑',
     editText: '编辑文字',
     doubleClickToEdit: '双击以编辑',

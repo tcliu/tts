@@ -21,6 +21,7 @@
   import RefreshIcon from '$lib/icons/RefreshIcon.svelte'
   import CopyIcon from '$lib/icons/CopyIcon.svelte'
   import CheckIcon from '$lib/icons/CheckIcon.svelte'
+  import UploadIcon from '$lib/icons/UploadIcon.svelte'
 
   import { positionPanel } from '$lib/position-panel.svelte'
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
@@ -63,11 +64,14 @@
     },
     closeDrawer: () => drawer.closeDrawer(),
     focusEditor: () => editorRef?.focus(),
+    openFilePicker: () => fileInputRef?.click(),
   })
 
   let settingsOpen = $state(false)
   let showMetadata = $state(false)
   let languageMenuOpen = $state(false)
+
+  let fileInputRef = $state<HTMLInputElement | null>(null)
 
   let drawerButtonRef = $state<HTMLElement | null>(null)
   let drawerPanelRef = $state<HTMLElement | null>(null)
@@ -97,19 +101,30 @@
 
   const text = $derived(UI_TEXT[settings.locale])
 
+  const statusMessage = $derived(
+    editor.uploadNotice === 'uploaded'
+      ? text.uploadSuccess
+      : editor.uploadNotice === 'too-large'
+        ? text.uploadTooLarge
+        : editor.uploadNotice === 'read-failed'
+          ? text.uploadFailed
+          : playback.statusMessage,
+  )
+  const uploadNoticeIsError = $derived(editor.uploadNotice !== null && editor.uploadNotice !== 'uploaded')
+
   // Very small containers: Play plus one menu holding everything else.
   const compactMenuActions = $derived<PanelAction[]>(
-    editor.currentDocId ? ['reset', 'save', 'delete', 'info', 'copy', 'clone'] : ['reset', 'save', 'info', 'copy'],
+    editor.currentDocId ? ['reset', 'save', 'delete', 'info', 'copy', 'clone', 'upload'] : ['reset', 'save', 'info', 'copy', 'upload'],
   )
   // Narrow containers: Save moves inline, the rest stay collapsed.
   const narrowMenuActions = $derived<PanelAction[]>(
-    editor.currentDocId ? ['reset', 'delete', 'info', 'copy', 'clone'] : ['reset', 'info', 'copy'],
+    editor.currentDocId ? ['reset', 'delete', 'info', 'copy', 'clone', 'upload'] : ['reset', 'info', 'copy', 'upload'],
   )
   // Small containers: base row moves out of the menu, extras stay collapsed.
-  const smallMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'copy', 'clone'] : ['info'])
+  const smallMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'copy', 'clone', 'upload'] : ['info', 'upload'])
   // Medium containers: base row stays inline, Copy moves out of the menu,
   // the rest collapse (menu holds "4 buttons + menu" overflow).
-  const mediumMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'clone'] : ['info'])
+  const mediumMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'clone', 'upload'] : ['info', 'upload'])
 
   function panelActionDisabled(action: PanelAction): boolean {
     if (action === 'copy') {
@@ -142,8 +157,21 @@
       showMetadata = !showMetadata
     } else if (action === 'clone') {
       editor.requestCloneDocument()
+    } else if (action === 'upload') {
+      editor.requestUpload()
     } else if (editor.currentDocId) {
       editor.requestDeleteDocument(editor.currentDocId)
+    }
+  }
+
+  async function handleFileChange() {
+    const file = fileInputRef?.files?.[0]
+    if (!file) {
+      return
+    }
+    await editor.importFile(file)
+    if (fileInputRef) {
+      fileInputRef.value = ''
     }
   }
 
@@ -523,6 +551,19 @@
             {text.clone}
           </Button>
         {/if}
+
+        <Button
+          variant="secondary"
+          size="sm"
+          ariaLabel={text.upload}
+          tooltip={text.upload}
+          onClick={editor.requestUpload}
+          className="px-2.5 py-1.5 text-sm">
+          {#snippet icon()}
+            <UploadIcon className="h-4 w-4" />
+          {/snippet}
+          {text.upload}
+        </Button>
       </div>
 
       <span class="inline-flex @xs:hidden">
@@ -544,7 +585,9 @@
 
       <div class="mt-3 flex min-h-0 flex-1 flex-col gap-3">
         <div class="flex flex-none items-center gap-2 text-sm text-slate-400">
-          <span aria-live="polite">{playback.isPlaying ? text.playbackRunning : playback.statusMessage}</span>
+          <span aria-live="polite" class={uploadNoticeIsError ? 'text-rose-400' : ''}>
+            {editor.uploadNotice || !playback.isPlaying ? statusMessage : text.playbackRunning}
+          </span>
           {#if playback.isPlaying}
             <span aria-hidden="true" class="truncate">
               {`· ${playback.currentSegmentIndex}/${playback.totalSegments} · ${playback.currentSegmentLabel} · ${playback.currentVoiceName} · ${
@@ -675,6 +718,13 @@
       </div>
     </main>
   </div>
+
+  <input
+    bind:this={fileInputRef}
+    type="file"
+    accept="text/plain,.txt,.md,.json,.csv,.html,.js,.xml,.yml,.yaml,application/json,text/markdown,text/html,text/xml,text/javascript"
+    class="hidden"
+    onchange={handleFileChange} />
 
   {#if languageMenuOpen}
     <div

@@ -1,5 +1,5 @@
 <script module lang="ts">
-  export type PanelAction = 'reset' | 'save' | 'delete' | 'info' | 'copy' | 'clone'
+  export type PanelAction = 'reset' | 'save' | 'delete' | 'info' | 'copy' | 'clone' | 'upload'
 </script>
 
 <script lang="ts">
@@ -11,6 +11,7 @@
   import InfoIcon from '$lib/icons/InfoIcon.svelte'
   import CopyIcon from '$lib/icons/CopyIcon.svelte'
   import DocumentIcon from '$lib/icons/DocumentIcon.svelte'
+  import UploadIcon from '$lib/icons/UploadIcon.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
 
   interface Props {
@@ -34,6 +35,7 @@
     if (action === 'delete') return uiText.delete
     if (action === 'copy') return uiText.copy
     if (action === 'clone') return uiText.clone
+    if (action === 'upload') return uiText.upload
     return uiText.info
   }
 
@@ -72,6 +74,8 @@
         <CopyIcon />
       {:else if action === 'clone'}
         <DocumentIcon className="h-[80%] w-[80%] m-[10%]" />
+      {:else if action === 'upload'}
+        <UploadIcon />
       {:else}
         <InfoIcon />
       {/if}
