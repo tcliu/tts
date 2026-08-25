@@ -24,7 +24,7 @@ export interface SettingsHandle {
 }
 
 export function useSettings(): SettingsHandle {
-  let storageReady = false
+  let storageReady = $state(false)
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let pendingSave: Record<string, unknown> | null = null
 
