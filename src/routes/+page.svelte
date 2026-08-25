@@ -689,13 +689,14 @@
                         {#each metadata.rows as row}
                           <tr
                             data-active={row.active}
-                            class="border-t border-slate-800 align-top {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
+                            class="relative border-t border-slate-800 align-top {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
                             <td class="px-2 py-1 whitespace-nowrap">
+                              <!-- Stretched over the row so the entire line plays the sentence; the tr is the positioning context. -->
                               <button
                                 type="button"
                                 aria-label={`${text.playSegment} ${row.segmentIndex + 1}`}
                                 onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
-                                class="cursor-pointer rounded px-1 py-0.5 font-mono outline-none transition hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 motion-reduce:transition-none -mx-1">
+                                class="absolute inset-0 flex cursor-pointer items-start rounded px-2 py-1 text-left font-mono outline-none transition hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 motion-reduce:transition-none">
                                 {row.segmentIndex + 1}
                               </button>
                             </td>
