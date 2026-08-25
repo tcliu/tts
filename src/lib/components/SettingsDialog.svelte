@@ -60,7 +60,7 @@
       <section aria-label={language.name} class="p-3 {i > 0 ? 'border-t border-slate-800' : ''}">
         <h3 class="mb-2.5 text-sm font-semibold text-slate-100">{language.name}</h3>
 
-        <div class="flex flex-col gap-2.5 {language.code === 'zh' ? 'sm:flex-row' : ''}">
+        <div class="flex flex-wrap gap-2.5">
           {#if voiceGroups(language.code).length > 1}
             <div class="flex flex-col gap-2 text-sm text-slate-300">
               <SelectDropdown
