@@ -28,6 +28,11 @@ coherent system instead of a new parallel one.
     and status messaging.
   - `use-metadata.svelte.ts` owns boundary rows, search/follow state, staleness,
     and background resync.
+  - `use-documents.svelte.ts` owns the `localStorage`-backed document store
+    (list, save, rename, delete) and hydration.
+  - `use-documents-drawer.svelte.ts` owns drawer open state and name search.
+  - `use-document-editor.svelte.ts` owns the current-document identity, dirty
+    state, and the save/rename/clone/delete/upload/discard dialog flows.
   - `tts-client.ts` is the non-reactive synthesis API with its LRU cache.
 - The route component stays a thin orchestration layer that wires composables
   to view components.
@@ -51,11 +56,27 @@ coherent system instead of a new parallel one.
   in-flight synthesis requests and settles the active audio element.
 - While a segment is active, the matching editor text range is selected.
 - Stopping playback preserves the current selection.
-- When playback finishes, restore the pre-playback selection state described in
-  `requirement.md`.
+- When playback finishes, restore the pre-playback selection state so the editor
+  returns to the selection the user had before playback started.
 - A metadata pipeline records per-sentence boundaries for the session. Editing
   the content invalidates it and re-synthesizes segments in a bounded,
   cancellable background pass to refresh boundaries.
+
+## Documents model
+
+- Documents are a browser-only, `localStorage`-backed store keyed by an id with
+  a name, content, and `updatedAt` timestamp; server-side persistence and
+  resumable-upload libraries do not apply — there is no document endpoint.
+- `use-documents` validates each stored record on read and writes the full list
+  on every mutation; it sorts the visible list by `updatedAt` descending.
+- `use-document-editor` tracks the open document id and a baseline snapshot of
+  the editor content; `isDirty` is the comparison between the baseline and the
+  live content. Save, rename, clone, delete, upload, and reset all route through
+  discard confirmation when `isDirty` is true.
+- Saving under a name owned by another document stacks a replace-confirmation on
+  top of the save dialog rather than destroying it silently.
+- The drawer is a view over `use-documents-drawer`'s filtered list; it only
+  triggers handlers on the document editor and never mutates the store directly.
 
 ## Upload model
 
@@ -64,8 +85,13 @@ coherent system instead of a new parallel one.
   Uppy) do not apply — they require a server-side endpoint, and documents live
   only in the browser.
 - The page hosts a hidden `input type="file"`; the document editor composable
-  owns validation (UTF-8 byte cap), discard confirmation reuse, content
-  replacement, and transient status feedback.
+  owns validation (UTF-8 byte cap plus an all-readable-text scan: disallowed C0
+  controls, DEL, and the replacement character that invalid byte sequences
+  decode to), discard confirmation reuse, content replacement, and transient
+  status feedback.
+- The Upload button is also a file drop target: the composable stores the
+  dropped file as the pending upload so confirming the discard imports it
+  instead of opening the picker. Non-file drags are ignored.
 
 ## Synthesis service
 

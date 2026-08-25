@@ -7,8 +7,9 @@
 
 ## Top row
 
-- The left side shows the `TTS` title.
+- The left side shows a Documents button and the `TTS` title.
 - The right side shows a toolbar with a language button and a settings button.
+- Activating the Documents button toggles the documents drawer.
 - Activating the language button opens a language panel.
 - The language panel lists English, Traditional Chinese, and Simplified Chinese
   in their respective languages.
@@ -18,8 +19,13 @@
 
 - The main body stacks playback controls above the editor.
 - The editor shows line numbers.
-- The playback controls include a playback button. Playback speed is configured
-  in the settings dialog's Speed tab and applies live during playback.
+- The playback controls include Play/Stop, Reset, Save, Copy, Delete (when a
+  document is open), Info, Clone (when a document is open), and Upload.
+- On narrow layouts the actions collapse into a `More actions` overflow menu;
+  Upload and Info stay reachable at every width, and the inline set grows as the
+  container widens.
+- Playback speed is configured in the settings dialog's Speed tab and applies
+  live during playback.
 
 ## Playback
 
@@ -41,9 +47,39 @@
 - Uploading replaces the entire editor content.
 - When the editor has unsaved changes, a discard confirmation is shown before
   the file picker opens; cancelling keeps the current content.
-- Files are read as UTF-8 text. A file larger than 1 MiB of encoded text, or one
-  that fails to read, is rejected with a transient status message above the
-  editor; a successful load confirms there as well.
+- Dropping a text file onto the Upload button imports it through the same flow
+  as picking: discard confirmation first when the editor has unsaved changes,
+  then validation and replacement. The button highlights while a file is
+  dragged over it.
+- Files are read as UTF-8 text. A file larger than 1 MiB of encoded text, one
+  that fails to read, or one that is not entirely readable text — binary
+  content such as control characters or invalid UTF-8 — is rejected with a
+  transient status message above the editor; a successful load confirms there
+  as well.
+
+## Documents
+
+- A Documents button toggles a side drawer that lists saved documents.
+- The drawer has a `New document` button and a search field filtering rows by
+  name; the list is empty before any document is saved.
+- Activating a row opens that document; a delete button appears on the row on
+  hover or keyboard focus.
+- Documents persist in the browser's `localStorage`; they are not sent to a
+  server.
+- Opening a different document, starting a new document, cloning, uploading, or
+  resetting with unsaved edits shows a discard confirmation first; cancelling
+  keeps the current content.
+- The open document's name shows as an inline editable title above the editor;
+  editing and committing it renames the document.
+- Save (the Save button or `Ctrl`/`Cmd`+`S`) opens a name dialog; saving under a
+  name owned by a different document asks for confirmation before replacing it.
+- Clone detaches the current content into a new, unsaved document carrying the
+  same text; nothing is persisted until it is saved under a name.
+- Copy copies the editor text to the clipboard and confirms success or failure
+  via the action icon.
+- Reset reverts to the saved document (or empties the editor when none is open).
+- Deleting a document asks for confirmation; deleting the open document clears it
+  from the editor.
 
 ## Metadata panel
 
