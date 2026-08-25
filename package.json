@@ -7,7 +7,9 @@
     "dev": "vite dev --host",
     "build": "svelte-kit sync && vite build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy": "bash scripts/deploy.sh",
+    "env:sync:vercel": "node ./scripts/sync-vercel-env.mjs"
   },
   "dependencies": {
     "@babel/runtime": "^7.28.4",
@@ -21,7 +23,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "@sveltejs/adapter-auto": "^4.0.0",
+    "@sveltejs/adapter-vercel": "^6.3.4",
     "@sveltejs/kit": "^2.58.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/vite": "^4.3.1",
