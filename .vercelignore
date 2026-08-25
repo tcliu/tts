@@ -1,0 +1,17 @@
+# Local secrets and environment overrides. The app reads env from the Vercel
+# project settings; these files must never be uploaded.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local-only data and dev artifacts
+.tts/
+.tmp/
+.commandcode/
+
+
+# Build artifacts generated locally (Vercel runs its own build)
+.svelte-kit/
+build/
+.vercel/output/
