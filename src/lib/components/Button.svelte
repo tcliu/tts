@@ -43,11 +43,11 @@
   }: Props = $props()
 
   const primaryClasses: Record<string, string> = {
-    cyan: 'bg-cyan-500 text-slate-950 hover:bg-cyan-400 focus:bg-cyan-400',
-    emerald: 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 focus:bg-emerald-400',
-    amber: 'bg-amber-500 text-slate-950 hover:bg-amber-400 focus:bg-amber-400',
-    violet: 'bg-violet-500 text-slate-950 hover:bg-violet-400 focus:bg-violet-400',
-    rose: 'bg-rose-500 text-slate-950 hover:bg-rose-400 focus:bg-rose-400',
+    cyan: 'bg-cyan-500 text-onaccent hover:bg-cyan-400 focus:bg-cyan-400',
+    emerald: 'bg-emerald-500 text-onaccent hover:bg-emerald-400 focus:bg-emerald-400',
+    amber: 'bg-amber-500 text-onaccent hover:bg-amber-400 focus:bg-amber-400',
+    violet: 'bg-violet-500 text-onaccent hover:bg-violet-400 focus:bg-violet-400',
+    rose: 'bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400',
   }
 
   const outlineClasses: Record<string, string> = {
@@ -70,7 +70,7 @@
       return `${common} ${primaryClasses[accent]}`
     }
     if (variant === 'danger') {
-      return `${common} bg-rose-500 text-slate-950 hover:bg-rose-400 focus:bg-rose-400`
+      return `${common} bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400`
     }
     if (variant === 'outline') {
       return `${common} ${outlineClasses[accent]}`

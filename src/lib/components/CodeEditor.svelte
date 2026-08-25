@@ -6,11 +6,14 @@
   import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
   import { search, searchKeymap } from '@codemirror/search'
   import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view'
-  import { githubDark } from '@uiw/codemirror-theme-github'
+  import { githubDark, githubLight } from '@uiw/codemirror-theme-github'
+
+  import type { UiTheme } from '$lib/use-settings.svelte'
 
   interface Props {
     content: string
     editable?: boolean
+    theme?: UiTheme
     containerClass?: string
     editorClass?: string
     editorAriaLabel?: string
@@ -22,6 +25,7 @@
   let {
     content = $bindable(),
     editable = true,
+    theme = 'dark',
     containerClass = '',
     editorClass = '',
     editorAriaLabel = 'Content',
@@ -30,10 +34,112 @@
     onContentChange,
   }: Props = $props()
 
+  // Colors the bundled github themes do not cover: caret, gutter chrome,
+  // active line, and selection. Kept next to the github theme pair so both
+  // swap together through one compartment.
+  const EDITOR_CHROME = {
+    dark: {
+      caret: 'rgb(103 232 249)',
+      gutterColor: 'rgb(100 116 139)',
+      gutterBorder: 'rgb(51 65 85)',
+      activeLineGutter: 'rgba(22, 27, 34, 0.95)',
+      activeLine: 'rgba(48, 54, 61, 0.45)',
+      selection: 'rgba(56, 139, 253, 0.35)',
+    },
+    light: {
+      caret: '#0e7490',
+      gutterColor: '#64748b',
+      gutterBorder: '#e2e8f0',
+      activeLineGutter: 'rgba(241, 245, 249, 0.95)',
+      activeLine: 'rgba(2, 6, 23, 0.04)',
+      selection: 'rgba(9, 105, 218, 0.18)',
+    },
+    ember: {
+      caret: '#fcd34d',
+      gutterColor: '#a08c7d',
+      gutterBorder: '#452f27',
+      activeLineGutter: 'rgba(33, 23, 20, 0.95)',
+      activeLine: 'rgba(120, 70, 30, 0.25)',
+      selection: 'rgba(245, 158, 11, 0.25)',
+    },
+    sepia: {
+      caret: '#b45309',
+      gutterColor: '#7d7159',
+      gutterBorder: '#d6caab',
+      activeLineGutter: 'rgba(245, 238, 222, 0.95)',
+      activeLine: 'rgba(120, 90, 30, 0.06)',
+      selection: 'rgba(180, 83, 9, 0.16)',
+    },
+    nebula: {
+      caret: '#c4b5fd',
+      gutterColor: '#9a90bd',
+      gutterBorder: '#322751',
+      activeLineGutter: 'rgba(23, 18, 35, 0.95)',
+      activeLine: 'rgba(120, 100, 190, 0.28)',
+      selection: 'rgba(167, 139, 250, 0.3)',
+    },
+    sky: {
+      caret: '#0369a1',
+      gutterColor: '#556a80',
+      gutterBorder: '#bcd0e0',
+      activeLineGutter: 'rgba(239, 245, 250, 0.95)',
+      activeLine: 'rgba(2, 132, 199, 0.07)',
+      selection: 'rgba(14, 116, 233, 0.16)',
+    },
+  } as const
+
+  function colorThemeExtensions(theme: UiTheme) {
+    const colors = EDITOR_CHROME[theme]
+    return [
+      theme === 'dark' || theme === 'ember' || theme === 'nebula' ? githubDark : githubLight,
+      EditorView.theme({
+        '&': {
+          height: '100%',
+          maxHeight: '100%',
+          fontSize: '0.875rem',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace',
+        },
+        '.cm-scroller': {
+          height: '100%',
+          overflow: 'auto',
+        },
+        '.cm-content': {
+          paddingTop: '0.75rem',
+          paddingRight: '1rem',
+          paddingBottom: '0.75rem',
+          paddingLeft: '0.5rem',
+          minHeight: '100%',
+          caretColor: colors.caret,
+        },
+        '.cm-gutters': {
+          color: colors.gutterColor,
+          borderRight: `1px solid ${colors.gutterBorder}`,
+        },
+        '.cm-activeLineGutter': {
+          backgroundColor: colors.activeLineGutter,
+        },
+        '.cm-activeLine': {
+          backgroundColor: colors.activeLine,
+        },
+        '.cm-cursor, .cm-dropCursor': {
+          borderLeftColor: colors.caret,
+        },
+        '.cm-selectionBackground, ::selection': {
+          backgroundColor: colors.selection,
+        },
+        '.cm-focused': {
+          outline: 'none',
+        },
+      }),
+    ]
+  }
+
   let editorContainerRef: HTMLDivElement | null = null
   let editorView: EditorView | null = null
   let lastEditable = false
+  let lastTheme: UiTheme = 'dark'
   const editableCompartment = new Compartment()
+  const colorThemeCompartment = new Compartment()
 
   function insertTwoSpaces(): boolean {
     if (!editorView) return false
@@ -78,11 +184,12 @@
   function createEditor() {
     if (!editorContainerRef) return
     lastEditable = editable
+    lastTheme = theme
     editorView = new EditorView({
       state: EditorState.create({
         doc: content,
         extensions: [
-          githubDark,
+          colorThemeCompartment.of(colorThemeExtensions(theme)),
           editableCompartment.of(EditorView.editable.of(editable)),
           drawSelection(),
           lineNumbers(),
@@ -97,45 +204,6 @@
           EditorView.contentAttributes.of({
             'aria-label': editorAriaLabel,
             'aria-multiline': 'true',
-          }),
-          EditorView.theme({
-            '&': {
-              height: '100%',
-              maxHeight: '100%',
-              fontSize: '0.875rem',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace',
-            },
-            '.cm-scroller': {
-              height: '100%',
-              overflow: 'auto',
-            },
-            '.cm-content': {
-              paddingTop: '0.75rem',
-              paddingRight: '1rem',
-              paddingBottom: '0.75rem',
-              paddingLeft: '0.5rem',
-              minHeight: '100%',
-              caretColor: 'rgb(103 232 249)',
-            },
-            '.cm-gutters': {
-              color: 'rgb(100 116 139)',
-              borderRight: '1px solid rgb(51 65 85)',
-            },
-            '.cm-activeLineGutter': {
-              backgroundColor: 'rgba(22, 27, 34, 0.95)',
-            },
-            '.cm-activeLine': {
-              backgroundColor: 'rgba(48, 54, 61, 0.45)',
-            },
-            '.cm-cursor, .cm-dropCursor': {
-              borderLeftColor: 'rgb(103 232 249)',
-            },
-            '.cm-selectionBackground, ::selection': {
-              backgroundColor: 'rgba(56, 139, 253, 0.35)',
-            },
-            '.cm-focused': {
-              outline: 'none',
-            },
           }),
           EditorView.updateListener.of(update => {
             if (update.docChanged) {
@@ -178,6 +246,15 @@
     lastEditable = editable
     editorView.dispatch({
       effects: editableCompartment.reconfigure(EditorView.editable.of(editable)),
+    })
+  })
+
+  $effect(() => {
+    void theme
+    if (!editorView || theme === lastTheme) return
+    lastTheme = theme
+    editorView.dispatch({
+      effects: colorThemeCompartment.reconfigure(colorThemeExtensions(theme)),
     })
   })
 

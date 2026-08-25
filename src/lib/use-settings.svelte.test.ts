@@ -5,6 +5,7 @@ import { SPEEDS } from './tts-reference'
 describe('useSettings persistence', () => {
   afterEach(() => {
     localStorage.clear()
+    delete document.documentElement.dataset.theme
     vi.useRealTimers()
   })
 
@@ -51,6 +52,53 @@ describe('useSettings persistence', () => {
     expect(SPEEDS).toContain(settings.speed)
     expect(settings.synthesisConcurrency).toBe(4)
     expect(settings.locale).toBe('zh-CN')
+    dispose()
+  })
+
+  it('defaults the theme to dark and persists a changed theme across reloads', async () => {
+    vi.useFakeTimers()
+
+    const first = createSettingsHost()
+    await Promise.resolve()
+    first.settings.hydrate()
+    expect(first.settings.theme).toBe('dark')
+    expect(document.documentElement.dataset.theme).toBeUndefined()
+    first.settings.setTheme('ember')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(document.documentElement.dataset.theme).toBe('ember')
+
+    const saved = JSON.parse(localStorage.getItem('tts:web-settings') ?? 'null') as {
+      theme?: string
+    } | null
+    expect(saved?.theme).toBe('ember')
+    first.dispose()
+
+    const second = createSettingsHost()
+    second.settings.hydrate()
+    expect(second.settings.theme).toBe('ember')
+    second.dispose()
+  })
+
+  it('applies and clears the data-theme attribute when switching themes', async () => {
+    const { settings, dispose } = createSettingsHost()
+    settings.hydrate()
+    for (const theme of ['light', 'ember', 'sepia', 'nebula', 'sky'] as const) {
+      settings.setTheme(theme)
+      await Promise.resolve()
+      expect(document.documentElement.dataset.theme).toBe(theme)
+    }
+    settings.setTheme('dark')
+    await Promise.resolve()
+    expect(document.documentElement.dataset.theme).toBeUndefined()
+    dispose()
+  })
+
+  it('falls back to dark when the stored theme is invalid', async () => {
+    localStorage.setItem('tts:web-settings', JSON.stringify({ theme: 'blue' }))
+
+    const { settings, dispose } = createSettingsHost()
+    settings.hydrate()
+    expect(settings.theme).toBe('dark')
     dispose()
   })
 })

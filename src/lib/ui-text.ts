@@ -69,6 +69,14 @@ export interface UiText {
   discardConfirm: string
   voiceNotConfigured: string
   playbackFailed: string
+  theme: string
+  themeMenuLabel: string
+  themeDark: string
+  themeLight: string
+  themeEmber: string
+  themeNebula: string
+  themeSky: string
+  themeSepia: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [
@@ -157,6 +165,14 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     discardConfirm: 'Discard',
     voiceNotConfigured: 'No voice is configured for this language.',
     playbackFailed: 'Playback failed.',
+    theme: 'Theme',
+    themeMenuLabel: 'Color theme',
+    themeDark: 'Dark',
+    themeLight: 'Light',
+    themeEmber: 'Ember',
+    themeNebula: 'Nebula',
+    themeSky: 'Sky',
+    themeSepia: 'Sepia',
   },
   'zh-TW': {
     language: '語言',
@@ -227,6 +243,14 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     discardConfirm: '放棄',
     voiceNotConfigured: '此語言尚未設定語音。',
     playbackFailed: '播放失敗。',
+    theme: '主題',
+    themeMenuLabel: '色彩主題',
+    themeDark: '深色',
+    themeLight: '淺色',
+    themeEmber: '暮色',
+    themeNebula: '星雲',
+    themeSky: '天藍',
+    themeSepia: '暖色',
   },
   'zh-CN': {
     language: '语言',
@@ -297,5 +321,13 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     discardConfirm: '放弃',
     voiceNotConfigured: '此语言尚未设置语音。',
     playbackFailed: '播放失败。',
+    theme: '主题',
+    themeMenuLabel: '色彩主题',
+    themeDark: '深色',
+    themeLight: '浅色',
+    themeEmber: '暮色',
+    themeNebula: '星云',
+    themeSky: '天蓝',
+    themeSepia: '暖色',
   },
 }

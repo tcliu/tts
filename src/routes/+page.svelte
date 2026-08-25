@@ -8,7 +8,14 @@
   import PanelMenu from '$lib/components/PanelMenu.svelte'
   import { REVEAL_CLASS, TOOLBAR_BANDS, menuFor, type PanelAction, type ToolbarMode } from '$lib/toolbar-ladder'
   import DocumentsDrawer from '$lib/components/DocumentsDrawer.svelte'
+  import HeaderRadioMenu from '$lib/components/HeaderRadioMenu.svelte'
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
+  import SunIcon from '$lib/icons/SunIcon.svelte'
+  import MoonIcon from '$lib/icons/MoonIcon.svelte'
+  import FireIcon from '$lib/icons/FireIcon.svelte'
+  import LightBulbIcon from '$lib/icons/LightBulbIcon.svelte'
+  import SparklesIcon from '$lib/icons/SparklesIcon.svelte'
+  import CloudIcon from '$lib/icons/CloudIcon.svelte'
   import SettingsIcon from '$lib/icons/SettingsIcon.svelte'
   import InfoIcon from '$lib/icons/InfoIcon.svelte'
   import FollowIcon from '$lib/icons/FollowIcon.svelte'
@@ -24,11 +31,10 @@
   import CheckIcon from '$lib/icons/CheckIcon.svelte'
   import UploadIcon from '$lib/icons/UploadIcon.svelte'
 
-  import { positionPanel } from '$lib/position-panel.svelte'
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
   import { formatClock, usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
   import { useMetadata } from '$lib/use-metadata.svelte'
-  import { useSettings } from '$lib/use-settings.svelte'
+  import { useSettings, type UiTheme } from '$lib/use-settings.svelte'
   import { useDocuments } from '$lib/use-documents.svelte'
   import { useDocumentEditor } from '$lib/use-document-editor.svelte'
   import { useDocumentsDrawer } from '$lib/use-documents-drawer.svelte'
@@ -74,7 +80,24 @@
 
   let settingsOpen = $state(false)
   let showMetadata = $state(false)
-  let languageMenuOpen = $state(false)
+
+  const THEME_MENU_OPTIONS: { value: UiTheme }[] = [
+    { value: 'dark' },
+    { value: 'ember' },
+    { value: 'nebula' },
+    { value: 'light' },
+    { value: 'sepia' },
+    { value: 'sky' },
+  ]
+
+  const THEME_ICONS: Record<UiTheme, typeof MoonIcon> = {
+    dark: MoonIcon,
+    ember: FireIcon,
+    nebula: SparklesIcon,
+    light: SunIcon,
+    sepia: LightBulbIcon,
+    sky: CloudIcon,
+  }
 
   let fileInputRef = $state<HTMLInputElement | null>(null)
 
@@ -87,9 +110,6 @@
   let saveNameInputRef = $state<HTMLInputElement | null>(null)
 
   let editorRef = $state<CodeEditorHandle | null>(null)
-  let languageButtonRef = $state<HTMLElement | null>(null)
-  let languagePanelRef = $state<HTMLDivElement | null>(null)
-  let languageMenuIndex = $state(0)
   let tableBodyRef = $state<HTMLDivElement | null>(null)
 
   $effect(() => {
@@ -107,6 +127,17 @@
   })
 
   const text = $derived(UI_TEXT[settings.locale])
+
+  const themeLabels = $derived<Record<UiTheme, string>>({
+    dark: text.themeDark,
+    ember: text.themeEmber,
+    nebula: text.themeNebula,
+    light: text.themeLight,
+    sepia: text.themeSepia,
+    sky: text.themeSky,
+  })
+
+  const themeOptions = $derived(THEME_MENU_OPTIONS.map(option => ({ value: option.value, label: themeLabels[option.value] })))
 
   const statusMessage = $derived(
     editor.uploadNotice === 'uploaded'
@@ -205,47 +236,17 @@
     }
   }
 
-  function toggleLanguageMenu() {
-    if (languageMenuOpen) {
-      languageMenuOpen = false
-      languageButtonRef?.focus()
-      return
-    }
-    languageMenuIndex = Math.max(0, UI_LANGUAGE_OPTIONS.findIndex(option => option.value === settings.locale))
-    languageMenuOpen = true
-  }
-
-  function focusLanguageMenuItem(index: number) {
-    const count = UI_LANGUAGE_OPTIONS.length
-    const next = ((index % count) + count) % count
-    languageMenuIndex = next
-    const items = languagePanelRef?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')
-    items?.[next]?.focus()
-  }
-
-  function handleLanguageMenuKeydown(event: KeyboardEvent) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      focusLanguageMenuItem(languageMenuIndex + 1)
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      focusLanguageMenuItem(languageMenuIndex - 1)
-    } else if (event.key === 'Home') {
-      event.preventDefault()
-      focusLanguageMenuItem(0)
-    } else if (event.key === 'End') {
-      event.preventDefault()
-      focusLanguageMenuItem(UI_LANGUAGE_OPTIONS.length - 1)
-    } else if (event.key === 'Tab') {
-      languageMenuOpen = false
-    }
+  function dialogsOpen() {
+    return settingsOpen || editor.saveDialogOpen || editor.discardDialogOpen || editor.deleteDialogOpen
   }
 
   function selectLanguage(value: UiLocale) {
     settings.setLocale(value)
     playback.onLocaleChanged(value)
-    languageMenuOpen = false
-    languageButtonRef?.focus()
+  }
+
+  function selectTheme(value: UiTheme) {
+    settings.setTheme(value)
   }
 
   onMount(() => {
@@ -257,42 +258,6 @@
       disposeSettings()
       playback.stopPlayback()
     }
-  })
-
-  $effect(() => {
-    if (!languageMenuOpen) {
-      return
-    }
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node
-      if (languageButtonRef && !languageButtonRef.contains(target) && languagePanelRef && !languagePanelRef.contains(target)) {
-        languageMenuOpen = false
-      }
-    }
-    function handleEscape(event: KeyboardEvent) {
-      // Open dialogs own Escape; the menu yields so it cannot double-close.
-      if (settingsOpen || editor.saveDialogOpen || editor.discardDialogOpen || editor.deleteDialogOpen) {
-        return
-      }
-      if (event.key === 'Escape') {
-        languageMenuOpen = false
-        languageButtonRef?.focus()
-      }
-    }
-    document.addEventListener('mousedown', handlePointerDown)
-    window.addEventListener('keydown', handleEscape, true)
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-      window.removeEventListener('keydown', handleEscape, true)
-    }
-  })
-
-  $effect(() => {
-    if (!languageMenuOpen || !languagePanelRef) {
-      return
-    }
-    const items = languagePanelRef.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')
-    items?.[languageMenuIndex]?.focus()
   })
 
   $effect(() => {
@@ -413,19 +378,29 @@
       <h1 class="text-base font-semibold tracking-tight sm:text-lg">TTS</h1>
     </div>
     <div class="flex items-center gap-2">
-      <span bind:this={languageButtonRef} class="inline-flex">
-        <Button
-          variant="secondary"
-          size="sm"
-          ariaLabel={text.language}
-          ariaExpanded={languageMenuOpen}
-          tooltip={text.language}
-          onClick={toggleLanguageMenu}>
-          {#snippet icon()}
-            <GlobeIcon className="h-4 w-4" />
-          {/snippet}
-        </Button>
-      </span>
+      <HeaderRadioMenu
+        label={text.language}
+        menuLabel={text.languageMenuLabel}
+        options={UI_LANGUAGE_OPTIONS}
+        selected={settings.locale}
+        onSelect={selectLanguage}
+        escapeYield={dialogsOpen}>
+        {#snippet icon()}
+          <GlobeIcon className="h-4 w-4" />
+        {/snippet}
+      </HeaderRadioMenu>
+      <HeaderRadioMenu
+        label={text.theme}
+        menuLabel={text.themeMenuLabel}
+        options={themeOptions}
+        selected={settings.theme}
+        onSelect={selectTheme}
+        escapeYield={dialogsOpen}>
+        {#snippet icon()}
+          {@const ThemeIcon = THEME_ICONS[settings.theme]}
+          <ThemeIcon className="h-4 w-4" />
+        {/snippet}
+      </HeaderRadioMenu>
       <Button variant="secondary" size="sm" ariaLabel={text.settings} tooltip={text.settings} onClick={() => (settingsOpen = true)}>
         {#snippet icon()}
           <SettingsIcon className="h-4 w-4" />
@@ -635,6 +610,7 @@
               bind:this={editorRef}
               bind:content={settings.content}
               editable={!playback.isPlaying}
+              theme={settings.theme}
               autoFocus={true}
               editorAriaLabel="TTS editor"
               containerClass="min-h-0 flex-1"
@@ -747,29 +723,6 @@
     accept="text/plain,.txt,.md,.json,.csv,.html,.js,.xml,.yml,.yaml,application/json,text/markdown,text/html,text/xml,text/javascript"
     class="hidden"
     onchange={handleFileChange} />
-
-  {#if languageMenuOpen}
-    <div
-      bind:this={languagePanelRef}
-      role="menu"
-      aria-label={text.languageMenuLabel}
-      tabindex="-1"
-      onkeydown={handleLanguageMenuKeydown}
-      use:positionPanel={() => ({ getTrigger: () => languageButtonRef, getOpen: () => languageMenuOpen, align: 'right', autoPlace: true })}
-      class="fixed left-0 top-0 z-50 w-52 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur">
-      {#each UI_LANGUAGE_OPTIONS as option, i}
-        <button
-          type="button"
-          role="menuitemradio"
-          aria-checked={settings.locale === option.value}
-          tabindex={i === languageMenuIndex ? 0 : -1}
-          onclick={() => selectLanguage(option.value)}
-          class={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${settings.locale === option.value ? 'bg-cyan-500/15 text-cyan-200' : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'}`}>
-          {option.label}
-        </button>
-      {/each}
-    </div>
-  {/if}
 
   {#if settingsOpen}
     {#await import('$lib/components/SettingsDialog.svelte') then { default: SettingsDialog }}

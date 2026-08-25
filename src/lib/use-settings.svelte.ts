@@ -6,6 +6,8 @@ const SAVE_DEBOUNCE_MS = 300
 const MIN_CONCURRENCY = 1
 const MAX_CONCURRENCY = 8
 
+export type UiTheme = 'dark' | 'light' | 'ember' | 'sepia' | 'nebula' | 'sky'
+
 export interface SettingsHandle {
   readonly locale: UiLocale
   setLocale: (locale: UiLocale) => void
@@ -14,6 +16,8 @@ export interface SettingsHandle {
   setSpeed: (speed: number) => void
   readonly synthesisConcurrency: number
   setSynthesisConcurrency: (value: number) => void
+  readonly theme: UiTheme
+  setTheme: (theme: UiTheme) => void
   readonly voiceSelections: Record<string, string>
   readonly groupSelections: Record<string, string>
   readonly canPlay: boolean
@@ -34,6 +38,7 @@ export function useSettings(): SettingsHandle {
   let synthesisConcurrency = $state<number>(4)
   let voiceSelections = $state<Record<string, string>>(defaultVoiceByLanguage())
   let groupSelections = $state<Record<string, string>>(defaultGroupByLanguage())
+  let theme = $state<UiTheme>('dark')
 
   const canPlay = $derived(content.length > 0)
 
@@ -60,6 +65,7 @@ export function useSettings(): SettingsHandle {
       synthesisConcurrency,
       voiceSelections,
       groupSelections,
+      theme,
     }
     if (saveTimer) {
       clearTimeout(saveTimer)
@@ -74,6 +80,19 @@ export function useSettings(): SettingsHandle {
     document.documentElement.lang = locale
   })
 
+  $effect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+    // Dark is the default palette and needs no attribute; every other theme
+    // opts in via data-theme, matching the pre-paint script in app.html.
+    if (theme === 'dark') {
+      delete document.documentElement.dataset.theme
+    } else {
+      document.documentElement.dataset.theme = theme
+    }
+  })
+
   function hydrate() {
     if (typeof localStorage !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY)
@@ -86,12 +105,22 @@ export function useSettings(): SettingsHandle {
             voiceSelections?: Record<string, string>
             groupSelections?: Record<string, string>
             synthesisConcurrency?: number
+            theme?: UiTheme
           }
           locale = parsed.locale ?? locale
           content = parsed.content ?? content
           speed = SPEEDS.includes((parsed.speed ?? 1) as (typeof SPEEDS)[number]) ? (parsed.speed ?? 1) : 1
           voiceSelections = { ...voiceSelections, ...(parsed.voiceSelections ?? {}) }
           groupSelections = { ...groupSelections, ...(parsed.groupSelections ?? {}) }
+          if (
+            parsed.theme === 'light' ||
+            parsed.theme === 'ember' ||
+            parsed.theme === 'sepia' ||
+            parsed.theme === 'nebula' ||
+            parsed.theme === 'sky'
+          ) {
+            theme = parsed.theme
+          }
           synthesisConcurrency =
             typeof parsed.synthesisConcurrency === 'number' &&
             parsed.synthesisConcurrency >= MIN_CONCURRENCY &&
@@ -150,6 +179,12 @@ export function useSettings(): SettingsHandle {
     },
     setSynthesisConcurrency(next) {
       synthesisConcurrency = next
+    },
+    get theme() {
+      return theme
+    },
+    setTheme(next) {
+      theme = next
     },
     get voiceSelections() {
       return voiceSelections
