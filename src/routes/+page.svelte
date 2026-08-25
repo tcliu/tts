@@ -124,15 +124,16 @@
   const compactMenuActions = $derived<PanelAction[]>(
     editor.currentDocId ? ['reset', 'save', 'delete', 'info', 'copy', 'clone', 'upload'] : ['reset', 'save', 'info', 'copy', 'upload'],
   )
-  // Narrow containers: Save moves inline, the rest stay collapsed.
-  const narrowMenuActions = $derived<PanelAction[]>(
-    editor.currentDocId ? ['reset', 'delete', 'info', 'copy', 'clone', 'upload'] : ['reset', 'info', 'copy', 'upload'],
+  // Below @sm: Play, Reset and Save are inline; Copy stays collapsed.
+  const xsMenuActions = $derived<PanelAction[]>(
+    editor.currentDocId ? ['delete', 'info', 'copy', 'clone', 'upload'] : ['info', 'copy', 'upload'],
   )
-  // Small containers: base row moves out of the menu, extras stay collapsed.
-  const smallMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'copy', 'clone', 'upload'] : ['info', 'upload'])
-  // Medium containers: base row stays inline, Copy moves out of the menu,
-  // the rest collapse (menu holds "4 buttons + menu" overflow).
-  const mediumMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'clone', 'upload'] : ['info', 'upload'])
+  // Below @lg: Copy joins the row.
+  const smMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'clone', 'upload'] : ['info', 'upload'])
+  // Below @xl: Delete joins the row.
+  const lgMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['info', 'clone', 'upload'] : ['info', 'upload'])
+  // Below @2xl: Info joins the row; only Clone and Upload stay collapsed.
+  const xlMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['clone', 'upload'] : ['upload'])
 
   function panelActionDisabled(action: PanelAction): boolean {
     if (action === 'copy') {
@@ -482,7 +483,7 @@
         {playback.isPlaying ? text.stop : text.playback}
       </Button>
 
-      <span class="hidden @sm:inline-flex">
+      <span class="hidden @xs:inline-flex">
         <Button
           variant="secondary"
           size="sm"
@@ -514,7 +515,7 @@
         </Button>
       </span>
 
-      <span class="hidden @md:inline-flex @2xl:hidden">
+      <span class="hidden @sm:inline-flex">
         <Button
           variant="secondary"
           size="sm"
@@ -528,8 +529,8 @@
         </Button>
       </span>
 
-      <div class="hidden @2xl:flex flex-wrap items-center gap-1.5">
-        {#if editor.currentDocId}
+      {#if editor.currentDocId}
+        <span class="hidden @lg:inline-flex">
           <Button
             variant="secondary"
             size="sm"
@@ -546,8 +547,10 @@
             {/snippet}
             {text.delete}
           </Button>
-        {/if}
+        </span>
+      {/if}
 
+      <span class="hidden @xl:inline-flex">
         <Button
           variant="secondary"
           size="sm"
@@ -562,19 +565,10 @@
           {/snippet}
           {text.info}
         </Button>
+      </span>
 
-        <Button
-          variant="secondary"
-          size="sm"
-          ariaLabel={text.copy}
-          tooltip={text.copy}
-          onClick={() => void editor.copyEditorContent()}
-          className="px-2.5 py-1.5 text-sm"
-          icon={copyIcon}>
-          {text.copy}
-        </Button>
-
-        {#if editor.currentDocId}
+      {#if editor.currentDocId}
+        <span class="hidden @2xl:inline-flex">
           <Button
             variant="secondary"
             size="sm"
@@ -587,43 +581,47 @@
             {/snippet}
             {text.clone}
           </Button>
-        {/if}
-
-        <span
-          role="presentation"
-          class="inline-flex rounded-md {uploadDragActive ? 'ring-2 ring-cyan-500' : ''}"
-          ondragover={handleUploadDragOver}
-          ondragleave={handleUploadDragLeave}
-          ondrop={handleUploadDrop}>
-          <Button
-            variant="secondary"
-            size="sm"
-            ariaLabel={text.upload}
-            tooltip={text.upload}
-            onClick={editor.requestUpload}
-            className="px-2.5 py-1.5 text-sm">
-            {#snippet icon()}
-              <UploadIcon className="h-4 w-4" />
-            {/snippet}
-            {text.upload}
-          </Button>
         </span>
-      </div>
+      {/if}
+
+      <span
+        role="presentation"
+        class="hidden rounded-md @2xl:inline-flex {uploadDragActive ? 'ring-2 ring-cyan-500' : ''}"
+        ondragover={handleUploadDragOver}
+        ondragleave={handleUploadDragLeave}
+        ondrop={handleUploadDrop}>
+        <Button
+          variant="secondary"
+          size="sm"
+          ariaLabel={text.upload}
+          tooltip={text.upload}
+          onClick={editor.requestUpload}
+          className="px-2.5 py-1.5 text-sm">
+          {#snippet icon()}
+            <UploadIcon className="h-4 w-4" />
+          {/snippet}
+          {text.upload}
+        </Button>
+      </span>
 
       <span class="inline-flex @xs:hidden">
         <PanelMenu locale={settings.locale} actions={compactMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
       </span>
 
       <span class="hidden @xs:inline-flex @sm:hidden">
-        <PanelMenu locale={settings.locale} actions={narrowMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+        <PanelMenu locale={settings.locale} actions={xsMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
       </span>
 
-      <span class="hidden @sm:inline-flex @md:hidden">
-        <PanelMenu locale={settings.locale} actions={smallMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+      <span class="hidden @sm:inline-flex @lg:hidden">
+        <PanelMenu locale={settings.locale} actions={smMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
       </span>
 
-      <span class="hidden @md:inline-flex @2xl:hidden">
-        <PanelMenu locale={settings.locale} actions={mediumMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+      <span class="hidden @lg:inline-flex @xl:hidden">
+        <PanelMenu locale={settings.locale} actions={lgMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+      </span>
+
+      <span class="hidden @xl:inline-flex @2xl:hidden">
+        <PanelMenu locale={settings.locale} actions={xlMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
       </span>
     </section>
 
