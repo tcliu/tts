@@ -14,6 +14,7 @@ import {
   type PlaybackDeps,
 } from './use-playback.svelte'
 import type { SettingsHandle } from './use-settings.svelte'
+import { splitTtsSegments } from './tts-reference'
 import { createPlaybackHost } from '../test/create-playback.svelte'
 
 class AudioStub {
@@ -103,6 +104,36 @@ describe('usePlayback stop', () => {
 
     await finished
     playback.clearSegments()
+    dispose()
+  })
+
+  it('plays a sentence row without a prior full playback', async () => {
+    const { playback, dispose } = createPlayback()
+
+    playback.primeSession(splitTtsSegments('Hello world. Second sentence.'), 0)
+
+    const finished = playback.playFromSegment(0)
+    await vi.waitFor(() => expect(AudioStub.instances).toHaveLength(1))
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    expect(AudioStub.instances[0].paused).toBe(false)
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
+  it('replays a row from a session re-primed by metadata sync', async () => {
+    const { playback, dispose } = createPlayback()
+
+    playback.primeSession(splitTtsSegments('Old text only.'), 0)
+    playback.primeSession(splitTtsSegments('New first sentence.\n\nNew second sentence.'), 0)
+
+    const finished = playback.playFromSegment(1)
+    await vi.waitFor(() => expect(AudioStub.instances).toHaveLength(1))
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+
+    playback.stopPlayback()
+    await finished
     dispose()
   })
 })

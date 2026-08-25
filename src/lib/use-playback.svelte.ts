@@ -56,6 +56,11 @@ export interface PlaybackHandle {
   startPlayback: () => Promise<void>
   stopPlayback: () => void
   playFromSegment: (index: number, charOffset?: number) => Promise<void>
+  primeSession: (
+    segments: ReturnType<typeof splitTtsSegments>,
+    offset: number,
+    selectedRange?: { from: number; to: number } | null,
+  ) => void
   recordSegment: (index: number, record: SegmentMeta) => void
   setSegmentDuration: (index: number, duration: number) => void
   setMetadataAvailability: (value: boolean) => void
@@ -449,6 +454,16 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     }
   }
 
+  function primeSession(
+    segments: ReturnType<typeof splitTtsSegments>,
+    offset: number,
+    selectedRange: { from: number; to: number } | null = null,
+  ) {
+    sessionSegments = segments
+    sessionOffset = offset
+    sessionSelectedRange = selectedRange
+  }
+
   async function startPlayback() {
     const editor = deps.getEditor()
     if (!deps.settings.canPlay || !editor || isPlaying) {
@@ -464,9 +479,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       return
     }
 
-    sessionSegments = segments
-    sessionOffset = playbackOffset
-    sessionSelectedRange = selectedRange
+    primeSession(segments, playbackOffset, selectedRange)
     clearSegments()
     deps.prepareForPlayback()
     await runPlayback(segments, playbackOffset, 0)
@@ -577,6 +590,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     startPlayback,
     stopPlayback,
     playFromSegment,
+    primeSession,
     recordSegment,
     setSegmentDuration,
     clearSegments,

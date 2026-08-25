@@ -185,7 +185,10 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     const signature = currentMetaSignature()
     const segments = splitTtsSegments(playbackText)
 
+    // Keep the replay session in lockstep with the table: rows are rendered
+    // from this segmentation, so playFromSegment must index into exactly it.
     playback.clearSegments()
+    playback.primeSession(segments, playbackOffset, selectedRange)
     metaStale = false
     if (segments.length === 0) {
       metaSignature = signature
