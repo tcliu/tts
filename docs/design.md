@@ -33,6 +33,18 @@
 - When playback completes, clear the selection only when playback started
   without a pre-existing selection.
 
+## Upload
+
+- An Upload action loads a local text file into the editor.
+- When the button panel has room, Upload appears as a button at the end of the
+  panel; on narrower layouts it moves into the overflow menu.
+- Uploading replaces the entire editor content.
+- When the editor has unsaved changes, a discard confirmation is shown before
+  the file picker opens; cancelling keeps the current content.
+- Files are read as UTF-8 text. A file larger than 1 MiB of encoded text, or one
+  that fails to read, is rejected with a transient status message above the
+  editor; a successful load confirms there as well.
+
 ## Metadata panel
 
 - An Info button toggles a metadata panel.

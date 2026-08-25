@@ -57,6 +57,16 @@ coherent system instead of a new parallel one.
   the content invalidates it and re-synthesizes segments in a bounded,
   cancellable background pass to refresh boundaries.
 
+## Upload model
+
+- Upload imports a local text file into the editor; it is a client-side read
+  (`Blob.text()`), not a network upload, so resumable-upload libraries (tus,
+  Uppy) do not apply — they require a server-side endpoint, and documents live
+  only in the browser.
+- The page hosts a hidden `input type="file"`; the document editor composable
+  owns validation (UTF-8 byte cap), discard confirmation reuse, content
+  replacement, and transient status feedback.
+
 ## Synthesis service
 
 - The client posts `{ text, voice, rate }` to `POST /api/tts/synthesize`.
