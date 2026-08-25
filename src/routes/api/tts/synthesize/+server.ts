@@ -8,6 +8,13 @@ const KNOWN_VOICES = new Set(REFERENCE_LANGUAGES.flatMap(language => language.vo
 // Client segments are capped at 500 chars; allow headroom for direct API use.
 const MAX_TEXT_LENGTH = 2000
 
+// Edge TTS synthesis can take several seconds; give the serverless function
+// enough headroom. Vercel caps this per plan (Hobby: 60s max). The runtime
+// itself is set once in svelte.config.js.
+export const config = {
+  maxDuration: 60,
+}
+
 export const POST: RequestHandler = async ({ request }) => {
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') {

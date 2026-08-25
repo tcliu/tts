@@ -17,7 +17,12 @@ interface CacheEnvelope {
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 function cacheDir(): string {
-  return process.env.TTS_CACHE_DIR ?? path.resolve(process.cwd(), '.tts')
+  const override = process.env.TTS_CACHE_DIR
+  if (override) return override
+  // Vercel serverless functions have a read-only filesystem except /tmp.
+  // Fall back to a writable temp dir so caching still works per-instance.
+  if (process.env.VERCEL === '1') return path.resolve('/tmp', '.tts')
+  return path.resolve(process.cwd(), '.tts')
 }
 
 export function synthesisCacheKey(text: string, voice: string, rate: number): string {
