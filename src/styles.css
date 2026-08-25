@@ -5,6 +5,12 @@
   --text-sm: 0.8125rem; /* 13px */
   --text-md: 0.9375rem; /* 15px */
   --text-lg: 1.125rem; /* 18px */
+
+  /* Playback-toolbar reveal rungs, calibrated to measured button widths
+     (labels at --text-sm, worst-case Latin metrics). Do not reuse the shared
+     xs/2xl names here: they also feed width utilities such as max-w-xs. */
+  --container-tts-narrow: 19rem; /* 304px: Play + Reset + Save + overflow menu */
+  --container-tts-full: 44rem; /* 704px: full saved-doc row without menu */
 }
 
 @source inline("text-xs text-sm text-md text-lg");

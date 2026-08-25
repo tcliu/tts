@@ -5,7 +5,8 @@
   import BaseDialog from '$lib/components/BaseDialog.svelte'
   import EditableText from '$lib/components/EditableText.svelte'
   import SearchInput from '$lib/components/SearchInput.svelte'
-  import PanelMenu, { type PanelAction } from '$lib/components/PanelMenu.svelte'
+  import PanelMenu from '$lib/components/PanelMenu.svelte'
+  import { REVEAL_CLASS, TOOLBAR_BANDS, menuFor, type PanelAction, type ToolbarMode } from '$lib/toolbar-ladder'
   import DocumentsDrawer from '$lib/components/DocumentsDrawer.svelte'
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
   import SettingsIcon from '$lib/icons/SettingsIcon.svelte'
@@ -120,20 +121,11 @@
   )
   const uploadNoticeIsError = $derived(editor.uploadNotice !== null && editor.uploadNotice !== 'uploaded')
 
-  // Very small containers: Play plus one menu holding everything else.
-  const compactMenuActions = $derived<PanelAction[]>(
-    editor.currentDocId ? ['reset', 'save', 'delete', 'info', 'copy', 'clone', 'upload'] : ['reset', 'save', 'info', 'copy', 'upload'],
-  )
-  // Below @sm: Play, Reset and Save are inline; Copy stays collapsed.
-  const xsMenuActions = $derived<PanelAction[]>(
-    editor.currentDocId ? ['delete', 'info', 'copy', 'clone', 'upload'] : ['info', 'copy', 'upload'],
-  )
-  // Below @lg: Copy joins the row.
-  const smMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['delete', 'info', 'clone', 'upload'] : ['info', 'upload'])
-  // Below @xl: Delete joins the row.
-  const lgMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['info', 'clone', 'upload'] : ['info', 'upload'])
-  // Below @2xl: Info joins the row; only Clone and Upload stay collapsed.
-  const xlMenuActions = $derived<PanelAction[]>(editor.currentDocId ? ['clone', 'upload'] : ['upload'])
+  // Overflow-menu contents per band, derived from the single-source ladder so
+  // band boundaries and menu contents cannot drift apart. Index parallels
+  // TOOLBAR_BANDS; the last entry is empty because every action is inline.
+  const toolbarMode: ToolbarMode = $derived(editor.currentDocId ? 'doc' : 'fresh')
+  const toolbarMenus = $derived(TOOLBAR_BANDS.map(band => menuFor(band.name, toolbarMode)))
 
   function panelActionDisabled(action: PanelAction): boolean {
     if (action === 'copy') {
@@ -483,7 +475,7 @@
         {playback.isPlaying ? text.stop : text.playback}
       </Button>
 
-      <span class="hidden @xs:inline-flex">
+      <span class={REVEAL_CLASS.reset}>
         <Button
           variant="secondary"
           size="sm"
@@ -499,7 +491,7 @@
         </Button>
       </span>
 
-      <span class="hidden @xs:inline-flex">
+      <span class={REVEAL_CLASS.save}>
         <Button
           variant="secondary"
           size="sm"
@@ -515,7 +507,7 @@
         </Button>
       </span>
 
-      <span class="hidden @sm:inline-flex">
+      <span class={REVEAL_CLASS.copy}>
         <Button
           variant="secondary"
           size="sm"
@@ -530,7 +522,7 @@
       </span>
 
       {#if editor.currentDocId}
-        <span class="hidden @lg:inline-flex">
+        <span class={REVEAL_CLASS.delete}>
           <Button
             variant="secondary"
             size="sm"
@@ -550,7 +542,7 @@
         </span>
       {/if}
 
-      <span class="hidden @xl:inline-flex">
+      <span class={toolbarMode === 'doc' ? REVEAL_CLASS.info.doc : REVEAL_CLASS.info.fresh}>
         <Button
           variant="secondary"
           size="sm"
@@ -568,7 +560,7 @@
       </span>
 
       {#if editor.currentDocId}
-        <span class="hidden @2xl:inline-flex">
+        <span class={REVEAL_CLASS.clone}>
           <Button
             variant="secondary"
             size="sm"
@@ -586,7 +578,7 @@
 
       <span
         role="presentation"
-        class="hidden rounded-md @2xl:inline-flex {uploadDragActive ? 'ring-2 ring-cyan-500' : ''}"
+        class={`rounded-md hidden ${toolbarMode === 'doc' ? REVEAL_CLASS.upload.doc : REVEAL_CLASS.upload.fresh} ${uploadDragActive ? 'ring-2 ring-cyan-500' : ''}`}
         ondragover={handleUploadDragOver}
         ondragleave={handleUploadDragLeave}
         ondrop={handleUploadDrop}>
@@ -604,25 +596,13 @@
         </Button>
       </span>
 
-      <span class="inline-flex @xs:hidden">
-        <PanelMenu locale={settings.locale} actions={compactMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
-      </span>
-
-      <span class="hidden @xs:inline-flex @sm:hidden">
-        <PanelMenu locale={settings.locale} actions={xsMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
-      </span>
-
-      <span class="hidden @sm:inline-flex @lg:hidden">
-        <PanelMenu locale={settings.locale} actions={smMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
-      </span>
-
-      <span class="hidden @lg:inline-flex @xl:hidden">
-        <PanelMenu locale={settings.locale} actions={lgMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
-      </span>
-
-      <span class="hidden @xl:inline-flex @2xl:hidden">
-        <PanelMenu locale={settings.locale} actions={xlMenuActions} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
-      </span>
+      {#each TOOLBAR_BANDS as band, i}
+        {#if band.menuClass && toolbarMenus[i].length > 0}
+          <span class={band.menuClass}>
+            <PanelMenu locale={settings.locale} actions={toolbarMenus[i]} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+          </span>
+        {/if}
+      {/each}
     </section>
 
       <div class="mt-3 flex min-h-0 flex-1 flex-col gap-3">

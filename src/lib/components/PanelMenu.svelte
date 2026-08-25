@@ -1,5 +1,7 @@
 <script module lang="ts">
-  export type PanelAction = 'reset' | 'save' | 'delete' | 'info' | 'copy' | 'clone' | 'upload'
+  import type { PanelAction } from '$lib/toolbar-ladder'
+
+  export type { PanelAction }
 </script>
 
 <script lang="ts">
