@@ -77,7 +77,7 @@ function trimWhitespaceRange(text: string, start: number, end: number): { start:
   return { start: s, end: e }
 }
 
-interface PlaybackDeps {
+export interface PlaybackDeps {
   settings: SettingsHandle
   getEditor: () => CodeEditorHandle | null
   segmentLabel: (lang: string) => string
@@ -187,6 +187,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
 
       const cleanup = () => {
         stopTick()
+        audio.pause()
         controller.cancelAudio = undefined
         if (currentAudioUrl === url) {
           URL.revokeObjectURL(url)
