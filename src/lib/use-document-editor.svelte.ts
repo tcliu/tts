@@ -4,7 +4,7 @@ import { readTextFile } from './upload-text'
 
 export type DiscardKind = 'new' | 'open' | 'delete' | 'clone' | 'upload'
 
-export type UploadNotice = 'uploaded' | 'too-large' | 'read-failed'
+export type UploadNotice = 'uploaded' | 'too-large' | 'read-failed' | 'binary'
 
 const UPLOAD_NOTICE_MS = 4000
 
@@ -32,6 +32,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   let discardDialogOpen = $state(false)
   let pendingDocumentId = $state<string | null>(null)
   let pendingDiscardKind = $state<DiscardKind>('open')
+  let pendingUploadFile = $state<File | null>(null)
 
   let deleteDialogOpen = $state(false)
   let deleteTargetId = $state<string | null>(null)
@@ -188,6 +189,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function requestUpload() {
+    pendingUploadFile = null
     if (isDirty) {
       pendingDiscardKind = 'upload'
       pendingDocumentId = null
@@ -195,6 +197,17 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
       return
     }
     deps.openFilePicker()
+  }
+
+  function requestUploadFile(file: File): Promise<void> | undefined {
+    if (isDirty) {
+      pendingDiscardKind = 'upload'
+      pendingDocumentId = null
+      pendingUploadFile = file
+      discardDialogOpen = true
+      return
+    }
+    return importFile(file)
   }
 
   async function importFile(file: File) {
@@ -289,7 +302,13 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
         cloneCurrentDocument()
       }
     } else if (kind === 'upload') {
-      deps.openFilePicker()
+      const file = pendingUploadFile
+      pendingUploadFile = null
+      if (file) {
+        void importFile(file)
+      } else {
+        deps.openFilePicker()
+      }
     } else {
       createNewDocument()
     }
@@ -299,6 +318,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     discardDialogOpen = false
     pendingDocumentId = null
     pendingDiscardKind = 'open'
+    pendingUploadFile = null
   }
 
   return {
@@ -362,6 +382,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     renameDocument: handleRenameDocument,
     requestCloneDocument,
     requestUpload,
+    requestUploadFile,
     importFile,
     resetEditor,
     copyEditorContent,

@@ -31,4 +31,26 @@ describe('readTextFile', () => {
     file.text = () => Promise.reject(new Error('boom'))
     await expect(readTextFile(file)).resolves.toEqual({ ok: false, reason: 'read-failed' })
   })
+
+  it('rejects files containing null bytes', async () => {
+    const file = new File(['a\x00b'], 'bin.txt')
+    await expect(readTextFile(file)).resolves.toEqual({ ok: false, reason: 'binary' })
+  })
+
+  it('rejects files with disallowed control characters', async () => {
+    const file = new File(['a\x01b'], 'ctrl.bin')
+    await expect(readTextFile(file)).resolves.toEqual({ ok: false, reason: 'binary' })
+  })
+
+  it('rejects files with invalid UTF-8 sequences', async () => {
+    const bytes = new Uint8Array([0x61, 0xc3, 0x28, 0x62])
+    const file = new File([bytes], 'bad.txt')
+    await expect(readTextFile(file)).resolves.toEqual({ ok: false, reason: 'binary' })
+  })
+
+  it('accepts text with tabs, newlines, form feeds, and non-ASCII characters', async () => {
+    const content = 'a\tb\nc\r\nd\x0ce — 中文 \u{1F600}'
+    const file = new File([content], 'text.txt')
+    await expect(readTextFile(file)).resolves.toEqual({ ok: true, text: content })
+  })
 })

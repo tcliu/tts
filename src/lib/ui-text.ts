@@ -56,6 +56,7 @@ export interface UiText {
   upload: string
   uploadSuccess: string
   uploadTooLarge: string
+  uploadBinary: string
   uploadFailed: string
   edit: string
   editText: string
@@ -142,6 +143,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     uploadSuccess: 'File loaded.',
     uploadTooLarge: 'File is too large. The limit is 1 MiB of text.',
     uploadFailed: 'Could not read the file.',
+    uploadBinary: 'File contains binary data.',
     edit: 'Edit',
     editText: 'Edit text',
     doubleClickToEdit: 'Double-click to edit',
@@ -209,6 +211,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     uploadSuccess: '已載入檔案。',
     uploadTooLarge: '檔案太大，上限為 1 MiB 文字。',
     uploadFailed: '無法讀取檔案。',
+    uploadBinary: '檔案包含二進位資料。',
     edit: '編輯',
     editText: '編輯文字',
     doubleClickToEdit: '按兩下以編輯',
@@ -276,6 +279,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     uploadSuccess: '已加载文件。',
     uploadTooLarge: '文件过大，上限为 1 MiB 文本。',
     uploadFailed: '无法读取文件。',
+    uploadBinary: '文件包含二进制数据。',
     edit: '编辑',
     editText: '编辑文字',
     doubleClickToEdit: '双击以编辑',

@@ -73,6 +73,8 @@
 
   let fileInputRef = $state<HTMLInputElement | null>(null)
 
+  let uploadDragActive = $state(false)
+
   let drawerButtonRef = $state<HTMLElement | null>(null)
   let drawerPanelRef = $state<HTMLElement | null>(null)
   let drawerSearchRef = $state<HTMLInputElement | null>(null)
@@ -108,7 +110,9 @@
         ? text.uploadTooLarge
         : editor.uploadNotice === 'read-failed'
           ? text.uploadFailed
-          : playback.statusMessage,
+          : editor.uploadNotice === 'binary'
+            ? text.uploadBinary
+            : playback.statusMessage,
   )
   const uploadNoticeIsError = $derived(editor.uploadNotice !== null && editor.uploadNotice !== 'uploaded')
 
@@ -172,6 +176,35 @@
     await editor.importFile(file)
     if (fileInputRef) {
       fileInputRef.value = ''
+    }
+  }
+
+  function handleUploadDragOver(event: DragEvent) {
+    if (!event.dataTransfer?.types.includes('Files')) {
+      return
+    }
+    event.preventDefault()
+    uploadDragActive = true
+  }
+
+  function handleUploadDragLeave(event: DragEvent) {
+    const target = event.currentTarget
+    const next = event.relatedTarget
+    if (target instanceof Node && next instanceof Node && target.contains(next)) {
+      return
+    }
+    uploadDragActive = false
+  }
+
+  function handleUploadDrop(event: DragEvent) {
+    if (!event.dataTransfer?.types.includes('Files')) {
+      return
+    }
+    event.preventDefault()
+    uploadDragActive = false
+    const file = event.dataTransfer.files[0]
+    if (file) {
+      editor.requestUploadFile(file)
     }
   }
 
@@ -552,18 +585,25 @@
           </Button>
         {/if}
 
-        <Button
-          variant="secondary"
-          size="sm"
-          ariaLabel={text.upload}
-          tooltip={text.upload}
-          onClick={editor.requestUpload}
-          className="px-2.5 py-1.5 text-sm">
-          {#snippet icon()}
-            <UploadIcon className="h-4 w-4" />
-          {/snippet}
-          {text.upload}
-        </Button>
+        <span
+          role="presentation"
+          class="inline-flex rounded-md {uploadDragActive ? 'ring-2 ring-cyan-500' : ''}"
+          ondragover={handleUploadDragOver}
+          ondragleave={handleUploadDragLeave}
+          ondrop={handleUploadDrop}>
+          <Button
+            variant="secondary"
+            size="sm"
+            ariaLabel={text.upload}
+            tooltip={text.upload}
+            onClick={editor.requestUpload}
+            className="px-2.5 py-1.5 text-sm">
+            {#snippet icon()}
+              <UploadIcon className="h-4 w-4" />
+            {/snippet}
+            {text.upload}
+          </Button>
+        </span>
       </div>
 
       <span class="inline-flex @xs:hidden">

@@ -97,4 +97,41 @@ describe('useDocumentEditor upload', () => {
     editor.confirmDiscard()
     expect(settings.content).toBe('')
   })
+
+  it('imports a dropped file immediately when the buffer is clean', async () => {
+    const { editor, settings, deps } = createEditor()
+    editor.markBaseline()
+    await editor.requestUploadFile(new File(['dropped'], 'd.txt'))
+    expect(settings.content).toBe('dropped')
+    expect(editor.uploadNotice).toBe('uploaded')
+    expect(deps.openFilePicker).not.toHaveBeenCalled()
+  })
+
+  it('confirms discarding dirty edits before importing a dropped file', async () => {
+    const { editor, settings, deps } = createEditor()
+    editor.markBaseline()
+    settings.content = 'edited'
+    editor.requestUploadFile(new File(['dropped'], 'd.txt'))
+    expect(deps.openFilePicker).not.toHaveBeenCalled()
+    expect(settings.content).toBe('edited')
+    editor.confirmDiscard()
+    await vi.waitFor(() => {
+      expect(settings.content).toBe('dropped')
+    })
+    expect(editor.uploadNotice).toBe('uploaded')
+    expect(deps.openFilePicker).not.toHaveBeenCalled()
+  })
+
+  it('cancelling clears the pending dropped file so confirm falls back to the picker', () => {
+    const { editor, settings, deps } = createEditor()
+    editor.markBaseline()
+    settings.content = 'edited'
+    editor.requestUploadFile(new File(['dropped'], 'd.txt'))
+    editor.cancelDiscard()
+    editor.requestUpload()
+    expect(editor.discardDialogOpen).toBe(true)
+    editor.confirmDiscard()
+    expect(settings.content).toBe('edited')
+    expect(deps.openFilePicker).toHaveBeenCalledOnce()
+  })
 })
