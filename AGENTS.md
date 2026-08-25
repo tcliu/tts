@@ -23,9 +23,6 @@ Project-specific development conventions for the TTS web app.
 
 ## UI behavior
 
-- `requirement.md` is the source of truth for the web app's user-facing
-  behavior; when it conflicts with the migrated TUI docs, follow
-  `requirement.md`.
 - Keep responsive layout decisions in CSS so the first paint is correct on
   mobile and desktop.
 - Keep all focusable controls keyboard reachable, with explicit focus styles and
