@@ -1,5 +1,5 @@
 /** Actions offered by the playback toolbar's overflow menu. */
-export type PanelAction = 'reset' | 'save' | 'delete' | 'info' | 'copy' | 'clone' | 'upload'
+export type PanelAction = 'play' | 'reset' | 'save' | 'delete' | 'info' | 'copy' | 'clone' | 'upload'
 
 /**
  * Playback-toolbar disclosure ladder.
@@ -9,7 +9,7 @@ export type PanelAction = 'reset' | 'save' | 'delete' | 'info' | 'copy' | 'clone
  * strings are full literals: Tailwind only generates utilities it finds
  * verbatim in source. Threshold tokens pair with `--container-tts-*` values in
  * `src/styles.css`, calibrated to measured button widths (labels at
- * `--text-sm`, worst-case Latin metrics).
+ * `--text-sm`, worst-case Latin metrics) at the toolbar's container width.
  */
 
 /** Saved documents offer Delete and Clone; a fresh editor does not. */
@@ -17,33 +17,48 @@ export type ToolbarMode = 'doc' | 'fresh'
 
 export interface ToolbarBand {
   /** Ordered from narrowest to widest; `inline` grows monotonically. */
-  name: 'compact' | 'narrow' | 'small' | 'mid' | 'wide' | 'full'
+  name: 'tiny' | 'mini' | 'compact' | 'narrow' | 'small' | 'mid' | 'wide' | 'full'
   /** Full literal visibility classes for this band's overflow menu trigger. */
   menuClass: string
 }
 
+/**
+ * Band table for the overflow-menu triggers. Each band's visible width range
+ * is encoded in its `menuClass`; the variant that first makes it visible
+ * (`<variant>:inline-flex`) is that band's lower bound. Pairing rule: an
+ * action's `REVEAL_CLASS` threshold must equal the lower bound of the band
+ * where it enters `INLINE_AT_BAND`, so each action is inline exactly when it
+ * is absent from the active menu — never in both, never in neither. The
+ * ladder-consistency test enforces this; change both tables together.
+ */
 export const TOOLBAR_BANDS: readonly ToolbarBand[] = [
-  { name: 'compact', menuClass: 'inline-flex @tts-narrow:hidden' },
-  { name: 'narrow', menuClass: 'hidden @tts-narrow:inline-flex @sm:hidden' },
-  { name: 'small', menuClass: 'hidden @sm:inline-flex @md:hidden' },
-  { name: 'mid', menuClass: 'hidden @md:inline-flex @xl:hidden' },
-  { name: 'wide', menuClass: 'hidden @xl:inline-flex @tts-full:hidden' },
+  { name: 'tiny', menuClass: 'inline-flex @tts-mini:hidden' },
+  { name: 'mini', menuClass: 'hidden @tts-mini:inline-flex @tts-narrow:hidden' },
+  { name: 'compact', menuClass: 'hidden @tts-narrow:inline-flex @sm:hidden' },
+  { name: 'narrow', menuClass: 'hidden @sm:inline-flex @md:hidden' },
+  { name: 'small', menuClass: 'hidden @md:inline-flex @xl:hidden' },
+  { name: 'mid', menuClass: 'hidden @xl:inline-flex @tts-full:hidden' },
+  { name: 'wide', menuClass: '' },
   { name: 'full', menuClass: '' },
 ]
 
 /** Actions revealed inline when entering each band; earlier reveals persist. */
 const INLINE_AT_BAND: Record<ToolbarMode, Record<ToolbarBand['name'], PanelAction[]>> = {
   doc: {
-    compact: [],
-    narrow: ['reset', 'save'],
+    tiny: [],
+    mini: ['play'],
+    compact: ['save'],
+    narrow: ['reset'],
     small: ['copy'],
     mid: ['delete'],
-    wide: ['info'],
-    full: ['clone', 'upload'],
+    wide: ['info', 'clone', 'upload'],
+    full: [],
   },
   fresh: {
-    compact: [],
-    narrow: ['reset', 'save'],
+    tiny: [],
+    mini: ['play'],
+    compact: ['save'],
+    narrow: ['reset'],
     small: ['copy'],
     mid: ['info'],
     wide: ['upload'],
@@ -52,8 +67,8 @@ const INLINE_AT_BAND: Record<ToolbarMode, Record<ToolbarBand['name'], PanelActio
 }
 
 const ALL_ACTIONS: Record<ToolbarMode, readonly PanelAction[]> = {
-  doc: ['reset', 'save', 'delete', 'info', 'copy', 'clone', 'upload'],
-  fresh: ['reset', 'save', 'info', 'copy', 'upload'],
+  doc: ['play', 'reset', 'save', 'delete', 'info', 'copy', 'clone', 'upload'],
+  fresh: ['play', 'reset', 'save', 'info', 'copy', 'upload'],
 }
 
 /** Actions still hidden inside the overflow menu while `band` is active. */
@@ -73,11 +88,12 @@ export function menuFor(band: ToolbarBand['name'], mode: ToolbarMode): PanelActi
  * where the reveal threshold differs between fresh editors and saved docs.
  */
 export const REVEAL_CLASS = {
-  reset: 'hidden @tts-narrow:inline-flex',
+  play: 'hidden @tts-mini:inline-flex',
+  reset: 'hidden @sm:inline-flex',
   save: 'hidden @tts-narrow:inline-flex',
-  copy: 'hidden @sm:inline-flex',
-  delete: 'hidden @md:inline-flex',
-  info: { doc: 'hidden @xl:inline-flex', fresh: 'hidden @md:inline-flex' },
+  copy: 'hidden @md:inline-flex',
+  delete: 'hidden @xl:inline-flex',
+  info: { doc: 'hidden @tts-full:inline-flex', fresh: 'hidden @xl:inline-flex' },
   clone: 'hidden @tts-full:inline-flex',
-  upload: { doc: 'hidden @tts-full:inline-flex', fresh: 'hidden @xl:inline-flex' },
+  upload: 'hidden @tts-full:inline-flex',
 } as const

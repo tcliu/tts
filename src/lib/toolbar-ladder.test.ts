@@ -3,24 +3,28 @@ import { describe, expect, it } from 'vitest'
 import { REVEAL_CLASS, TOOLBAR_BANDS, menuFor, type PanelAction, type ToolbarMode } from './toolbar-ladder'
 
 const ALL: Record<ToolbarMode, PanelAction[]> = {
-  doc: ['reset', 'save', 'delete', 'info', 'copy', 'clone', 'upload'],
-  fresh: ['reset', 'save', 'info', 'copy', 'upload'],
+  doc: ['play', 'reset', 'save', 'delete', 'info', 'copy', 'clone', 'upload'],
+  fresh: ['play', 'reset', 'save', 'info', 'copy', 'upload'],
 }
 
 // Expected menus per band, in TOOLBAR_BANDS order. The final entry is empty
 // because every action is inline; the first equals the full set because the
-// compact band reveals nothing.
+// tiny band reveals nothing.
 const EXPECTED_MENUS: Record<ToolbarMode, PanelAction[][]> = {
   doc: [
+    ['play', 'reset', 'save', 'delete', 'info', 'copy', 'clone', 'upload'],
     ['reset', 'save', 'delete', 'info', 'copy', 'clone', 'upload'],
+    ['reset', 'delete', 'info', 'copy', 'clone', 'upload'],
     ['delete', 'info', 'copy', 'clone', 'upload'],
     ['delete', 'info', 'clone', 'upload'],
     ['info', 'clone', 'upload'],
-    ['clone', 'upload'],
+    [],
     [],
   ],
   fresh: [
+    ['play', 'reset', 'save', 'info', 'copy', 'upload'],
     ['reset', 'save', 'info', 'copy', 'upload'],
+    ['reset', 'info', 'copy', 'upload'],
     ['info', 'copy', 'upload'],
     ['info', 'upload'],
     ['upload'],
@@ -63,6 +67,66 @@ describe('toolbar ladder derivation', () => {
 
   it('throws on an unknown band', () => {
     expect(() => menuFor('nope' as never, 'doc')).toThrow()
+  })
+})
+
+// The pairing rule documented on TOOLBAR_BANDS: an action must go inline at
+// exactly the variant where its assigned band's width range begins. Both sides
+// are derived from the public tables, so drift fails here instead of leaving a
+// width interval where a control is neither inline nor in the overflow menu.
+describe('toolbar ladder reveal/band pairing', () => {
+  /** Lower-bound variant per band index; inherited from the prior band's close. */
+  function bandLowerBounds(): (string | null)[] {
+    let inherited: string | null = null
+    return TOOLBAR_BANDS.map(band => {
+      const open = band.menuClass.match(/@([a-z0-9-]+):inline-flex/)
+      const close = [...band.menuClass.matchAll(/@([a-z0-9-]+):hidden/g)].pop()
+      const lower = open ? open[1] : inherited
+      if (close) {
+        inherited = close[1]
+      }
+      return lower ?? null
+    })
+  }
+
+  function revealVariants(cls: string): string[] {
+    return [...cls.matchAll(/@([a-z0-9-]+):inline-flex/g)].map(match => match[1])
+  }
+
+  function revealClass(action: PanelAction, mode: ToolbarMode): string {
+    const entry = REVEAL_CLASS[action]
+    return typeof entry === 'string' ? entry : entry[mode]
+  }
+
+  function allRevealClasses(node: unknown): string[] {
+    if (typeof node === 'string') return node.includes('@') ? [node] : []
+    if (Array.isArray(node)) return node.flatMap(allRevealClasses)
+    if (node && typeof node === 'object') return Object.values(node).flatMap(allRevealClasses)
+    return []
+  }
+
+  it('pairs every reveal threshold with its band lower bound', () => {
+    const bounds = bandLowerBounds()
+    for (const mode of ['doc', 'fresh'] as const) {
+      let previous = new Set(menuFor(TOOLBAR_BANDS[0].name, mode))
+      TOOLBAR_BANDS.forEach((band, i) => {
+        const current = new Set(menuFor(band.name, mode))
+        for (const action of ALL[mode]) {
+          if (!current.has(action) && previous.has(action)) {
+            expect(revealVariants(revealClass(action, mode)), `${action} (${mode})`).toEqual([
+              bounds[i],
+            ])
+          }
+        }
+        previous = current
+      })
+    }
+  })
+
+  it('keeps exactly one inline-flex variant in every reveal class', () => {
+    for (const cls of allRevealClasses(REVEAL_CLASS)) {
+      expect(revealVariants(cls), cls).toHaveLength(1)
+    }
   })
 })
 

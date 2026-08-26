@@ -34,7 +34,10 @@
   const text = $derived(UI_TEXT[locale])
 </script>
 
-<aside bind:this={panelRef} aria-label={text.documents} class="flex w-full shrink-0 flex-col border-r border-slate-800 bg-slate-900/40 md:w-64 lg:w-72">
+<aside
+  bind:this={panelRef}
+  aria-label={text.documents}
+  class="relative z-20 flex w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-900/40 lg:w-72">
   <div class="flex flex-none flex-col gap-2 p-3">
     <Button variant="outline" accent="cyan" size="sm" onClick={onNew} className="justify-center px-2.5 py-1.5 text-sm">
       {#snippet icon()}

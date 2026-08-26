@@ -19,6 +19,8 @@
   import SettingsIcon from '$lib/icons/SettingsIcon.svelte'
   import InfoIcon from '$lib/icons/InfoIcon.svelte'
   import FollowIcon from '$lib/icons/FollowIcon.svelte'
+  import MaximizeIcon from '$lib/icons/MaximizeIcon.svelte'
+  import MinimizeIcon from '$lib/icons/MinimizeIcon.svelte'
   import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
   import SpeakerIcon from '$lib/icons/SpeakerIcon.svelte'
   import StopIcon from '$lib/icons/StopIcon.svelte'
@@ -71,8 +73,7 @@
     },
     closeDrawer: () => drawer.closeDrawer(),
     focusEditor: () => {
-      // Focus must land after the drawer-close render: on narrow screens the
-      // open drawer hides <main>, and focus into a hidden subtree is dropped.
+      // Defer focus until after the drawer state has re-rendered.
       void tick().then(() => editorRef?.focus())
     },
     openFilePicker: () => fileInputRef?.click(),
@@ -80,6 +81,9 @@
 
   let settingsOpen = $state(false)
   let showMetadata = $state(false)
+  // Hide the editor so the info panel fills the content area; the state
+  // outlives panel close/reopen so toggling Info keeps the expanded layout.
+  let metadataExpanded = $state(false)
 
   const THEME_MENU_OPTIONS: { value: UiTheme }[] = [
     { value: 'dark' },
@@ -159,6 +163,9 @@
   const toolbarMenus = $derived(TOOLBAR_BANDS.map(band => menuFor(band.name, toolbarMode)))
 
   function panelActionDisabled(action: PanelAction): boolean {
+    if (action === 'play') {
+      return playback.isPlaying ? false : !settings.canPlay
+    }
     if (action === 'copy') {
       return !settings.canPlay
     }
@@ -179,7 +186,13 @@
   }
 
   function handlePanelAction(action: PanelAction) {
-    if (action === 'reset') {
+    if (action === 'play') {
+      if (playback.isPlaying) {
+        playback.stopPlayback()
+      } else {
+        playback.startPlayback()
+      }
+    } else if (action === 'reset') {
       editor.resetEditor()
     } else if (action === 'save') {
       editor.openSaveDialog()
@@ -423,32 +436,34 @@
         onDelete={editor.requestDeleteDocument} />
     {/if}
 
-    <main class={`flex min-w-0 flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4 ${drawer.drawerOpen ? 'max-md:hidden' : ''}`}>
+    <main class="flex min-w-0 flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4">
       {#if editor.currentDocId}
         <div class="mb-2 flex flex-none min-w-0 items-center">
           <EditableText locale={settings.locale} text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
         </div>
       {/if}
       <section aria-label="Playback controls" class="@container flex flex-none flex-wrap items-center gap-1.5">
-      <Button
-        variant="outline"
-        accent="cyan"
-        size="sm"
-        ariaPressed={playback.isPlaying}
-        disabled={playback.isPlaying ? false : !settings.canPlay}
-        ariaLabel={playback.isPlaying ? text.stop : text.playback}
-        tooltip={playback.isPlaying ? text.stop : text.playback}
-        onClick={playback.isPlaying ? playback.stopPlayback : playback.startPlayback}
-        className="px-2.5 py-1.5 text-sm">
-        {#snippet icon()}
-          {#if playback.isPlaying}
-            <StopIcon className="h-4 w-4" />
-          {:else}
-            <SpeakerIcon className="h-4 w-4" />
-          {/if}
-        {/snippet}
-        {playback.isPlaying ? text.stop : text.playback}
-      </Button>
+      <span class={REVEAL_CLASS.play}>
+        <Button
+          variant="outline"
+          accent="cyan"
+          size="sm"
+          ariaPressed={playback.isPlaying}
+          disabled={playback.isPlaying ? false : !settings.canPlay}
+          ariaLabel={playback.isPlaying ? text.stop : text.playback}
+          tooltip={playback.isPlaying ? text.stop : text.playback}
+          onClick={playback.isPlaying ? playback.stopPlayback : playback.startPlayback}
+          className="px-2.5 py-1.5 text-sm">
+          {#snippet icon()}
+            {#if playback.isPlaying}
+              <StopIcon className="h-4 w-4" />
+            {:else}
+              <SpeakerIcon className="h-4 w-4" />
+            {/if}
+          {/snippet}
+          {playback.isPlaying ? text.stop : text.playback}
+        </Button>
+      </span>
 
       <span class={REVEAL_CLASS.reset}>
         <Button
@@ -553,7 +568,7 @@
 
       <span
         role="presentation"
-        class={`rounded-md hidden ${toolbarMode === 'doc' ? REVEAL_CLASS.upload.doc : REVEAL_CLASS.upload.fresh} ${uploadDragActive ? 'ring-2 ring-cyan-500' : ''}`}
+        class={`rounded-md hidden ${REVEAL_CLASS.upload} ${uploadDragActive ? 'ring-2 ring-cyan-500' : ''}`}
         ondragover={handleUploadDragOver}
         ondragleave={handleUploadDragLeave}
         ondrop={handleUploadDrop}>
@@ -574,7 +589,13 @@
       {#each TOOLBAR_BANDS as band, i}
         {#if band.menuClass && toolbarMenus[i].length > 0}
           <span class={band.menuClass}>
-            <PanelMenu locale={settings.locale} actions={toolbarMenus[i]} onSelect={handlePanelAction} isDisabled={panelActionDisabled} />
+            <PanelMenu
+              locale={settings.locale}
+              actions={toolbarMenus[i]}
+              onSelect={handlePanelAction}
+              isDisabled={panelActionDisabled}
+              isPlaying={playback.isPlaying}
+              labels={{ play: playback.isPlaying ? text.stop : text.playback }} />
           </span>
         {/if}
       {/each}
@@ -605,7 +626,7 @@
         {/if}
         <div class="flex min-h-0 flex-1 gap-2 {showMetadata ? (isWide ? 'flex-row' : 'flex-col') : 'flex-col'}">
           <div
-            class="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70 shadow-2xl shadow-slate-950/30">
+            class="{showMetadata && metadataExpanded ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70 shadow-2xl shadow-slate-950/30">
             <CodeEditor
               bind:this={editorRef}
               bind:content={settings.content}
@@ -618,7 +639,9 @@
           </div>
 
           {#if showMetadata}
-            <section aria-label={text.info} class="flex min-h-0 min-w-0 {isWide ? 'w-[32%] min-w-[18rem]' : 'flex-1'} flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <section
+              aria-label={text.info}
+              class="flex min-h-0 min-w-0 {!isWide || metadataExpanded ? 'flex-1' : 'w-[32%] min-w-[18rem]'} flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
                 <div class="flex flex-none items-center gap-2">
                   <label class="relative block flex-1">
@@ -640,6 +663,27 @@
                     className={metadata.followSentence ? 'border border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border border-slate-700 text-slate-400 hover:text-slate-200'}>
                     {#snippet icon()}
                       <FollowIcon className="h-4 w-4" />
+                    {/snippet}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    ariaExpanded={!metadataExpanded}
+                    ariaLabel={metadataExpanded ? text.metadataRestore : text.metadataExpand}
+                    tooltip={metadataExpanded ? text.metadataRestore : text.metadataExpand}
+                    onClick={() => {
+                      metadataExpanded = !metadataExpanded
+                      if (!metadataExpanded) {
+                        void tick().then(() => editorRef?.focus())
+                      }
+                    }}
+                    className={`border ${metadataExpanded ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border-slate-700 text-slate-400 hover:text-slate-200'}`}>
+                    {#snippet icon()}
+                      {#if metadataExpanded}
+                        <MinimizeIcon className="h-4 w-4" />
+                      {:else}
+                        <MaximizeIcon className="h-4 w-4" />
+                      {/if}
                     {/snippet}
                   </Button>
                   <!-- Mobile only: the panel stacks below the editor, so it

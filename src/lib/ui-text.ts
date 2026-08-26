@@ -19,6 +19,8 @@ export interface UiText {
   metadataStale: string
   metadataNoResults: string
   followSentence: string
+  metadataExpand: string
+  metadataRestore: string
   increment: string
   decrement: string
   playbackSpeed: string
@@ -115,6 +117,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     metadataStale: 'Segment info cleared after edit.',
     metadataNoResults: 'No matching rows.',
     followSentence: 'Follow current sentence',
+    metadataExpand: 'Expand panel',
+    metadataRestore: 'Restore editor',
     increment: 'Increase',
     decrement: 'Decrease',
     playbackSpeed: 'Speed',
@@ -193,6 +197,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     metadataStale: '編輯後已清除段落資訊。',
     metadataNoResults: '沒有符合的列。',
     followSentence: '追蹤目前句子',
+    metadataExpand: '展開面板',
+    metadataRestore: '還原編輯器',
     increment: '增加',
     decrement: '減少',
     playbackSpeed: '速度',
@@ -271,6 +277,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     metadataStale: '编辑后已清除段落信息。',
     metadataNoResults: '没有匹配的行。',
     followSentence: '跟随当前句子',
+    metadataExpand: '展开面板',
+    metadataRestore: '还原编辑器',
     increment: '增加',
     decrement: '减少',
     playbackSpeed: '速度',

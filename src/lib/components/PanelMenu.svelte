@@ -7,6 +7,8 @@
 <script lang="ts">
   import Menu, { type MenuItemState } from './Menu.svelte'
   import KebabIcon from '$lib/icons/KebabIcon.svelte'
+  import SpeakerIcon from '$lib/icons/SpeakerIcon.svelte'
+  import StopIcon from '$lib/icons/StopIcon.svelte'
   import RefreshIcon from '$lib/icons/RefreshIcon.svelte'
   import SaveIcon from '$lib/icons/SaveIcon.svelte'
   import DeleteIcon from '$lib/icons/DeleteIcon.svelte'
@@ -21,9 +23,13 @@
     actions: PanelAction[]
     onSelect: (action: PanelAction) => void
     isDisabled?: (action: PanelAction) => boolean
+    /** Per-action label overrides, e.g. Play toggling to Stop while playing. */
+    labels?: Partial<Record<PanelAction, string>>
+    /** Swaps the Play item's glyph to Stop while playback is active. */
+    isPlaying?: boolean
   }
 
-  let { locale, actions, onSelect, isDisabled }: Props = $props()
+  let { locale, actions, onSelect, isDisabled, labels, isPlaying = false }: Props = $props()
 
   const uiText = $derived(UI_TEXT[locale])
 
@@ -32,6 +38,11 @@
   }
 
   function actionLabel(action: PanelAction): string {
+    const override = labels?.[action]
+    if (override !== undefined) {
+      return override
+    }
+    if (action === 'play') return uiText.playback
     if (action === 'reset') return uiText.reset
     if (action === 'save') return uiText.save
     if (action === 'delete') return uiText.delete
@@ -57,7 +68,7 @@
   ariaLabel={uiText.moreActions}
   align="right"
   autoPlace={true}
-  triggerClass="p-2"
+  triggerClass="p-2 before:absolute before:-inset-1.5 before:content-['']"
   panelClass="w-44"
   itemDisabled={actionDisabled}
   itemClass={itemClass}>
@@ -66,7 +77,13 @@
   {/snippet}
   {#snippet item(action: PanelAction, state: MenuItemState)}
     <span class={`h-4 w-4 shrink-0 ${state.disabled ? 'text-slate-600' : 'text-slate-500'} [&_svg]:h-full [&_svg]:w-full`}>
-      {#if action === 'reset'}
+      {#if action === 'play'}
+        {#if isPlaying}
+          <StopIcon />
+        {:else}
+          <SpeakerIcon />
+        {/if}
+      {:else if action === 'reset'}
         <RefreshIcon />
       {:else if action === 'save'}
         <SaveIcon />
