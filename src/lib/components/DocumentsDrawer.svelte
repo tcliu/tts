@@ -34,10 +34,12 @@
   const text = $derived(UI_TEXT[locale])
 </script>
 
+<!-- Docking classes (`lg:*`) must stay in sync with +page.svelte's
+     DOCKED_QUERY, which treats below-lg as the dismissable overlay mode. -->
 <aside
   bind:this={panelRef}
   aria-label={text.documents}
-  class="relative z-20 flex w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-900/40 lg:w-72">
+  class="absolute inset-y-0 left-0 z-20 flex w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-900 shadow-xl lg:static lg:bg-slate-900/40 lg:shadow-none lg:w-72">
   <div class="flex flex-none flex-col gap-2 p-3">
     <Button variant="outline" accent="cyan" size="sm" onClick={onNew} className="justify-center px-2.5 py-1.5 text-sm">
       {#snippet icon()}

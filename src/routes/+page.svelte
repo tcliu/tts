@@ -120,11 +120,15 @@
     metadata.attachScrollContainer(tableBodyRef)
   })
 
-  let isWide = $state(false)
+  // Mirrors Tailwind's `lg` breakpoint for JS-only interaction gating: the
+  // drawer is docked into the layout at this width, overlay below it. Must
+  // stay in sync with DocumentsDrawer's `lg:` docking classes.
+  const DOCKED_QUERY = '(min-width: 64rem)'
+  let isDocked = $state(false)
   $effect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return
-    const mq = window.matchMedia('(min-width: 1024px)')
-    const update = () => (isWide = mq.matches)
+    const mq = window.matchMedia(DOCKED_QUERY)
+    const update = () => (isDocked = mq.matches)
     update()
     mq.addEventListener('change', update)
     return () => mq.removeEventListener('change', update)
@@ -273,12 +277,17 @@
     }
   })
 
+  function dismissDrawerAndFocusTrigger() {
+    drawer.closeDrawer()
+    drawerButtonRef?.focus()
+  }
+
   $effect(() => {
     if (!drawer.drawerOpen) {
       return
     }
     function handleEscape(event: KeyboardEvent) {
-      if (settingsOpen || editor.saveDialogOpen || editor.discardDialogOpen || editor.deleteDialogOpen) {
+      if (dialogsOpen()) {
         return
       }
       if (event.key !== 'Escape') {
@@ -293,13 +302,37 @@
         return
       }
       event.preventDefault()
-      drawer.closeDrawer()
-      drawerButtonRef?.focus()
+      dismissDrawerAndFocusTrigger()
     }
     // Document capture (not window) so the overflow menu's window-level
     // Escape handler can stop propagation before this runs while it is open.
     document.addEventListener('keydown', handleEscape, true)
     return () => document.removeEventListener('keydown', handleEscape, true)
+  })
+
+  // When the drawer is an overlay (not docked), a click outside it dismisses
+  // it. The docked layout shows the panel permanently, so it stays open.
+  // `click` (not pointerdown) so touch scrolls and drag selections that start
+  // outside do not close the drawer.
+  $effect(() => {
+    if (!drawer.drawerOpen || isDocked) {
+      return
+    }
+    function handleDocumentClick(event: MouseEvent) {
+      if (dialogsOpen()) {
+        return
+      }
+      const target = event.target
+      // Header interactions (toggle, language/theme menus, settings) keep the
+      // drawer open; its panels are DOM descendants of the header even though
+      // they render position-fixed.
+      if (target instanceof Element && (target.closest('header') || drawerPanelRef?.contains(target))) {
+        return
+      }
+      dismissDrawerAndFocusTrigger()
+    }
+    document.addEventListener('click', handleDocumentClick, true)
+    return () => document.removeEventListener('click', handleDocumentClick, true)
   })
 
   $effect(() => {
@@ -422,7 +455,7 @@
     </div>
   </header>
 
-  <div class="flex min-h-0 flex-1 overflow-hidden">
+  <div class="relative flex min-h-0 flex-1 overflow-hidden">
     {#if drawer.drawerOpen}
       <DocumentsDrawer
         locale={settings.locale}
@@ -624,7 +657,7 @@
             <div class="mt-1 text-xs text-slate-400">{text.synthesized} {playback.synthesizedCount}/{playback.totalSegments}</div>
           </div>
         {/if}
-        <div class="flex min-h-0 flex-1 gap-2 {showMetadata ? (isWide ? 'flex-row' : 'flex-col') : 'flex-col'}">
+        <div class="flex min-h-0 flex-1 gap-2 {showMetadata ? (isDocked ? 'flex-row' : 'flex-col') : 'flex-col'}">
           <div
             class="{showMetadata && metadataExpanded ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70 shadow-2xl shadow-slate-950/30">
             <CodeEditor
@@ -641,7 +674,7 @@
           {#if showMetadata}
             <section
               aria-label={text.info}
-              class="flex min-h-0 min-w-0 {!isWide || metadataExpanded ? 'flex-1' : 'w-[32%] min-w-[18rem]'} flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              class="flex min-h-0 min-w-0 {!isDocked || metadataExpanded ? 'flex-1' : 'w-[32%] min-w-[18rem]'} flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
                 <div class="flex flex-none items-center gap-2">
                   <label class="relative block flex-1">
