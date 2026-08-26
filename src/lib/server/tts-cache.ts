@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { synthesisCacheKey as buildSynthesisCacheKey } from '$lib/tts-cache-key'
 import type { TtsBoundary } from '$lib/tts-reference'
+import { logEvent } from './logging'
 
 export interface CachedSynthesis {
   audio: string
@@ -37,7 +38,14 @@ export async function getCachedSynthesis(key: string): Promise<CachedSynthesis |
       return null
     }
     return envelope.value
-  } catch {
+  } catch (error) {
+    // A missing file is a normal cache miss; anything else is unexpected.
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return null
+    logEvent({
+      ip: 'unknown',
+      action: 'tts_cache_read_error',
+      details: { level: 'WARN', key, error: error instanceof Error ? error.message : 'Unknown error' },
+    })
     return null
   }
 }
@@ -47,7 +55,12 @@ export async function setCachedSynthesis(key: string, value: CachedSynthesis): P
     await mkdir(cacheDir(), { recursive: true })
     const envelope: CacheEnvelope = { savedAt: Date.now(), value }
     await writeFile(path.join(cacheDir(), `${key}.json`), JSON.stringify(envelope), 'utf-8')
-  } catch {
+  } catch (error) {
     // Caching is best-effort; ignore filesystem errors and serve fresh results.
+    logEvent({
+      ip: 'unknown',
+      action: 'tts_cache_write_error',
+      details: { level: 'WARN', key, error: error instanceof Error ? error.message : 'Unknown error' },
+    })
   }
 }

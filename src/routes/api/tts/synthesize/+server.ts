@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
+import { logAccess } from '$lib/server/logging'
 import { synthesizeEdgeTts } from '$lib/server/edge-tts'
 import { synthesisCacheKey, getCachedSynthesis, setCachedSynthesis } from '$lib/server/tts-cache'
 import { REFERENCE_LANGUAGES } from '$lib/tts-reference'
@@ -15,7 +16,8 @@ export const config = {
   maxDuration: 60,
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async event => {
+  const { request } = event
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') {
     return json({ error: 'Invalid request body' }, { status: 400 })
@@ -38,10 +40,25 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'Unknown voice' }, { status: 400 })
   }
 
+  const key = synthesisCacheKey(text, voice, rate)
+  const startedAt = Date.now()
+  logAccess({ event, action: 'tts_synthesize_start', details: { key, voice, rate, text_length: text.length } })
+
   try {
-    const key = synthesisCacheKey(text, voice, rate)
     const cached = await getCachedSynthesis(key)
     if (cached) {
+      logAccess({
+        event,
+        action: 'tts_synthesize_cache_hit',
+        details: {
+          key,
+          voice,
+          rate,
+          text_length: text.length,
+          audio_bytes: Buffer.byteLength(cached.audio, 'base64'),
+          elapsed_ms: Date.now() - startedAt,
+        },
+      })
       return json(cached, { headers: { 'Cache-Control': 'no-store' } })
     }
 
@@ -51,9 +68,31 @@ export const POST: RequestHandler = async ({ request }) => {
       boundaries: result.boundaries,
     }
     await setCachedSynthesis(key, payload)
+    logAccess({
+      event,
+      action: 'tts_synthesize_complete',
+      details: {
+        key,
+        voice,
+        rate,
+        text_length: text.length,
+        audio_bytes: result.audio.byteLength,
+        boundary_count: result.boundaries.length,
+        elapsed_ms: Date.now() - startedAt,
+      },
+    })
     return json(payload, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
-    console.error('TTS synthesis failed:', error)
+    logAccess({
+      event,
+      action: 'tts_synthesize_error',
+      details: {
+        key,
+        voice,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        elapsed_ms: Date.now() - startedAt,
+      },
+    })
     return json({ error: 'Synthesis failed' }, { status: 502 })
   }
 }
