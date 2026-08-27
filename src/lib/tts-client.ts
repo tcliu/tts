@@ -63,6 +63,15 @@ async function requestSynthesis(
   }
 }
 
+export function peekCachedSynthesis(
+  textToSpeak: string,
+  voiceId: string,
+  rate: number,
+): SynthesizedSegment | null {
+  const cacheKey = synthesisCacheKey(textToSpeak, voiceId, rate)
+  return synthesisCache.get(cacheKey) ?? null
+}
+
 export async function getCachedSynthesis(
   textToSpeak: string,
   voiceId: string,
