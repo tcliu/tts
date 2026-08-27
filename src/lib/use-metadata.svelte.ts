@@ -9,6 +9,7 @@ export interface MetadataRow {
   offset: number
   lang: string
   text: string
+  boundaryIndex: number
   active: boolean
 }
 
@@ -40,26 +41,36 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
 
   let metaController: { cancelled: boolean } | null = null
   let metaAbort: AbortController | null = null
-  let metaSignature = ''
+  let metaBaseline = ''
   let metaDebounce: ReturnType<typeof setTimeout> | null = null
 
   const { playback, settings } = deps
   let scrollContainer: HTMLDivElement | null = null
   let followSentence = $state(true)
 
-  const rows = $derived.by(() => {
+  const activeSeg = $derived(playback.isPlaying ? playback.currentSegmentIndex - 1 : -1)
+
+  // Depends only on the per-frame playbackElapsed, isolating the heavy table
+  // rebuild below so it is memoized and does not re-run every animation frame.
+  const activeBoundaryIndex = $derived.by(() => {
+    if (activeSeg < 0) return -1
+    const meta = playback.segments[activeSeg]
+    if (!meta) return -1
+    let idx = -1
+    const boundaries = meta.boundaries
+    for (let i = 0; i < boundaries.length; i += 1) {
+      if (boundaries[i].at <= playback.playbackElapsed) idx = i
+      else break
+    }
+    return idx
+  })
+
+  // Heavy build (segmentation, range matching, sort) depends only on the
+  // segment metadata and search query, so it is memoized and re-runs only
+  // when those change, not on every playback tick.
+  const baseRows = $derived.by(() => {
     const result: MetadataRow[] = []
     const segmentMetaMap = playback.segments
-    const activeSeg = playback.isPlaying ? playback.currentSegmentIndex - 1 : -1
-    const activeMeta = activeSeg >= 0 ? segmentMetaMap[activeSeg] : undefined
-    let activeBoundaryIndex = -1
-    if (activeMeta) {
-      const boundaries = activeMeta.boundaries
-      for (let i = 0; i < boundaries.length; i += 1) {
-        if (boundaries[i].at <= playback.playbackElapsed) activeBoundaryIndex = i
-        else break
-      }
-    }
     let cumulative = 0
     const indices = Object.keys(segmentMetaMap).map(Number).sort((a, b) => a - b)
     for (const i of indices) {
@@ -77,7 +88,8 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
           offset: meta.baseOffset + boundary.offset,
           lang: meta.lang,
           text,
-          active: meta.index === activeSeg && boundaryIndex === activeBoundaryIndex,
+          boundaryIndex,
+          active: false,
         })
       })
       cumulative += segDuration
@@ -94,6 +106,13 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     }
     return result
   })
+
+  const rows = $derived(
+    baseRows.map(row => ({
+      ...row,
+      active: row.segmentIndex === activeSeg && row.boundaryIndex === activeBoundaryIndex,
+    })),
+  )
 
   function scrollActiveIntoView() {
     if (!followSentence || !scrollContainer) return
@@ -133,14 +152,17 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
       return
     }
     const signature = settings.content
-    if (metaSignature && signature !== metaSignature && !metaDirty) {
+    // Compare against the last-synced content. Unlike the prior metaSignature
+    // gate this bootstraps from an empty baseline, so edits made before any
+    // playback still mark the table stale and trigger a background refresh.
+    if (signature !== metaBaseline && !metaDirty) {
       metaDirty = true
     }
     if (!metaDirty || !deps.getShowMetadata()) {
       return
     }
     metaDirty = false
-    metaSignature = ''
+    metaBaseline = signature
     cancelPendingSynthesis()
     playback.clearSegments()
     playback.setMetadataAvailability(false)
@@ -191,7 +213,7 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     playback.primeSession(segments, 0, selectedRange)
     metaStale = false
     if (segments.length === 0) {
-      metaSignature = signature
+      metaBaseline = signature
       if (metaController === controller) {
         metaController = null
       }
@@ -251,7 +273,7 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
       if (controller.cancelled || abort.signal.aborted) {
         return
       }
-      metaSignature = signature
+      metaBaseline = signature
       metaDirty = false
       metaStale = false
       playback.setMetadataAvailability(Object.keys(playback.segments).length > 0)
@@ -267,7 +289,7 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
   }
 
   function prepareForPlayback() {
-    metaSignature = currentMetaSignature()
+    metaBaseline = currentMetaSignature()
     metaSearch = ''
     metaStale = false
     metaDirty = false
