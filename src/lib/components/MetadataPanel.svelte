@@ -120,12 +120,27 @@
               <tr
                 data-active={row.active}
                 aria-current={row.active ? 'true' : undefined}
-                class="relative border-t border-slate-800 align-top {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
+                role="button"
+                tabindex="0"
+                aria-label={`${text.playSegment} ${row.segmentIndex + 1}`}
+                onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
+                onkeydown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    playback.playFromSegment(row.segmentIndex, row.offset)
+                  }
+                }}
+                class="cursor-pointer border-t border-slate-800 align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
                 <td class="relative px-2 py-1 whitespace-nowrap">
                   <button
                     type="button"
+                    tabindex="-1"
+                    aria-hidden="true"
                     aria-label={`${text.playSegment} ${row.segmentIndex + 1}`}
-                    onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
+                    onclick={(event) => {
+                      event.stopPropagation()
+                      playback.playFromSegment(row.segmentIndex, row.offset)
+                    }}
                     class="absolute inset-0 flex cursor-pointer items-start rounded px-2 py-1 text-left font-mono outline-none transition motion-reduce:transition-none hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500">
                     {row.segmentIndex + 1}
                   </button>
