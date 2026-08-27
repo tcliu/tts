@@ -246,6 +246,11 @@
     return { from, to }
   }
 
+  export function getCaretPosition(): number | null {
+    if (!editorView) return null
+    return editorView.state.selection.main.head
+  }
+
   export function setSelection(from: number, to: number): boolean {
     if (!editorView) return false
     const current = editorView.state.selection.main

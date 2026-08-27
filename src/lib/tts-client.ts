@@ -189,8 +189,10 @@ export async function getCachedSynthesis(
 }
 
 export interface SynthesisCacheStats {
-  documents: number
+  segments: number
   bytes: number
+  /** @deprecated — use segments; kept for backward compatibility */
+  documents?: number
 }
 
 export function getSynthesisCacheStats(): Promise<SynthesisCacheStats> {

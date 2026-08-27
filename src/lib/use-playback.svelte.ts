@@ -29,6 +29,7 @@ export { formatClock, RESUME_EPSILON }
 export type CodeEditorHandle = {
   getSelectionText: () => string
   getSelectionRange: () => { from: number; to: number } | null
+  getCaretPosition?: () => number | null
   setSelection: (from: number, to: number) => boolean
   clearSelection: () => void
   focus: () => void
@@ -131,6 +132,11 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let sessionSourceContent = ''
   let sessionResumeSelection: { from: number; to: number } | null = null
   let applyingResumeSelection = false
+  let suppressSelectionCounter = 0
+  let pendingSelectionSeekTimer: ReturnType<typeof setTimeout> | null = null
+  let pendingSelectionRange: { from: number; to: number } | null = null
+  let pendingCaretOffset: number | null = null
+  let pendingSelectionGeneration = 0
   let resumeSegmentIndex = 0
   let resumeSegmentTime = 0
 
@@ -201,6 +207,13 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   function stopPlayback() {
+    if (pendingSelectionSeekTimer) {
+      clearTimeout(pendingSelectionSeekTimer)
+      pendingSelectionSeekTimer = null
+      pendingSelectionRange = null
+      pendingCaretOffset = null
+      pendingSelectionGeneration += 1
+    }
     if (playbackEnded) {
       return
     }
@@ -258,6 +271,19 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     sessionResumeSelection = deps.getEditor()?.getSelectionRange() ?? null
   }
 
+  function withSuppressedSelection<T>(fn: () => T): T {
+    suppressSelectionCounter += 1
+    try {
+      return fn()
+    } finally {
+      suppressSelectionCounter -= 1
+    }
+  }
+
+  function isSelectionSyncSuppressed(): boolean {
+    return suppressSelectionCounter > 0 || applyingResumeSelection
+  }
+
   function updateSelectionForPosition(index: number, at: number): { from: number; to: number } | null {
     const meta = segmentMetaMap[index]
     const segment = sessionSegments[index]
@@ -266,7 +292,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     const setWholeSegmentSelection = (): { from: number; to: number } => {
       const trimmed = trimWhitespaceRange(segment.text, 0, segment.text.length)
       const range = { from: absoluteBase + trimmed.start, to: absoluteBase + trimmed.end }
-      deps.getEditor()?.setSelection(range.from, range.to)
+      withSuppressedSelection(() => deps.getEditor()?.setSelection(range.from, range.to))
       return range
     }
     const boundaries = highlightBoundaries(meta, [])
@@ -279,7 +305,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       const wordEnd = wordStart + activeBoundary.text.length
       const trimmed = trimWhitespaceRange(segment.text, wordStart, wordEnd)
       const range = { from: absoluteBase + trimmed.start, to: absoluteBase + trimmed.end }
-      deps.getEditor()?.setSelection(range.from, range.to)
+      withSuppressedSelection(() => deps.getEditor()?.setSelection(range.from, range.to))
       return range
     }
     const range = activeHighlightRange(meta.ranges, boundaries, at)
@@ -288,7 +314,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     }
     const trimmed = trimWhitespaceRange(segment.text, range.start, range.end)
     const applied = { from: absoluteBase + trimmed.start, to: absoluteBase + trimmed.end }
-    deps.getEditor()?.setSelection(applied.from, applied.to)
+    withSuppressedSelection(() => deps.getEditor()?.setSelection(applied.from, applied.to))
     return applied
   }
 
@@ -316,16 +342,110 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       // Play recognizes the seek-scrolled state instead of rebuilding the
       // session (which drops the dragged position and warmed metadata).
       applyingResumeSelection = true
+      suppressSelectionCounter += 1
       try {
         sessionResumeSelection = updateSelectionForPosition(clampedIndex, clampedAt) ?? sessionResumeSelection
       } finally {
         applyingResumeSelection = false
+        suppressSelectionCounter -= 1
       }
     }
   }
 
+  function locateCaretBoundaryAtOrBefore(
+    boundaries: TtsBoundary[],
+    absoluteBase: number,
+    caretOffset: number,
+  ): number {
+    let candidate: number | null = null
+    for (const b of boundaries) {
+      const abs = absoluteBase + b.offset
+      if (abs <= caretOffset) candidate = b.at
+      else break
+    }
+    return candidate ?? 0
+  }
+
+  async function seekToSelectionRange(range: { from: number; to: number }) {
+    if (sessionSegments.length === 0) return
+    const start = locateSegmentStartByCharOffset(sessionSegments, range.from)
+    const meta = segmentMetaMap[start.index]
+    const boundaries = highlightBoundaries(meta, [])
+    const absoluteBase = sessionSegments[start.index]?.indexStart ?? 0
+    let targetAt = 0
+    if (boundaries.length > 0) {
+      targetAt = locateBoundaryStartWithinOrBefore(boundaries, absoluteBase, range)
+    }
+    // Stop the current playback and restart from the selected word. The
+    // existing resume position (based on audio.currentTime) is discarded in
+    // favor of the snapped word boundary inside the new selection.
+    stopPlayback()
+    playbackEnded = false
+    setResumePosition(start.index, targetAt, true)
+    await runPlayback(sessionSegments, sessionOffset, start.index, targetAt)
+  }
+
+  async function seekToCaretOffset(caretOffset: number) {
+    if (sessionSegments.length === 0) return
+    const start = locateSegmentStartByCharOffset(sessionSegments, caretOffset)
+    const meta = segmentMetaMap[start.index]
+    const boundaries = highlightBoundaries(meta, [])
+    const absoluteBase = sessionSegments[start.index]?.indexStart ?? 0
+    let targetAt = 0
+    if (boundaries.length > 0) {
+      targetAt = locateCaretBoundaryAtOrBefore(boundaries, absoluteBase, caretOffset)
+    }
+    stopPlayback()
+    playbackEnded = false
+    setResumePosition(start.index, targetAt, true)
+    await runPlayback(sessionSegments, sessionOffset, start.index, targetAt)
+  }
+
+  function scheduleSeekFromSelection(range: { from: number; to: number }) {
+    pendingSelectionRange = range
+    pendingCaretOffset = null
+    pendingSelectionGeneration += 1
+    const generation = pendingSelectionGeneration
+    if (pendingSelectionSeekTimer) clearTimeout(pendingSelectionSeekTimer)
+    pendingSelectionSeekTimer = setTimeout(() => {
+      pendingSelectionSeekTimer = null
+      if (generation !== pendingSelectionGeneration) return
+      const pending = pendingSelectionRange
+      pendingSelectionRange = null
+      if (!pending || !isPlaying || isSelectionSyncSuppressed()) return
+      void seekToSelectionRange(pending)
+    }, 60)
+  }
+
+  function scheduleSeekFromCaret(caretOffset: number) {
+    pendingCaretOffset = caretOffset
+    pendingSelectionRange = null
+    pendingSelectionGeneration += 1
+    const generation = pendingSelectionGeneration
+    if (pendingSelectionSeekTimer) clearTimeout(pendingSelectionSeekTimer)
+    pendingSelectionSeekTimer = setTimeout(() => {
+      pendingSelectionSeekTimer = null
+      if (generation !== pendingSelectionGeneration) return
+      const pending = pendingCaretOffset
+      pendingCaretOffset = null
+      if (pending == null || !isPlaying || isSelectionSyncSuppressed()) return
+      void seekToCaretOffset(pending)
+    }, 60)
+  }
+
   function syncSelectionStart(range: { from: number; to: number } | null) {
-    if (isPlaying || applyingResumeSelection) return
+    if (isSelectionSyncSuppressed()) return
+    if (isPlaying) {
+      if (range != null) {
+        if (sessionSegments.length === 0) return
+        scheduleSeekFromSelection(range)
+        return
+      }
+      const caret = deps.getEditor()?.getCaretPosition?.() ?? null
+      if (caret == null || sessionSegments.length === 0) return
+      scheduleSeekFromCaret(caret)
+      return
+    }
     const content = deps.settings.content
     if (!content) {
       resetSession()
@@ -334,9 +454,36 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     // Selection changes fire on every caret move; segment the document only
     // when a selection actually needs a resume position computed.
     if (range == null) {
-      if (!content.trim()) {
-        resetSession()
+      const caret = deps.getEditor()?.getCaretPosition?.() ?? null
+      if (caret == null) {
+        if (!content.trim()) {
+          resetSession()
+        }
+        return
       }
+      const contentChanged = sessionSourceContent !== content
+      const segments =
+        sessionSegments.length > 0 && !contentChanged ? sessionSegments : splitTtsSegments(content)
+      if (segments.length === 0) {
+        resetSession()
+        return
+      }
+      if (contentChanged) {
+        clearSegments()
+      }
+      const start = locateSegmentStartByCharOffset(segments, caret)
+      const meta = segmentMetaMap[start.index]
+      if (!meta) {
+        primeSession(segments, 0, null)
+        return
+      }
+      primeSession(segments, 0, null)
+      const absoluteBase = segments[start.index]?.indexStart ?? 0
+      const boundaries = highlightBoundaries(meta, [])
+      if (boundaries.length === 0) {
+        return
+      }
+      setResumePosition(start.index, locateCaretBoundaryAtOrBefore(boundaries, absoluteBase, caret), false)
       return
     }
     const contentChanged = sessionSourceContent !== content
@@ -704,7 +851,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         }
         const selectWholeSegment = () => {
           const trimmed = trimWhitespaceRange(segment.text, 0, segment.text.length)
-          deps.getEditor()?.setSelection(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
+          withSuppressedSelection(() =>
+            deps.getEditor()?.setSelection(absoluteBase + trimmed.start, absoluteBase + trimmed.end),
+          )
         }
         let segAt = index === startIndex ? startAt : 0
         if (highlightMarks.length > 0) {
@@ -728,7 +877,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
             const range = activeHighlightRange(ranges, highlightMarks, segAt)
             if (range) {
               const trimmed = trimWhitespaceRange(segment.text, range.start, range.end)
-              deps.getEditor()?.setSelection(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
+              withSuppressedSelection(() =>
+                deps.getEditor()?.setSelection(absoluteBase + trimmed.start, absoluteBase + trimmed.end),
+              )
             }
           }
         }
@@ -764,11 +915,13 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       resumeSegmentTime = 0
       playedDuration = measuredTotal
       playbackElapsed = 0
-      if (sessionSelectedRange) {
-        deps.getEditor()?.setSelection(sessionSelectedRange.from, sessionSelectedRange.to)
-      } else {
-        deps.getEditor()?.clearSelection()
-      }
+      withSuppressedSelection(() => {
+        if (sessionSelectedRange) {
+          deps.getEditor()?.setSelection(sessionSelectedRange.from, sessionSelectedRange.to)
+        } else {
+          deps.getEditor()?.clearSelection()
+        }
+      })
       statusMessage = UI_TEXT[deps.settings.locale].playbackFinished
     } catch (error) {
       if (controller.cancelled) return

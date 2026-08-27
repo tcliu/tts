@@ -6,7 +6,7 @@ const idb = vi.hoisted(() => ({
   getPersistedSegment: vi.fn<() => Promise<unknown>>(async () => null),
   loadPersistedRecords: vi.fn(async () => [] as Array<Record<string, unknown>>),
   putPersistedSegment: vi.fn(async (_key: string, _segment: unknown) => {}),
-  getPersistedCacheStats: vi.fn(async () => ({ documents: 0, bytes: 0 })),
+  getPersistedCacheStats: vi.fn(async () => ({ segments: 0, bytes: 0 })),
   clearPersistedSegments: vi.fn(async () => {}),
   deletePersistedSegmentsByDocId: vi.fn(async (_docId: string) => {}),
   // Mirror the real storage-shape whitelist so leaked storage fields cannot
@@ -73,7 +73,7 @@ describe('tts-client', () => {
     idb.getPersistedSegment.mockReset().mockImplementation(async () => null)
     idb.loadPersistedRecords.mockReset().mockResolvedValue([])
     idb.putPersistedSegment.mockReset().mockResolvedValue(undefined)
-    idb.getPersistedCacheStats.mockReset().mockResolvedValue({ documents: 0, bytes: 0 })
+    idb.getPersistedCacheStats.mockReset().mockResolvedValue({ segments: 0, bytes: 0 })
     idb.clearPersistedSegments.mockReset().mockResolvedValue(undefined)
     idb.deletePersistedSegmentsByDocId.mockReset().mockResolvedValue(undefined)
   })
@@ -150,10 +150,10 @@ describe('tts-client', () => {
   })
 
   it('reports persisted cache stats through to callers', async () => {
-    idb.getPersistedCacheStats.mockResolvedValue({ documents: 3, bytes: 120 })
+    idb.getPersistedCacheStats.mockResolvedValue({ segments: 3, bytes: 120 })
     const client = await loadFresh()
 
-    await expect(client.getSynthesisCacheStats()).resolves.toEqual({ documents: 3, bytes: 120 })
+    await expect(client.getSynthesisCacheStats()).resolves.toEqual({ segments: 3, bytes: 120 })
   })
 
   it('clearing the whole cache drops resident entries and persisted records', async () => {

@@ -131,7 +131,7 @@ describe('tts-client-idb', () => {
     await mod.putPersistedSegment('k1', segment({ blob: { size: 100 } as unknown as Blob }), 'doc-a')
     await mod.putPersistedSegment('k2', segment({ blob: { size: 250 } as unknown as Blob }), 'doc-a')
 
-    await expect(mod.getPersistedCacheStats()).resolves.toEqual({ documents: 1, bytes: 350 })
+    await expect(mod.getPersistedCacheStats()).resolves.toEqual({ segments: 2, documents: 1, bytes: 350 })
   })
 
   it('clears every persisted segment', async () => {
@@ -140,7 +140,7 @@ describe('tts-client-idb', () => {
     await mod.putPersistedSegment('k2', segment(), 'doc-b')
 
     await mod.clearPersistedSegments()
-    await expect(mod.getPersistedCacheStats()).resolves.toEqual({ documents: 0, bytes: 0 })
+    await expect(mod.getPersistedCacheStats()).resolves.toEqual({ segments: 0, documents: 0, bytes: 0 })
     await expect(mod.getPersistedSegment('k1')).resolves.toBeNull()
     await expect(mod.getPersistedSegment('k2')).resolves.toBeNull()
   })

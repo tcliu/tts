@@ -13,7 +13,7 @@
     synthesisConcurrency: number
     voiceSelections: Record<string, string>
     groupSelections: Record<string, string>
-    cacheStats: { documents: number; bytes: number } | null
+    cacheStats: { segments: number; bytes: number } | null
     onCancel: () => void
     onSelectVoice: (languageCode: string, voiceId: string) => void
     onSelectGroup: (languageCode: string, group: string) => void
@@ -147,17 +147,17 @@
           <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
             {#if cacheStats === null}
               —
-            {:else if cacheStats.documents === 0}
-              {text.cachedDocumentsNone}
+            {:else if cacheStats.segments === 0}
+              {text.cachedSegmentsNone}
             {:else}
-              {cacheStats.documents} {text.documentsUnit} · {formatBytes(cacheStats.bytes)}
+              {cacheStats.segments} {text.segmentsUnit} · {formatBytes(cacheStats.bytes)}
             {/if}
           </p>
         </div>
         <Button
           variant="secondary"
           size="sm"
-          disabled={cacheStats === null || cacheStats.documents === 0}
+          disabled={cacheStats === null || cacheStats.segments === 0}
           ariaLabel={text.clearSynthesisCache}
           className="text-xs"
           onClick={onClearCache}>

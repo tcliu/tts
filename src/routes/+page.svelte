@@ -52,6 +52,20 @@
   const documents = useDocuments()
   const drawer = useDocumentsDrawer(documents)
 
+  // Mirrors Tailwind's `lg` breakpoint for JS-only interaction gating: the
+  // drawer is docked into the layout at this width, overlay below it. Must
+  // stay in sync with DocumentsDrawer's `lg:` docking classes.
+  const DOCKED_QUERY = '(min-width: 64rem)'
+  let isDocked = $state(false)
+  $effect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mq = window.matchMedia(DOCKED_QUERY)
+    const update = () => (isDocked = mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  })
+
   // Late-bound so playback can notify the metadata layer without a circular
   // factory dependency; assigned once the metadata composable exists below.
   const hooks: { prepareForPlayback: () => void } = { prepareForPlayback: () => {} }
@@ -77,12 +91,15 @@
     resetPlaybackSession: () => {
       playback.resetSession()
     },
-    closeDrawer: () => drawer.closeDrawer(),
+    closeDrawer: () => {
+      if (!isDocked) drawer.closeDrawer()
+    },
     focusEditor: () => {
       // Defer focus until after the drawer state has re-rendered.
       void tick().then(() => editorRef?.focus())
     },
     openFilePicker: () => fileInputRef?.click(),
+    isPlaybackActive: () => playback.isPlaying,
   })
 
   let settingsOpen = $state(false)
@@ -108,7 +125,7 @@
 
   async function clearClientSynthesisCache() {
     await clearSynthesisCache()
-    cacheStats = { documents: 0, bytes: 0 }
+    cacheStats = { segments: 0, bytes: 0 }
   }
 
   // Cache keys for every segment of the current document that has a voice;
@@ -157,20 +174,6 @@
   let saveNameInputRef = $state<HTMLInputElement | null>(null)
 
   let editorRef = $state<CodeEditorHandle | null>(null)
-
-  // Mirrors Tailwind's `lg` breakpoint for JS-only interaction gating: the
-  // drawer is docked into the layout at this width, overlay below it. Must
-  // stay in sync with DocumentsDrawer's `lg:` docking classes.
-  const DOCKED_QUERY = '(min-width: 64rem)'
-  let isDocked = $state(false)
-  $effect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return
-    const mq = window.matchMedia(DOCKED_QUERY)
-    const update = () => (isDocked = mq.matches)
-    update()
-    mq.addEventListener('change', update)
-    return () => mq.removeEventListener('change', update)
-  })
 
   const text = $derived(UI_TEXT[settings.locale])
 
@@ -376,7 +379,7 @@
   }
 
   function dialogsOpen() {
-    return settingsOpen || editor.saveDialogOpen || editor.discardDialogOpen || editor.deleteDialogOpen
+    return settingsOpen || editor.saveDialogOpen || editor.discardDialogOpen || editor.deleteDialogOpen || editor.playbackConfirmOpen
   }
 
   function selectLanguage(value: UiLocale) {
@@ -478,7 +481,12 @@
     }
     void tick().then(() => {
       input.focus()
-      input.select()
+      const end = input.value.length
+      try {
+        input.setSelectionRange(end, end)
+      } catch {
+        input.select()
+      }
     })
   })
 
@@ -491,7 +499,7 @@
         return
       }
       event.preventDefault()
-      if (editor.saveDialogOpen || settingsOpen || editor.discardDialogOpen || editor.deleteDialogOpen) {
+      if (dialogsOpen()) {
         return
       }
       editor.openSaveDialog()
@@ -893,7 +901,7 @@
             disabled={!editor.saveDirty}>
             {text.reset}
           </Button>
-          <Button variant="primary" accent="cyan" type="submit" disabled={editor.saveDisabled || (!editor.saveDirty && !editor.isDirty)}>
+          <Button variant="primary" accent="cyan" type="submit">
             {text.save}
           </Button>
         </div>
@@ -932,6 +940,17 @@
         </div>
         <div class="flex flex-wrap items-center justify-end gap-3">
           <Button variant="primary" accent="rose" onClick={editor.confirmDelete}>{text.delete}</Button>
+        </div>
+      </div>
+    </BaseDialog>
+  {/if}
+
+  {#if editor.playbackConfirmOpen}
+    <BaseDialog title={text.stopPlaybackTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelPlayback}>
+      <div class="flex flex-col gap-4">
+        <p class="text-sm leading-6 text-slate-400">{text.stopPlaybackMessage}</p>
+        <div class="flex flex-wrap items-center justify-end gap-3">
+          <Button variant="primary" accent="rose" onClick={editor.confirmPlayback}>{text.stopPlaybackConfirm}</Button>
         </div>
       </div>
     </BaseDialog>

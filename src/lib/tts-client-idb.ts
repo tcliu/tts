@@ -114,21 +114,28 @@ export async function loadPersistedRecords(): Promise<PersistedSynthesisRecord[]
 }
 
 export interface PersistedCacheStats {
-  documents: number
+  segments: number
   bytes: number
+  /** @deprecated — use segments; kept for backward compatibility */
+  documents: number
 }
 
 export async function getPersistedCacheStats(): Promise<PersistedCacheStats> {
   const conn = await openDb()
-  if (!conn) return { documents: 0, bytes: 0 }
+  if (!conn) return { segments: 0, bytes: 0, documents: 0 }
   try {
     const records = await getAllRecords(conn)
+    const segments = records.length
+    const documents = new Set(
+      records.map(record => record.docId).filter((docId): docId is string => typeof docId === 'string' && docId.length > 0),
+    ).size
     return {
-      documents: new Set(records.map(record => record.docId).filter((docId): docId is string => typeof docId === 'string' && docId.length > 0)).size,
+      segments,
+      documents,
       bytes: records.reduce((total, record) => total + (record.blob?.size ?? 0), 0),
     }
   } catch {
-    return { documents: 0, bytes: 0 }
+    return { segments: 0, bytes: 0, documents: 0 }
   }
 }
 

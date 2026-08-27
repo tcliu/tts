@@ -7,6 +7,9 @@ Project-specific development conventions for the TTS web app.
 - Read this `AGENTS.md` and the shared references it relies on before editing.
 - When reviewing completed work, follow the `code-review` skill and report
   findings with severity, location, rule, and fix.
+- When a task is ambiguous about what to change or how to approach it, ask the
+  user to clarify or present up to three concrete options before editing, to
+  avoid unwanted changes.
 
 ## Architecture
 
@@ -27,6 +30,13 @@ Project-specific development conventions for the TTS web app.
   copies the gitignored local dev files (`.env`, `.env.local`, `.env.dev`) and
   sets `DEV_TAG=<branch>` in the new worktree's `.env.dev` so the bottom-left
   worktree-tag block identifies the branch.
+- Server-side events log through `src/lib/server/logging` following
+  `references/logging.md`: every state-changing action emits a structured
+  `ip=<ip> action=<action> ...` line carrying key identifying info, and async
+  operations also log `_start`/`_end` with `elapsed_ms`; never log secrets,
+  tokens, or document contents.
+- Temporary scratch files (plans, proposals, scratch notes) go in `.tmp/`,
+  never in source directories.
 
 ## UI behavior
 
@@ -47,6 +57,10 @@ Project-specific development conventions for the TTS web app.
 - Defer editor focus with `tick()` whenever drawer or dialog state changes
   visibility (`focusEditor` in `+page.svelte`); synchronous focus into a
   just-hidden or not-yet-shown subtree is silently dropped.
+- Controls that would move focus away from the editor (preview toggles, drawer
+  buttons, list-collapse buttons) pass the `Button` `preventFocusSteal` prop so
+  the button never takes focus on `pointerdown` while its `click` still fires;
+  raw controls use `onpointerdown={e => e.preventDefault()}` for the same effect.
 
 ## Theming
 
@@ -74,8 +88,29 @@ Project-specific development conventions for the TTS web app.
 - Follow `references/portals.md` for portal and overlay positioning
   (dropdown panels, tooltips, dialogs) including viewport clamping and
   flip-when-crowded placement.
+- Follow `references/ui-patterns.md` for dialogs (centered/full-screen, dismiss
+  affordances, focus-first-input), form dialogs (OK/Apply + Reset, discard
+  unsaved-changes confirm), icons, comboboxes, and the two-arrow table sort
+  pattern.
+- Follow `references/logging.md` for server-side structured event logging.
 - Follow `references/git.md` for commit message conventions and worktree
   isolation.
+
+## Keeping references in sync
+
+- When a code change establishes or revises a project-specific convention, update
+  this `AGENTS.md` in the same change.
+- When a code change establishes or revises a generic reusable convention, update
+  the appropriate file under `$AI_CONFIG_DIR/references/` in the same change rather
+  than duplicating it here.
+- Shared reference files under `$AI_CONFIG_DIR/references/` must stay generic and
+  implementation-agnostic: no project-specific paths, component names, routes, or
+  internal identifiers. Put project-level details in this `AGENTS.md` instead.
+- This `AGENTS.md` holds project-specific *development conventions* — rules to
+  follow when writing code — not feature descriptions or implementation
+  narratives. Keep each bullet to the rule plus the briefest rationale;
+  architecture detail belongs in `docs/spec.md` and user-facing behavior in
+  `docs/design.md`.
 
 ## Quality checks
 

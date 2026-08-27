@@ -72,6 +72,9 @@ export interface UiText {
   discardTitle: string
   discardMessage: string
   discardConfirm: string
+  stopPlaybackTitle: string
+  stopPlaybackMessage: string
+  stopPlaybackConfirm: string
   voiceNotConfigured: string
   playbackFailed: string
   theme: string
@@ -84,7 +87,11 @@ export interface UiText {
   themeSepia: string
   cacheTab: string
   synthesisCache: string
+  segmentsUnit: string
+  cachedSegmentsNone: string
+  /** @deprecated — use segmentsUnit */
   documentsUnit: string
+  /** @deprecated — use cachedSegmentsNone */
   cachedDocumentsNone: string
   clearSynthesisCache: string
   resetPlaybackCache: string
@@ -179,6 +186,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     discardTitle: 'Discard unsaved changes?',
     discardMessage: 'You have unsaved changes that will be lost.',
     discardConfirm: 'Discard',
+    stopPlaybackTitle: 'Stop playback?',
+    stopPlaybackMessage: 'Playback is in progress. Stop playback to continue?',
+    stopPlaybackConfirm: 'Stop',
     voiceNotConfigured: 'No voice is configured for this language.',
     playbackFailed: 'Playback failed.',
     theme: 'Theme',
@@ -191,8 +201,10 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeSepia: 'Sepia',
     cacheTab: 'Cache',
     synthesisCache: 'Synthesis cache',
-    documentsUnit: 'documents',
-    cachedDocumentsNone: 'No cached documents.',
+    segmentsUnit: 'segments',
+    cachedSegmentsNone: 'No cached segments.',
+    documentsUnit: 'segments',
+    cachedDocumentsNone: 'No cached segments.',
     clearSynthesisCache: 'Clear cache',
     resetPlaybackCache: 'Reset playback, segment info, and cached audio',
   },
@@ -268,6 +280,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     discardTitle: '放棄未儲存的變更？',
     discardMessage: '有未儲存的變更，放棄後將會遺失。',
     discardConfirm: '放棄',
+    stopPlaybackTitle: '停止播放？',
+    stopPlaybackMessage: '正在播放中，是否停止播放並繼續？',
+    stopPlaybackConfirm: '停止',
     voiceNotConfigured: '此語言尚未設定語音。',
     playbackFailed: '播放失敗。',
     theme: '主題',
@@ -280,8 +295,10 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeSepia: '暖色',
     cacheTab: '快取',
     synthesisCache: '語音合成快取',
-    documentsUnit: '份文件',
-    cachedDocumentsNone: '沒有已快取的文件。',
+    segmentsUnit: '個片段',
+    cachedSegmentsNone: '沒有已快取的片段。',
+    documentsUnit: '個片段',
+    cachedDocumentsNone: '沒有已快取的片段。',
     clearSynthesisCache: '清除快取',
     resetPlaybackCache: '重設播放、段落資訊與已快取音訊',
   },
@@ -357,6 +374,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     discardTitle: '放弃未保存的更改？',
     discardMessage: '有未保存的更改，放弃后将丢失。',
     discardConfirm: '放弃',
+    stopPlaybackTitle: '停止播放？',
+    stopPlaybackMessage: '正在播放中，是否停止播放并继续？',
+    stopPlaybackConfirm: '停止',
     voiceNotConfigured: '此语言尚未设置语音。',
     playbackFailed: '播放失败。',
     theme: '主题',
@@ -369,8 +389,10 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeSepia: '暖色',
     cacheTab: '缓存',
     synthesisCache: '语音合成缓存',
-    documentsUnit: '份文档',
-    cachedDocumentsNone: '暂无已缓存的文档。',
+    segmentsUnit: '个片段',
+    cachedSegmentsNone: '暂无已缓存的片段。',
+    documentsUnit: '个片段',
+    cachedDocumentsNone: '暂无已缓存的片段。',
     clearSynthesisCache: '清除缓存',
     resetPlaybackCache: '重置播放、段落信息与已缓存音频',
   },

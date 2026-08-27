@@ -1,5 +1,6 @@
 import type { SettingsHandle } from './use-settings.svelte'
 import type { DocumentsHandle } from './use-documents.svelte'
+import { UI_TEXT } from './ui-text'
 import { readTextFile } from './upload-text'
 
 export type DiscardKind = 'new' | 'open' | 'delete' | 'clone' | 'upload'
@@ -22,6 +23,7 @@ interface DocumentEditorDeps {
   closeDrawer: () => void
   focusEditor: () => void
   openFilePicker: () => void
+  isPlaybackActive?: () => boolean
 }
 
 export function useDocumentEditor(deps: DocumentEditorDeps) {
@@ -44,6 +46,8 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
 
   let deleteDialogOpen = $state(false)
   let deleteTargetId = $state<string | null>(null)
+
+  let playbackConfirmOpen = $state(false)
 
   type CopyFeedback = 'idle' | 'copied' | 'failed'
   let copyFeedback = $state<CopyFeedback>('idle')
@@ -68,13 +72,31 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     baselineContent = settings.content
   }
 
-  function requestOpenDocument(id: string) {
-    if (isDirty) {
-      pendingDiscardKind = 'open'
+  function gateNavigation(
+    kind: DiscardKind,
+    id: string | null,
+    file: File | null,
+    needsDiscard: boolean,
+  ): boolean {
+    if (deps.isPlaybackActive?.()) {
+      pendingDiscardKind = kind
       pendingDocumentId = id
-      discardDialogOpen = true
-      return
+      pendingUploadFile = file
+      playbackConfirmOpen = true
+      return true
     }
+    if (needsDiscard) {
+      pendingDiscardKind = kind
+      pendingDocumentId = id
+      pendingUploadFile = file
+      discardDialogOpen = true
+      return true
+    }
+    return false
+  }
+
+  function requestOpenDocument(id: string) {
+    if (gateNavigation('open', id, null, isDirty)) return
     loadDocument(id)
   }
 
@@ -100,12 +122,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function requestCloneDocument() {
-    if (currentDocId && isDirty) {
-      pendingDiscardKind = 'clone'
-      pendingDocumentId = currentDocId
-      discardDialogOpen = true
-      return
-    }
+    if (gateNavigation('clone', currentDocId, null, !!(currentDocId && isDirty))) return
     cloneCurrentDocument()
   }
 
@@ -123,7 +140,15 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function requestDeleteDocument(id: string) {
-    if (id === currentDocId && isDirty) {
+    const isCurrent = id === currentDocId
+    if (isCurrent && deps.isPlaybackActive?.()) {
+      pendingDiscardKind = 'delete'
+      pendingDocumentId = id
+      pendingUploadFile = null
+      playbackConfirmOpen = true
+      return
+    }
+    if (isCurrent && isDirty) {
       pendingDiscardKind = 'delete'
       pendingDocumentId = id
       discardDialogOpen = true
@@ -152,12 +177,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function requestNewDocument() {
-    if (isDirty) {
-      pendingDiscardKind = 'new'
-      pendingDocumentId = null
-      discardDialogOpen = true
-      return
-    }
+    if (gateNavigation('new', null, null, isDirty)) return
     createNewDocument()
   }
 
@@ -207,23 +227,12 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
 
   function requestUpload() {
     pendingUploadFile = null
-    if (isDirty) {
-      pendingDiscardKind = 'upload'
-      pendingDocumentId = null
-      discardDialogOpen = true
-      return
-    }
+    if (gateNavigation('upload', null, null, isDirty)) return
     deps.openFilePicker()
   }
 
   function requestUploadFile(file: File): Promise<void> | undefined {
-    if (isDirty) {
-      pendingDiscardKind = 'upload'
-      pendingDocumentId = null
-      pendingUploadFile = file
-      discardDialogOpen = true
-      return
-    }
+    if (gateNavigation('upload', null, file, isDirty)) return
     return importFile(file)
   }
 
@@ -244,7 +253,21 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
       return
     }
     const current = currentDocId ? documents.findById(currentDocId) : undefined
-    saveName = current?.name ?? ''
+    if (current) {
+      applySave(current.name)
+      return
+    }
+    const baseName = UI_TEXT[settings.locale]?.documentNamePlaceholder ?? 'Untitled'
+    const existingNames = new Set(documents.documents.map(document => document.name))
+    let fallbackName = baseName
+    if (existingNames.has(fallbackName)) {
+      let index = 1
+      while (existingNames.has(`${baseName} ${index}`)) {
+        index += 1
+      }
+      fallbackName = `${baseName} ${index}`
+    }
+    saveName = fallbackName
     saveInitialName = saveName
     showNameError = false
     saveDialogOpen = true
@@ -294,22 +317,37 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     overwriteConfirmOpen = false
   }
 
-  function handleConfirmDiscard() {
-    const id = pendingDocumentId
-    const kind = pendingDiscardKind
-    discardDialogOpen = false
+  function clearPendingState() {
     pendingDocumentId = null
     pendingDiscardKind = 'open'
+    pendingUploadFile = null
+  }
+
+  function executeDirectNavigation(kind: DiscardKind, id: string | null, file: File | null) {
     if (kind === 'open') {
-      if (id) {
-        loadDocument(id)
-      }
+      if (id) loadDocument(id)
     } else if (kind === 'delete') {
       if (id) {
         deleteTargetId = id
         deleteDialogOpen = true
       }
     } else if (kind === 'clone') {
+      cloneCurrentDocument()
+    } else if (kind === 'upload') {
+      if (file) void importFile(file)
+      else deps.openFilePicker()
+    } else {
+      createNewDocument()
+    }
+  }
+
+  function handleConfirmDiscard() {
+    const kind = pendingDiscardKind
+    const id = pendingDocumentId
+    const file = pendingUploadFile
+    discardDialogOpen = false
+    clearPendingState()
+    if (kind === 'clone') {
       const source = id ? documents.findById(id) : undefined
       if (source) {
         // Confirmed discard: drop the unsaved edits so the detached copy
@@ -318,24 +356,43 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
         settings.content = source.content
         cloneCurrentDocument()
       }
-    } else if (kind === 'upload') {
-      const file = pendingUploadFile
-      pendingUploadFile = null
-      if (file) {
-        void importFile(file)
-      } else {
-        deps.openFilePicker()
-      }
-    } else {
-      createNewDocument()
+      return
     }
+    // Defer to shared direct executor for the remaining kinds.
+    // pendingUploadFile already cleared via clearPendingState; restore file for upload.
+    executeDirectNavigation(kind, id, file)
   }
 
   function handleCancelDiscard() {
     discardDialogOpen = false
-    pendingDocumentId = null
-    pendingDiscardKind = 'open'
-    pendingUploadFile = null
+    clearPendingState()
+  }
+
+  function handleConfirmPlayback() {
+    const kind = pendingDiscardKind
+    const id = pendingDocumentId
+    const file = pendingUploadFile
+    playbackConfirmOpen = false
+    deps.resetPlaybackSession()
+    // After stopping playback, check if unsaved changes still require confirmation.
+    const needsDiscard =
+      (kind === 'open' && isDirty) ||
+      (kind === 'new' && isDirty) ||
+      (kind === 'delete' && isDirty && id === currentDocId) ||
+      (kind === 'clone' && isDirty && !!id) ||
+      (kind === 'upload' && isDirty)
+    if (needsDiscard) {
+      discardDialogOpen = true
+      return
+    }
+    // No discard needed — execute the pending navigation directly.
+    clearPendingState()
+    executeDirectNavigation(kind, id, file)
+  }
+
+  function handleCancelPlayback() {
+    playbackConfirmOpen = false
+    clearPendingState()
   }
 
   return {
@@ -384,6 +441,9 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     get deleteTargetName() {
       return deleteTargetName
     },
+    get playbackConfirmOpen() {
+      return playbackConfirmOpen
+    },
     get copyFeedback() {
       return copyFeedback
     },
@@ -398,6 +458,8 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     cancelDiscard: handleCancelDiscard,
     confirmDelete: handleConfirmDelete,
     cancelDelete: handleCancelDelete,
+    confirmPlayback: handleConfirmPlayback,
+    cancelPlayback: handleCancelPlayback,
     loadDocument,
     renameDocument: handleRenameDocument,
     requestCloneDocument,
