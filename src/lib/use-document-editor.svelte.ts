@@ -8,6 +8,13 @@ export type UploadNotice = 'uploaded' | 'too-large' | 'read-failed' | 'binary'
 
 const UPLOAD_NOTICE_MS = 4000
 
+function createDraftCacheId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `draft-${crypto.randomUUID()}`
+  }
+  return `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 interface DocumentEditorDeps {
   settings: SettingsHandle
   documents: DocumentsHandle
@@ -21,6 +28,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   const { settings, documents } = deps
 
   let currentDocId = $state<string | null>(null)
+  let draftCacheId = $state(createDraftCacheId())
   let baselineContent = $state<string | null>(null)
 
   let saveDialogOpen = $state(false)
@@ -52,6 +60,10 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   const currentDocName = $derived(currentDocId ? (documents.findById(currentDocId)?.name ?? '') : '')
   const deleteTargetName = $derived(deleteTargetId ? (documents.findById(deleteTargetId)?.name ?? '') : '')
 
+  function resetDraftCacheId() {
+    draftCacheId = createDraftCacheId()
+  }
+
   function markBaseline() {
     baselineContent = settings.content
   }
@@ -72,6 +84,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
       return
     }
     deps.resetPlaybackSession()
+    resetDraftCacheId()
     settings.content = target.content
     currentDocId = target.id
     baselineContent = target.content
@@ -104,6 +117,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     // Detach into a new unsaved document carrying the same content; nothing
     // is persisted until the user saves it under a name.
     currentDocId = null
+    resetDraftCacheId()
     baselineContent = settings.content
     deps.focusEditor()
   }
@@ -128,6 +142,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     }
     if (documents.remove(id) && id === currentDocId) {
       currentDocId = null
+      resetDraftCacheId()
     }
   }
 
@@ -150,6 +165,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     deps.resetPlaybackSession()
     settings.content = ''
     currentDocId = null
+    resetDraftCacheId()
     baselineContent = ''
     deps.closeDrawer()
     deps.focusEditor()
@@ -163,6 +179,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     }
     deps.resetPlaybackSession()
     settings.content = ''
+    resetDraftCacheId()
     baselineContent = ''
     deps.focusEditor()
   }
@@ -324,6 +341,9 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   return {
     get currentDocId() {
       return currentDocId
+    },
+    get cacheScopeId() {
+      return currentDocId ?? draftCacheId
     },
     get isDirty() {
       return isDirty

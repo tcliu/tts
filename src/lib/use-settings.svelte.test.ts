@@ -55,6 +55,15 @@ describe('useSettings persistence', () => {
     dispose()
   })
 
+  it('ignores an invalid stored locale and keeps the default', async () => {
+    localStorage.setItem('tts:web-settings', JSON.stringify({ locale: 'fr' }))
+
+    const { settings, dispose } = createSettingsHost()
+    settings.hydrate()
+    expect(settings.locale).toBe('en')
+    dispose()
+  })
+
   it('defaults the theme to dark and persists a changed theme across reloads', async () => {
     vi.useFakeTimers()
 

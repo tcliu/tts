@@ -1,5 +1,6 @@
 <script lang="ts">
   import BaseDialog from '$lib/components/BaseDialog.svelte'
+  import Button from '$lib/components/Button.svelte'
   import SelectDropdown from '$lib/components/SelectDropdown.svelte'
   import NumberInput from '$lib/components/NumberInput.svelte'
   import Tabs from '$lib/components/Tabs.svelte'
@@ -12,11 +13,13 @@
     synthesisConcurrency: number
     voiceSelections: Record<string, string>
     groupSelections: Record<string, string>
+    cacheStats: { documents: number; bytes: number } | null
     onCancel: () => void
     onSelectVoice: (languageCode: string, voiceId: string) => void
     onSelectGroup: (languageCode: string, group: string) => void
     onSelectSpeed: (speed: number) => void
     onSelectConcurrent: (value: number) => void
+    onClearCache: () => void
   }
 
   let {
@@ -25,11 +28,13 @@
     synthesisConcurrency,
     voiceSelections,
     groupSelections,
+    cacheStats,
     onCancel,
     onSelectVoice,
     onSelectGroup,
     onSelectSpeed,
     onSelectConcurrent,
+    onClearCache,
   }: Props = $props()
 
   const text = $derived(UI_TEXT[locale])
@@ -41,6 +46,13 @@
   function voicesFor(languageCode: string, group: string) {
     return getVoiceOptions(languageCode, group)
   }
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    const kb = bytes / 1024
+    if (kb < 1024) return `${kb.toFixed(1)} KB`
+    return `${(kb / 1024).toFixed(1)} MB`
+  }
 </script>
 
 <BaseDialog title={text.settingsTitle} maxWidth="2xl" closeLabel={text.close} onCancel={onCancel}>
@@ -50,6 +62,7 @@
     tabs={[
       { label: text.voicesTab, path: 'voices', content: voicesContent },
       { label: text.speedTab, path: 'speed', content: speedContent },
+      { label: text.cacheTab, path: 'cache', content: cacheContent },
     ]} />
 </BaseDialog>
 
@@ -122,6 +135,34 @@
             const next = Number.isFinite(raw) ? Math.min(8, Math.max(1, Math.round(raw))) : 1
             onSelectConcurrent(next)
           }} />
+      </div>
+    </div>
+  {/snippet}
+
+  {#snippet cacheContent()}
+    <div class="rounded-xl border border-slate-800 bg-slate-950/50">
+      <div class="grid items-center gap-2 p-3 md:grid-cols-[minmax(0,1fr)_11rem]">
+        <div class="text-sm">
+          <span class="font-medium text-slate-100">{text.synthesisCache}</span>
+          <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
+            {#if cacheStats === null}
+              —
+            {:else if cacheStats.documents === 0}
+              {text.cachedDocumentsNone}
+            {:else}
+              {cacheStats.documents} {text.documentsUnit} · {formatBytes(cacheStats.bytes)}
+            {/if}
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={cacheStats === null || cacheStats.documents === 0}
+          ariaLabel={text.clearSynthesisCache}
+          className="text-xs"
+          onClick={onClearCache}>
+          {text.clearSynthesisCache}
+        </Button>
       </div>
     </div>
   {/snippet}

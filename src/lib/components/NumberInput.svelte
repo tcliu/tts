@@ -73,6 +73,7 @@
     const input = event.target as HTMLInputElement
     const numValue = Number.parseFloat(input.value)
     if (input.value === '' || Number.isNaN(numValue)) {
+      onblur?.(event)
       return
     }
     let clamped = numValue

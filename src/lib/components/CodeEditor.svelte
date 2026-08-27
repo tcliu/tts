@@ -279,6 +279,10 @@
     editorView?.focus()
   }
 
+  export function hasFocus(): boolean {
+    return editorView?.hasFocus ?? false
+  }
+
   export function getSelectionText(): string {
     if (!editorView) return ''
     const { from, to } = editorView.state.selection.main

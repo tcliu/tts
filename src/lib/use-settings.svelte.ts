@@ -111,7 +111,9 @@ export function useSettings(): SettingsHandle {
             synthesisConcurrency?: number
             theme?: UiTheme
           }
-          locale = parsed.locale ?? locale
+          if (parsed.locale === 'en' || parsed.locale === 'zh-TW' || parsed.locale === 'zh-CN') {
+            locale = parsed.locale
+          }
           content = parsed.content ?? content
           speed = SPEEDS.includes((parsed.speed ?? 1) as (typeof SPEEDS)[number]) ? (parsed.speed ?? 1) : 1
           voiceSelections = { ...voiceSelections, ...(parsed.voiceSelections ?? {}) }
