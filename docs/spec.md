@@ -116,6 +116,12 @@ coherent system instead of a new parallel one.
   synthesized segments in IndexedDB (bounded count). After a reload it verifies
   its local copy with `If-None-Match` and reuses the stored blob on `304`;
   warm-up waits for the IndexedDB hydration to land before scanning segments.
+- Cache entries are keyed by `(text, voice, rate)`, so a different voice or speed
+  stores a separate entry; identical content with the same voice and speed reuses
+  the cached audio.
+- Each persisted entry is tagged with the document id, so the cache can be
+  cleared for a single document (the Reset action clears the open document's
+  cached audio) or for every document from the Settings Cache tab.
 
 ## Settings model
 

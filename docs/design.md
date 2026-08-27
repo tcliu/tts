@@ -44,10 +44,11 @@
 - Activating Stop ends playback and leaves the current segment selected.
 - When playback completes, clear the selection only when playback started
   without a pre-existing selection.
-- Once synthesis returns its first result, playback controls appear above the
-  editor: chips showing the current language, voice, and segment counter, plus
-  a seek slider with elapsed and total time. Editing the content or switching
-  documents hides them until the next synthesis produces a result.
+- Playback controls appear above the editor once synthesis has produced a
+  result or cached synthesis is available: chips showing the current language,
+  voice, and segment counter, plus a seek slider with elapsed and total time.
+  Opening or switching to a document with cached audio shows them immediately;
+  editing the content hides them until the cache refreshes after a short pause.
 - Dragging the seek slider previews the position; releasing starts or resumes
   playback there.
 
@@ -107,9 +108,9 @@
 - A search field filters rows by text, offset, or language.
 - A follow toggle scrolls the panel to keep the spoken row visible; scrolling
   respects reduced-motion preferences.
-- Editing the editor content clears the rows and refreshes them in the
-  background after a short pause; a status hint reflects refreshing and cleared
-  states.
+- Editing the editor content clears the rows and marks them stale; a status hint
+  shows the rows were cleared, and the panel shows the cached segment rows again
+  after a short pause once playback re-reads the synthesis cache.
 
 ## Settings dialog
 
@@ -121,6 +122,8 @@
 - The Speed tab shows the default speed field with `1x` as the default and a
   Synthesis concurrency field that caps how many segments synthesize in
   parallel.
+- The Cache tab shows how many documents have stored synthesis and the total
+  size on disk, with a button to clear every cached audio file.
 
 ## Responsive behavior
 
