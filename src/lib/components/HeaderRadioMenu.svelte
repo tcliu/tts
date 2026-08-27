@@ -90,10 +90,8 @@
 
 <div
   bind:this={containerRef}
-  class="relative inline-flex"
-  use:clickOutside={() => {
-    if (open) open = false
-  }}>
+  class="contents"
+  use:clickOutside={{ enabled: open, handler: () => (open = false) }}>
   <Button bind:buttonEl={buttonRef} variant="secondary" size="sm" ariaLabel={label} ariaExpanded={open} tooltip={label} onClick={toggle} icon={icon} />
 
   {#if open}

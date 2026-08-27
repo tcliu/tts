@@ -68,6 +68,9 @@ export interface PlaybackHandle {
   readonly positionSegmentIndex: number
   readonly positionSegmentLabel: string
   readonly positionVoiceName: string
+  readonly positionVoiceModel: string
+  readonly positionVoiceLocale: string
+  readonly positionVoiceLabel: string
   readonly currentSynthesisRate: number
   readonly playbackElapsed: number
   readonly playbackDuration: number
@@ -160,6 +163,18 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   const positionVoiceName = $derived.by(() => {
     const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
     return segment ? (deps.settings.resolveVoiceForSegment(segment.lang)?.name ?? '') : ''
+  })
+  const positionVoiceModel = $derived.by(() => {
+    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
+    return segment ? (deps.settings.resolveVoiceForSegment(segment.lang)?.edge ?? '') : ''
+  })
+  const positionVoiceLocale = $derived.by(() => {
+    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
+    const voice = segment ? deps.settings.resolveVoiceForSegment(segment.lang) : undefined
+    return voice ? voice.edge.split('-').slice(0, 2).join('-') : ''
+  })
+  const positionVoiceLabel = $derived.by(() => {
+    return [positionVoiceName, positionVoiceModel, positionVoiceLocale].filter(Boolean).join(' | ')
   })
 
   $effect(() => {
@@ -1104,6 +1119,14 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     playbackDuration = 0
     currentSynthesisRate = deps.settings.speed
     metadataAvailable = false
+    // Invalidate any pending debounced seek that was queued before the reset.
+    pendingSelectionGeneration += 1
+    if (pendingSelectionSeekTimer) {
+      clearTimeout(pendingSelectionSeekTimer)
+      pendingSelectionSeekTimer = null
+      pendingSelectionRange = null
+      pendingCaretOffset = null
+    }
   }
 
   function resetSession() {
