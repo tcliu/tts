@@ -108,6 +108,7 @@ export const REFERENCE_LANGUAGES: TtsLanguage[] = [
       { name: 'Yunxi', gender: 'Male', source: 'edge', edge: 'zh-CN-YunxiNeural', group: 'Mandarin' },
       { name: 'Yunyang', gender: 'Male', source: 'edge', edge: 'zh-CN-YunyangNeural', group: 'Mandarin' },
       { name: 'HiuGaai', gender: 'Female', source: 'edge', edge: 'zh-HK-HiuGaaiNeural', group: 'Cantonese' },
+      { name: 'HiuMaan', gender: 'Female', source: 'edge', edge: 'zh-HK-HiuMaanNeural', group: 'Cantonese' },
       { name: 'WanLung', gender: 'Male', source: 'edge', edge: 'zh-HK-WanLungNeural', group: 'Cantonese' },
       { name: 'HsiaoChen', gender: 'Female', source: 'edge', edge: 'zh-TW-HsiaoChenNeural', group: 'Taiwan' },
       { name: 'HsiaoYu', gender: 'Female', source: 'edge', edge: 'zh-TW-HsiaoYuNeural', group: 'Taiwan' },
@@ -167,6 +168,9 @@ export const REFERENCE_LANGUAGES: TtsLanguage[] = [
 const MAX_SEGMENT_LENGTH = 500
 const HANGUL_RE = /[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]/
 const SEGMENT_CJK_RE = /[\u1100-\u11ff\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u3040-\u30ff\u0400-\u052f]/
+const SINGLE_CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af\u3130-\u318f]/
+const PUNCT_KEEP_RE = /[.!?。！？…·•\-—─]/
+const PUNCT_ONLY_RE = /^[.!?。！？…·•\-—─]+$/
 
 export function defaultVoiceByLanguage(): Record<string, string> {
   return Object.fromEntries(REFERENCE_LANGUAGES.map(language => [language.code, language.voices[0]?.edge ?? '']))
@@ -249,6 +253,10 @@ function splitTtsRuns(text: string) {
       currentText += char
       continue
     }
+    if (currentCjk !== null && currentText && PUNCT_KEEP_RE.test(char)) {
+      currentText += char
+      continue
+    }
     const cjk = SEGMENT_CJK_RE.test(char)
     if (currentCjk === null || currentCjk === cjk) {
       currentCjk = cjk
@@ -288,11 +296,20 @@ function foldShortRuns(runs: { text: string; lang: string; start: number; end: n
     changed = false
     for (let i = 0; i < folded.length; i += 1) {
       const run = folded[i]
-      if (run.text.trim().length >= minimumLength(run.lang)) continue
+      const trimmed = run.text.trim()
+      if (trimmed.length === 1 && SINGLE_CJK_RE.test(trimmed)) continue
+      if (trimmed.length >= minimumLength(run.lang)) continue
       const prev = i > 0 ? folded[i - 1] : null
       const next = i < folded.length - 1 ? folded[i + 1] : null
       if (!prev && !next) continue
-      const target = !next || (prev && prev.text.length >= next.text.length) ? i - 1 : i + 1
+      const isPunctuationRun = PUNCT_ONLY_RE.test(trimmed)
+      const target = isPunctuationRun
+        ? prev
+          ? i - 1
+          : i + 1
+        : !next || (prev && prev.text.length >= next.text.length)
+          ? i - 1
+          : i + 1
       if (target === i + 1) {
         folded[target].text = folded[i].text + folded[target].text
         folded[target].start = folded[i].start
