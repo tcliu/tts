@@ -12,9 +12,10 @@ import {
   usePlayback,
   type CodeEditorHandle,
   type PlaybackDeps,
+  type SegmentMeta,
 } from './use-playback.svelte'
 import type { SettingsHandle } from './use-settings.svelte'
-import { splitHighlightRanges, splitTtsSegments } from './tts-reference'
+import { splitHighlightRanges, splitTtsSegments, type TtsBoundary, type TtsSegment } from './tts-reference'
 import { createPlaybackHost } from '../test/create-playback.svelte'
 import { getCachedSynthesis } from './tts-client'
 
@@ -68,8 +69,8 @@ function createEditor(): CodeEditorHandle {
   }
 }
 
-function createDeps(content = 'Hello world. Second segment here.'): PlaybackDeps {
-  const settings = {
+function createSettings(content: string): SettingsHandle {
+  return {
     locale: 'en',
     speed: 1,
     synthesisConcurrency: 2,
@@ -77,11 +78,41 @@ function createDeps(content = 'Hello world. Second segment here.'): PlaybackDeps
     content,
     resolveVoiceForSegment: () => ({ edge: 'en-US-AriaNeural', name: 'Aria' }),
   } as unknown as SettingsHandle
+}
+
+function createDeps(content = 'Hello world. Second segment here.', editor?: CodeEditorHandle): PlaybackDeps {
   return {
-    settings,
-    getEditor: createEditor,
+    settings: createSettings(content),
+    getEditor: editor ? () => editor : createEditor,
     segmentLabel: () => 'English',
     prepareForPlayback: () => {},
+  }
+}
+
+const FIRST_SEGMENT_BOUNDARIES: TtsBoundary[] = [
+  { offset: 0, at: 0, text: 'First' },
+  { offset: 6, at: 0.5, text: 'paragraph' },
+  { offset: 16, at: 1.1, text: 'here.' },
+]
+
+const SECOND_SEGMENT_BOUNDARIES: TtsBoundary[] = [
+  { offset: 0, at: 0, text: 'Second' },
+  { offset: 7, at: 0.6, text: 'paragraph' },
+]
+
+function createSegmentMeta(index: number, segment: TtsSegment, overrides: Partial<SegmentMeta> = {}): SegmentMeta {
+  return {
+    index,
+    lang: segment.lang,
+    text: segment.text,
+    ranges: splitHighlightRanges(segment.text),
+    boundaries: FIRST_SEGMENT_BOUNDARIES,
+    wordBoundaries: FIRST_SEGMENT_BOUNDARIES,
+    baseOffset: segment.indexStart,
+    spokenStart: 0,
+    spokenEnd: 1.5,
+    duration: 1.5,
+    ...overrides,
   }
 }
 
@@ -288,20 +319,7 @@ describe('usePlayback stop', () => {
     const content = 'First paragraph here.\n\nSecond paragraph here.'
     const selectionStart = content.indexOf('Second')
     const editor = createSelectionEditor({ from: selectionStart, to: selectionStart + 'Second'.length })
-    const settings = {
-      locale: 'en',
-      speed: 1,
-      synthesisConcurrency: 2,
-      canPlay: true,
-      content,
-      resolveVoiceForSegment: () => ({ edge: 'en-US-AriaNeural', name: 'Aria' }),
-    } as unknown as SettingsHandle
-    const { playback, dispose } = createPlaybackHost({
-      settings,
-      getEditor: () => editor,
-      segmentLabel: () => 'English',
-      prepareForPlayback: () => {},
-    })
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
 
     vi.mocked(getCachedSynthesis).mockClear()
     const finished = playback.startPlayback()
@@ -323,45 +341,53 @@ describe('usePlayback stop', () => {
     const selectionStart = content.indexOf('paragraph here.')
     const selectionEnd = selectionStart + 'paragraph here.'.length
     const segments = splitTtsSegments(content)
-    const playback = createPlaybackHost({
-      settings: {
-        locale: 'en',
-        speed: 1,
-        synthesisConcurrency: 2,
-        canPlay: true,
-        content,
-        resolveVoiceForSegment: () => ({ edge: 'en-US-AriaNeural', name: 'Aria' }),
-      } as unknown as SettingsHandle,
-      getEditor: () => createSelectionEditor({ from: selectionStart, to: selectionEnd }),
-      segmentLabel: () => 'English',
-      prepareForPlayback: () => {},
-    }).playback
+    const playback = createPlaybackHost(
+      createDeps(content, createSelectionEditor({ from: selectionStart, to: selectionEnd })),
+    ).playback
 
     playback.primeSession(segments, 0, { from: selectionStart, to: selectionEnd })
-    playback.recordSegment(0, {
-      index: 0,
-      lang: segments[0].lang,
-      text: segments[0].text,
-      ranges: splitHighlightRanges(segments[0].text),
-      boundaries: [
-        { offset: 0, at: 0, text: 'First' },
-        { offset: 6, at: 0.5, text: 'paragraph' },
-        { offset: 16, at: 1.1, text: 'here.' },
-      ],
-      wordBoundaries: [
-        { offset: 0, at: 0, text: 'First' },
-        { offset: 6, at: 0.5, text: 'paragraph' },
-        { offset: 16, at: 1.1, text: 'here.' },
-      ],
-      baseOffset: 0,
-      spokenStart: 0,
-      spokenEnd: 1.5,
-      duration: 1.5,
-    })
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
 
     playback.syncSelectionStart({ from: selectionStart, to: selectionEnd })
 
     expect(playback.currentSegmentIndex).toBe(1)
+    expect(playback.playbackElapsed).toBeCloseTo(0.5, 5)
+    expect(playback.totalElapsed).toBeCloseTo(0.5, 5)
+  })
+
+  it('exposes synthesizedCount only after synthesis results land', async () => {
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const segments = splitTtsSegments(content)
+    const editor = createSelectionEditor({ from: 0, to: 0 })
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    expect(playback.synthesizedCount).toBe(0)
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.synthesizedCount).toBeGreaterThan(0))
+    playback.stopPlayback()
+    await finished
+    expect(playback.synthesizedCount).toBe(segments.length)
+    playback.resetSession()
+    expect(playback.synthesizedCount).toBe(0)
+    dispose()
+  })
+
+  it('falls back to the nearest earlier boundary when a selection starts mid-word', () => {
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const selectionStart = content.indexOf('paragraph here.') + 2
+    const selectionEnd = selectionStart + 4
+    const segments = splitTtsSegments(content)
+    const playback = createPlaybackHost(
+      createDeps(content, createSelectionEditor({ from: selectionStart, to: selectionEnd })),
+    ).playback
+
+    playback.primeSession(segments, 0, { from: selectionStart, to: selectionEnd })
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    playback.syncSelectionStart({ from: selectionStart, to: selectionEnd })
+
+    expect(playback.currentSegmentIndex).toBe(1)
+    // Mid-word start snaps to the nearest earlier boundary, not the next one.
     expect(playback.playbackElapsed).toBeCloseTo(0.5, 5)
     expect(playback.totalElapsed).toBeCloseTo(0.5, 5)
   })
@@ -371,19 +397,9 @@ describe('usePlayback stop', () => {
     const selectionStart = content.indexOf('Second')
     const selectionEnd = selectionStart + 'Second'.length
     const segments = splitTtsSegments(content)
-    const playback = createPlaybackHost({
-      settings: {
-        locale: 'en',
-        speed: 1,
-        synthesisConcurrency: 2,
-        canPlay: true,
-        content,
-        resolveVoiceForSegment: () => ({ edge: 'en-US-AriaNeural', name: 'Aria' }),
-      } as unknown as SettingsHandle,
-      getEditor: () => createSelectionEditor({ from: selectionStart, to: selectionEnd }),
-      segmentLabel: () => 'English',
-      prepareForPlayback: () => {},
-    }).playback
+    const playback = createPlaybackHost(
+      createDeps(content, createSelectionEditor({ from: selectionStart, to: selectionEnd })),
+    ).playback
 
     playback.primeSession(segments, 0, null)
     playback.syncSelectionStart({ from: selectionStart, to: selectionEnd })
@@ -398,59 +414,18 @@ describe('usePlayback stop', () => {
     const selectionStart = content.indexOf('paragraph here.')
     const selectionEnd = selectionStart + 'paragraph here.'.length
     const segments = splitTtsSegments(content)
-    const playback = createPlaybackHost({
-      settings: {
-        locale: 'en',
-        speed: 1,
-        synthesisConcurrency: 2,
-        canPlay: true,
-        content,
-        resolveVoiceForSegment: () => ({ edge: 'en-US-AriaNeural', name: 'Aria' }),
-      } as unknown as SettingsHandle,
-      getEditor: () => createSelectionEditor({ from: selectionStart, to: selectionEnd }),
-      segmentLabel: () => 'English',
-      prepareForPlayback: () => {},
-    }).playback
+    const playback = createPlaybackHost(
+      createDeps(content, createSelectionEditor({ from: selectionStart, to: selectionEnd })),
+    ).playback
 
     playback.primeSession(segments, 0, null)
-    playback.recordSegment(0, {
-      index: 0,
-      lang: segments[0].lang,
-      text: segments[0].text,
-      ranges: splitHighlightRanges(segments[0].text),
-      boundaries: [
-        { offset: 0, at: 0, text: 'First' },
-        { offset: 6, at: 0.5, text: 'paragraph' },
-        { offset: 16, at: 1.1, text: 'here.' },
-      ],
-      wordBoundaries: [
-        { offset: 0, at: 0, text: 'First' },
-        { offset: 6, at: 0.5, text: 'paragraph' },
-        { offset: 16, at: 1.1, text: 'here.' },
-      ],
-      baseOffset: 0,
-      spokenStart: 0,
-      spokenEnd: 1.5,
-      duration: 1.5,
-    })
-    playback.recordSegment(1, {
-      index: 1,
-      lang: segments[1].lang,
-      text: segments[1].text,
-      ranges: splitHighlightRanges(segments[1].text),
-      boundaries: [
-        { offset: 0, at: 0, text: 'Second' },
-        { offset: 7, at: 0.6, text: 'paragraph' },
-      ],
-      wordBoundaries: [
-        { offset: 0, at: 0, text: 'Second' },
-        { offset: 7, at: 0.6, text: 'paragraph' },
-      ],
-      baseOffset: segments[1].indexStart,
-      spokenStart: 0,
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+    playback.recordSegment(1, createSegmentMeta(1, segments[1], {
+      boundaries: SECOND_SEGMENT_BOUNDARIES,
+      wordBoundaries: SECOND_SEGMENT_BOUNDARIES,
       spokenEnd: 1,
       duration: 1,
-    })
+    }))
 
     playback.syncSelectionStart(null)
     expect(playback.totalDuration).toBeCloseTo(2.5, 5)
@@ -467,41 +442,10 @@ describe('usePlayback stop', () => {
     const editor = createSelectionEditor(null, (from, to) => {
       selection = { from, to }
     })
-    const { playback, dispose } = createPlaybackHost({
-      settings: {
-        locale: 'en',
-        speed: 1,
-        synthesisConcurrency: 2,
-        canPlay: true,
-        content,
-        resolveVoiceForSegment: () => ({ edge: 'en-US-AriaNeural', name: 'Aria' }),
-      } as unknown as SettingsHandle,
-      getEditor: () => editor,
-      segmentLabel: () => 'English',
-      prepareForPlayback: () => {},
-    })
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
 
     playback.primeSession(segments, 0)
-    playback.recordSegment(0, {
-      index: 0,
-      lang: segments[0].lang,
-      text: segments[0].text,
-      ranges: splitHighlightRanges(segments[0].text),
-      boundaries: [
-        { offset: 0, at: 0, text: 'First' },
-        { offset: 6, at: 0.5, text: 'paragraph' },
-        { offset: 16, at: 1.1, text: 'here.' },
-      ],
-      wordBoundaries: [
-        { offset: 0, at: 0, text: 'First' },
-        { offset: 6, at: 0.5, text: 'paragraph' },
-        { offset: 16, at: 1.1, text: 'here.' },
-      ],
-      baseOffset: 0,
-      spokenStart: 0,
-      spokenEnd: 1.5,
-      duration: 1.5,
-    })
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
 
     playback.seekTo(0.6)
     flushSync()
