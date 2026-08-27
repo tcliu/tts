@@ -80,7 +80,7 @@ function createSettings(content: string): SettingsHandle {
     synthesisConcurrency: 2,
     canPlay: true,
     content,
-    resolveVoiceForSegment: () => ({ edge: 'en-US-AriaNeural', name: 'Aria' }),
+    resolveVoiceForSegment: () => ({ edge: 'en-US-AriaNeural', name: 'Aria', gender: 'Female' }),
   } as unknown as SettingsHandle
 }
 

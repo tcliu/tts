@@ -68,9 +68,8 @@ export interface PlaybackHandle {
   readonly positionSegmentIndex: number
   readonly positionSegmentLabel: string
   readonly positionVoiceName: string
-  readonly positionVoiceModel: string
+  readonly positionVoiceGender: string
   readonly positionVoiceLocale: string
-  readonly positionVoiceLabel: string
   readonly currentSynthesisRate: number
   readonly playbackElapsed: number
   readonly playbackDuration: number
@@ -164,17 +163,14 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
     return segment ? (deps.settings.resolveVoiceForSegment(segment.lang)?.name ?? '') : ''
   })
-  const positionVoiceModel = $derived.by(() => {
+  const positionVoiceGender = $derived.by(() => {
     const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
-    return segment ? (deps.settings.resolveVoiceForSegment(segment.lang)?.edge ?? '') : ''
+    return segment ? (deps.settings.resolveVoiceForSegment(segment.lang)?.gender ?? '') : ''
   })
   const positionVoiceLocale = $derived.by(() => {
     const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
     const voice = segment ? deps.settings.resolveVoiceForSegment(segment.lang) : undefined
     return voice ? voice.edge.split('-').slice(0, 2).join('-') : ''
-  })
-  const positionVoiceLabel = $derived.by(() => {
-    return [positionVoiceName, positionVoiceModel, positionVoiceLocale].filter(Boolean).join(' | ')
   })
 
   $effect(() => {
@@ -1194,6 +1190,12 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     },
     get positionVoiceName() {
       return positionVoiceName
+    },
+    get positionVoiceGender() {
+      return positionVoiceGender
+    },
+    get positionVoiceLocale() {
+      return positionVoiceLocale
     },
     get currentSynthesisRate() {
       return currentSynthesisRate

@@ -773,8 +773,14 @@
                     <span class="truncate">{playback.positionSegmentLabel}</span>
                   </span>
                   {#if playback.positionVoiceName}
+                    <span class="inline-flex max-w-full items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-200">
+                      <span class="truncate">{playback.positionVoiceLocale}</span>
+                    </span>
                     <span class="inline-flex max-w-full items-center rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-200">
                       <span class="truncate">{playback.positionVoiceName}</span>
+                    </span>
+                    <span class="inline-flex max-w-full items-center rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-0.5 text-xs font-medium text-fuchsia-200">
+                      <span class="truncate">{playback.positionVoiceGender}</span>
                     </span>
                   {/if}
                   {#if playback.totalSegments > 0}

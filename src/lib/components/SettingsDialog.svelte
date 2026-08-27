@@ -53,6 +53,10 @@
     if (kb < 1024) return `${kb.toFixed(1)} KB`
     return `${(kb / 1024).toFixed(1)} MB`
   }
+
+  function voiceLabel(voice: { name: string; gender: 'Female' | 'Male' }): string {
+    return `${voice.name} · ${voice.gender}`
+  }
 </script>
 
 <BaseDialog title={text.settingsTitle} maxWidth="2xl" closeLabel={text.close} onCancel={onCancel}>
@@ -89,9 +93,9 @@
           <div class="flex flex-col gap-2 text-sm text-slate-300">
             <SelectDropdown
               ariaLabel={`${language.name} ${text.voiceModel}`}
-              buttonLabel={voicesFor(language.code, group).find(voice => voice.edge === voiceSelections[language.code])?.name ?? voicesFor(language.code, group)[0]?.name ?? ''}
+              buttonLabel={voiceLabel(voicesFor(language.code, group).find(voice => voice.edge === voiceSelections[language.code]) ?? voicesFor(language.code, group)[0])}
               activeValue={voiceSelections[language.code]}
-              options={voicesFor(language.code, group).map(voice => ({ value: voice.edge, label: voice.name }))}
+              options={voicesFor(language.code, group).map(voice => ({ value: voice.edge, label: voiceLabel(voice) }))}
               size="sm"
               onSelect={voiceId => onSelectVoice(language.code, voiceId)} />
           </div>
