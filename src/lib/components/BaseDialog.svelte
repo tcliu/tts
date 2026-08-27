@@ -10,12 +10,12 @@
     title?: string
     className?: string
     maxWidth?: 'md' | 'lg' | 'xl' | '2xl' | 'fit'
-    closeLabel?: string
+    closeLabel: string
     onCancel: () => void
     children?: import('svelte').Snippet
   }
 
-  let { title, className = '', maxWidth = 'md', closeLabel = 'Close dialog', onCancel, children }: Props = $props()
+  let { title, className = '', maxWidth = 'md', closeLabel, onCancel, children }: Props = $props()
 
   let dialogIndex = 0
   let dialogRef = $state<HTMLElement | null>(null)

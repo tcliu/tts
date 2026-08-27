@@ -12,7 +12,7 @@
     className?: string
     showControls?: boolean
     id?: string
-    ariaLabel?: string
+    ariaLabel: string
     incrementLabel?: string
     decrementLabel?: string
     onkeydown?: (event: KeyboardEvent) => void
@@ -31,8 +31,8 @@
     showControls = true,
     id,
     ariaLabel,
-    incrementLabel = '',
-    decrementLabel = '',
+    incrementLabel,
+    decrementLabel,
     onkeydown,
     oninput,
     onblur,

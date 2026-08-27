@@ -19,7 +19,6 @@
     icon: Snippet
     item: Snippet<[T, MenuItemState]>
     ariaLabel: string
-    id?: string
     align?: 'left' | 'right'
     autoPlace?: boolean
     triggerClass?: string
@@ -37,7 +36,6 @@
     icon,
     item,
     ariaLabel,
-    id = Math.random().toString(36).slice(2),
     align = 'right',
     autoPlace = true,
     triggerClass = '',
@@ -48,7 +46,8 @@
     itemDisabled = () => false,
   }: Props = $props()
 
-  const menuId = $derived(`menu-${id}`)
+  let uid = $props.id()
+  const menuId = $derived(`menu-${uid}`)
 
   let open = $state(false)
   let activeIndex = $state(0)
