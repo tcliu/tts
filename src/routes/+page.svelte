@@ -786,18 +786,23 @@
               <div class="flex-none">
                 <div class="flex items-center gap-3">
                   <span class="w-11 flex-none select-none text-xs font-mono text-slate-400">{formatClock(playbackSliderDisplayValue)}</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max={String(playbackSliderMax)}
-                    step="0.01"
-                    value={String(playbackSliderDisplayValue)}
-                    aria-label={text.seek}
-                    disabled={playbackSliderMax <= 0}
-                    oninput={handlePlaybackSliderInput}
-                    onchange={commitPlaybackSlider}
-                    style={`background: linear-gradient(to right, var(--color-sky-400) 0%, var(--color-sky-400) ${playbackSliderProgress}%, var(--color-slate-800) ${playbackSliderProgress}%, var(--color-slate-800) 100%)`}
-                    class="h-2 min-w-0 flex-1 cursor-pointer appearance-none rounded-full accent-cyan-500 outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 disabled:cursor-default disabled:opacity-50" />
+                  <div class="relative flex min-w-0 flex-1 items-center">
+                    <div
+                      class={`pointer-events-none absolute inset-x-2 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-slate-800 ${playbackSliderMax <= 0 ? 'opacity-50' : ''}`}>
+                      <div class="h-full rounded-full bg-sky-400" style={`width: ${playbackSliderProgress}%`}></div>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max={String(playbackSliderMax)}
+                      step="0.01"
+                      value={String(playbackSliderDisplayValue)}
+                      aria-label={text.seek}
+                      disabled={playbackSliderMax <= 0}
+                      oninput={handlePlaybackSliderInput}
+                      onchange={commitPlaybackSlider}
+                      class="relative h-4 min-w-0 flex-1 cursor-pointer appearance-none bg-transparent accent-cyan-500 outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 disabled:cursor-default disabled:opacity-50" />
+                  </div>
                   <span class="w-11 flex-none select-none text-right text-xs font-mono text-slate-400">{formatClock(playback.totalDuration)}</span>
                 </div>
               </div>
