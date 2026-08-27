@@ -110,8 +110,12 @@ coherent system instead of a new parallel one.
   request rather than leaving it pending.
 - `$lib/server/tts-cache` persists synthesis results on disk under `.tts/`
   behind an injectable directory, keyed by the shared `$lib/tts-cache-key`
-  builder, with a time-to-live envelope. The client keeps a small LRU of
-  decoded blobs for the session.
+  builder, with a time-to-live envelope stamped with a content-hash ETag;
+  a request carrying `If-None-Match` that matches answers `304` without body.
+- The client keeps a small LRU of decoded blobs for the session and mirrors
+  synthesized segments in IndexedDB (bounded count). After a reload it verifies
+  its local copy with `If-None-Match` and reuses the stored blob on `304`;
+  warm-up waits for the IndexedDB hydration to land before scanning segments.
 
 ## Settings model
 
