@@ -7,6 +7,8 @@ vi.mock('./tts-client', () => ({
     boundaries: [] as Array<{ offset: number; at: number }>,
   })),
   peekCachedSynthesis: vi.fn(() => null),
+  isSynthesisCacheHydrated: vi.fn(() => true),
+  onSynthesisCacheHydrated: vi.fn((callback: () => void) => callback()),
 }))
 
 import {
@@ -67,6 +69,7 @@ function createEditor(): CodeEditorHandle {
     setSelection: () => false,
     clearSelection: () => {},
     focus: () => {},
+    hasFocus: () => false,
   }
 }
 
@@ -85,6 +88,7 @@ function createDeps(content = 'Hello world. Second segment here.', editor?: Code
   return {
     settings: createSettings(content),
     getEditor: editor ? () => editor : createEditor,
+    getCacheScopeId: () => 'doc-a',
     segmentLabel: () => 'English',
     prepareForPlayback: () => {},
   }
@@ -131,6 +135,7 @@ function createSelectionEditor(selection: { from: number; to: number } | null, o
     },
     clearSelection: () => {},
     focus: () => {},
+    hasFocus: () => false,
   }
 }
 
@@ -316,6 +321,75 @@ describe('usePlayback stop', () => {
     dispose()
   })
 
+  it('keeps a selection on the last character of a segment in that segment', async () => {
+    const content = 'Hello world.\n\nSecond sentence.'
+    const segments = splitTtsSegments(content)
+    const firstSegment = segments[0]
+    const editor = createSelectionEditor({ from: firstSegment.indexEnd, to: firstSegment.indexEnd + 1 })
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    playback.primeSession(segments, 0, { from: firstSegment.indexEnd, to: firstSegment.indexEnd + 1 })
+    playback.recordSegment(0, createSegmentMeta(0, firstSegment))
+
+    playback.syncSelectionStart({ from: firstSegment.indexEnd, to: firstSegment.indexEnd + 1 })
+    flushSync()
+
+    expect(playback.currentSegmentIndex).toBe(1)
+    dispose()
+  })
+
+  it('keeps resuming from the dragged slider position when Play follows the seek', async () => {
+    // Reproduces the multi-segment report: boot primes the session with null
+    // selections, dragging paints an editor selection that was never recorded,
+    // and Play used to treat that mismatch as a brand-new session, wiping the
+    // warmed metadata and restarting from zero.
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const segments = splitTtsSegments(content)
+    let selection: { from: number; to: number } | null = null
+    const editor: CodeEditorHandle = {
+      getSelectionText: () => '',
+      getSelectionRange: () => selection,
+      setSelection: (from, to) => {
+        selection = { from, to }
+        return true
+      },
+      clearSelection: () => {
+        selection = null
+      },
+      focus: () => {},
+    hasFocus: () => false,
+    }
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0], { duration: 4, spokenEnd: 4 }))
+    playback.recordSegment(1, createSegmentMeta(1, segments[1], { duration: 6, spokenEnd: 6 }))
+    playback.setSegmentDuration(0, 4)
+    playback.setSegmentDuration(1, 6)
+
+    await playback.seekTo(5.5)
+    flushSync()
+    expect(selection).not.toBeNull()
+    expect(playback.totalElapsed).toBeCloseTo(5.5, 2)
+
+    vi.mocked(getCachedSynthesis).mockClear()
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+
+    expect(vi.mocked(getCachedSynthesis).mock.calls[0]?.[0]).toBe(segments[1].text)
+    expect(playback.playedDuration).toBeCloseTo(4, 2)
+    const audio = await vi.waitFor(() => {
+      const instance = AudioStub.instances[AudioStub.instances.length - 1]
+      expect(instance).toBeDefined()
+      return instance
+    })
+    await vi.waitFor(() => expect(audio.currentTime).toBeCloseTo(1.5, 2))
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
   it('treats a manual selection as a full-document start position', async () => {
     const content = 'First paragraph here.\n\nSecond paragraph here.'
     const selectionStart = content.indexOf('Second')
@@ -354,6 +428,54 @@ describe('usePlayback stop', () => {
     expect(playback.currentSegmentIndex).toBe(1)
     expect(playback.playbackElapsed).toBeCloseTo(0.5, 5)
     expect(playback.totalElapsed).toBeCloseTo(0.5, 5)
+  })
+
+  it('drops stale segment metadata when the content changes between selections', () => {
+    const contentA = 'First paragraph here.\n\nSecond paragraph here.'
+    const deps = createDeps(contentA, createEditor())
+    const { playback, dispose } = createPlaybackHost(deps)
+
+    const segmentsA = splitTtsSegments(contentA)
+    playback.primeSession(segmentsA, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segmentsA[0]))
+    playback.recordSegment(1, createSegmentMeta(1, segmentsA[1]))
+    expect(playback.synthesizedCount).toBe(2)
+
+    // A caret move after the content changed must re-split; metadata recorded
+    // under the old numbering would otherwise bleed into the new session.
+    const contentB = 'First paragraph here.\n\nSecond paragraph here. Third sentence added.'
+    ;(deps.settings as unknown as { content: string }).content = contentB
+    playback.syncSelectionStart({ from: 0, to: 5 })
+    flushSync()
+
+    const segmentsB = splitTtsSegments(contentB)
+    expect(playback.sessionSource).toBe(contentB)
+    expect(playback.totalSegments).toBe(segmentsB.length)
+    expect(playback.synthesizedCount).toBe(0)
+    expect(Object.keys(playback.segments)).toHaveLength(0)
+    dispose()
+  })
+
+  it('ignores incompatible existing metadata when recording a synthesized segment', async () => {
+    const content = 'Hello world. Second segment here.'
+    const segments = splitTtsSegments(content)
+    const editor = createEditor()
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    playback.primeSession(segments, 0)
+    // Simulate a leftover entry from an older split: same index, other text.
+    playback.recordSegment(0, createSegmentMeta(0, segments[0], { text: 'WRONG', duration: 99 }))
+
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    await vi.waitFor(() => expect(playback.segments[0]?.text).toBe(segments[0].text))
+
+    expect(playback.segments[0]?.duration).not.toBe(99)
+    expect(playback.segments[0]?.text).not.toBe('WRONG')
+
+    playback.stopPlayback()
+    await finished
+    dispose()
   })
 
   it('exposes synthesizedCount only after synthesis results land', async () => {
@@ -661,6 +783,7 @@ describe('usePlayback stop', () => {
       },
       clearSelection: () => {},
       focus: () => {},
+    hasFocus: () => false,
     }
     const { playback, dispose } = createPlaybackHost(createDeps('First paragraph here.', editor))
     echo = (from, to) => playback.syncSelectionStart({ from, to })

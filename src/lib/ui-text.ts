@@ -80,6 +80,12 @@ export interface UiText {
   themeNebula: string
   themeSky: string
   themeSepia: string
+  cacheTab: string
+  synthesisCache: string
+  documentsUnit: string
+  cachedDocumentsNone: string
+  clearSynthesisCache: string
+  resetPlaybackCache: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [
@@ -179,6 +185,12 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeNebula: 'Nebula',
     themeSky: 'Sky',
     themeSepia: 'Sepia',
+    cacheTab: 'Cache',
+    synthesisCache: 'Synthesis cache',
+    documentsUnit: 'documents',
+    cachedDocumentsNone: 'No cached documents.',
+    clearSynthesisCache: 'Clear cache',
+    resetPlaybackCache: 'Reset playback, segment info, and cached audio',
   },
   'zh-TW': {
     language: '語言',
@@ -260,6 +272,12 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeNebula: '星雲',
     themeSky: '天藍',
     themeSepia: '暖色',
+    cacheTab: '快取',
+    synthesisCache: '語音合成快取',
+    documentsUnit: '份文件',
+    cachedDocumentsNone: '沒有已快取的文件。',
+    clearSynthesisCache: '清除快取',
+    resetPlaybackCache: '重設播放、段落資訊與已快取音訊',
   },
   'zh-CN': {
     language: '语言',
@@ -341,5 +359,11 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeNebula: '星云',
     themeSky: '天蓝',
     themeSepia: '暖色',
+    cacheTab: '缓存',
+    synthesisCache: '语音合成缓存',
+    documentsUnit: '份文档',
+    cachedDocumentsNone: '暂无已缓存的文档。',
+    clearSynthesisCache: '清除缓存',
+    resetPlaybackCache: '重置播放、段落信息与已缓存音频',
   },
 }

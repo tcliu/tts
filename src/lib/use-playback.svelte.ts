@@ -5,7 +5,12 @@ import {
   type HighlightRange,
   type TtsBoundary,
 } from './tts-reference'
-import { getCachedSynthesis, peekCachedSynthesis } from './tts-client'
+import {
+  getCachedSynthesis,
+  isSynthesisCacheHydrated,
+  onSynthesisCacheHydrated,
+  peekCachedSynthesis,
+} from './tts-client'
 import { UI_TEXT, segmentLanguageName, type UiLocale } from './ui-text'
 import type { SettingsHandle } from './use-settings.svelte'
 
@@ -15,6 +20,7 @@ export type CodeEditorHandle = {
   setSelection: (from: number, to: number) => boolean
   clearSelection: () => void
   focus: () => void
+  hasFocus: () => boolean
 }
 
 export interface SegmentMeta {
@@ -108,7 +114,7 @@ function locateSegmentStartByCharOffset(
   }
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index]
-    if (charOffset < segment.indexEnd) {
+    if (charOffset <= segment.indexEnd) {
       return { index, charOffset }
     }
   }
@@ -190,6 +196,7 @@ function readAudioDuration(blob: Blob, signal: AbortSignal): Promise<number> {
 export interface PlaybackDeps {
   settings: SettingsHandle
   getEditor: () => CodeEditorHandle | null
+  getCacheScopeId: () => string
   segmentLabel: (lang: string) => string
   prepareForPlayback: () => void
 }
@@ -348,35 +355,38 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     sessionResumeSelection = deps.getEditor()?.getSelectionRange() ?? null
   }
 
-  function updateSelectionForPosition(index: number, at: number) {
+  function updateSelectionForPosition(index: number, at: number): { from: number; to: number } | null {
     const meta = segmentMetaMap[index]
     const segment = sessionSegments[index]
-    if (!segment) return
+    if (!segment) return null
     const absoluteBase = sessionOffset + segment.indexStart
-    const setWholeSegmentSelection = () => {
+    const setWholeSegmentSelection = (): { from: number; to: number } => {
       const trimmed = trimWhitespaceRange(segment.text, 0, segment.text.length)
-      deps.getEditor()?.setSelection(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
+      const range = { from: absoluteBase + trimmed.start, to: absoluteBase + trimmed.end }
+      deps.getEditor()?.setSelection(range.from, range.to)
+      return range
     }
     const boundaries = highlightBoundaries(meta, [])
     if (!meta || meta.ranges.length === 0 || boundaries.length === 0) {
-      setWholeSegmentSelection()
-      return
+      return setWholeSegmentSelection()
     }
     const activeBoundary = activeBoundaryAt(boundaries, at)
     if (activeBoundary?.text) {
       const wordStart = activeBoundary.offset
       const wordEnd = wordStart + activeBoundary.text.length
       const trimmed = trimWhitespaceRange(segment.text, wordStart, wordEnd)
-      deps.getEditor()?.setSelection(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
-      return
+      const range = { from: absoluteBase + trimmed.start, to: absoluteBase + trimmed.end }
+      deps.getEditor()?.setSelection(range.from, range.to)
+      return range
     }
     const range = activeHighlightRange(meta.ranges, boundaries, at)
     if (!range) {
-      setWholeSegmentSelection()
-      return
+      return setWholeSegmentSelection()
     }
     const trimmed = trimWhitespaceRange(segment.text, range.start, range.end)
-    deps.getEditor()?.setSelection(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
+    const applied = { from: absoluteBase + trimmed.start, to: absoluteBase + trimmed.end }
+    deps.getEditor()?.setSelection(applied.from, applied.to)
+    return applied
   }
 
   function setResumePosition(index: number, at: number, applySelection = true) {
@@ -399,9 +409,12 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (applySelection) {
       // The selection echo of our own positioning must not re-enter
       // syncSelectionStart, or a seek to the end snaps back to the last word.
+      // Record the painted range as the resume selection so the very next
+      // Play recognizes the seek-scrolled state instead of rebuilding the
+      // session (which drops the dragged position and warmed metadata).
       applyingResumeSelection = true
       try {
-        updateSelectionForPosition(clampedIndex, clampedAt)
+        sessionResumeSelection = updateSelectionForPosition(clampedIndex, clampedAt) ?? sessionResumeSelection
       } finally {
         applyingResumeSelection = false
       }
@@ -423,21 +436,27 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       }
       return
     }
+    const contentChanged = sessionSourceContent !== content
     const segments =
-      sessionSegments.length > 0 && sessionSourceContent === content
-        ? sessionSegments
-        : splitTtsSegments(content)
+      sessionSegments.length > 0 && !contentChanged ? sessionSegments : splitTtsSegments(content)
     if (segments.length === 0) {
       resetSession()
       return
     }
+    if (contentChanged) {
+      // A re-split renumbers every segment; stale metadata recorded under the
+      // old numbering must not survive into the new session, or rows merge
+      // across texts (wrong boundaries, truncated speech, duplicated Seg
+      // numbers).
+      clearSegments()
+    }
     const start = locateSegmentStartByCharOffset(segments, range.from)
     const meta = segmentMetaMap[start.index]
     if (!meta) {
+      primeSession(segments, 0, range)
       return
     }
     primeSession(segments, 0, range)
-    totalSegments = segments.length
     const absoluteBase = segments[start.index]?.indexStart ?? 0
     const boundaries = highlightBoundaries(meta, [])
     if (boundaries.length === 0) {
@@ -691,7 +710,13 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
                 `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, segment.lang)})`,
               )
             }
-            const synth = await getCachedSynthesis(segment.text, voice.edge, rate, controller.abort.signal)
+            const synth = await getCachedSynthesis(
+              segment.text,
+              voice.edge,
+              rate,
+              controller.abort.signal,
+              deps.getCacheScopeId(),
+            )
             const duration = await readAudioDuration(synth.blob, controller.abort.signal)
             return {
               blob: synth.blob,
@@ -710,6 +735,10 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         task.then((res) => {
           if (controller.cancelled) return
           const existingMeta = segmentMetaMap[index]
+          // Merge with the existing meta only when it describes this exact
+          // text; a mismatch means it was recorded under an older split and
+          // its boundaries, duration, and spoken range would be wrong here.
+          const compatible = existingMeta?.text === segment.text
           const base = buildSegmentMeta(
             index,
             segment,
@@ -722,7 +751,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
             },
             playbackOffset + segment.indexStart,
           )
-          if (!existingMeta) {
+          if (!compatible) {
             recordSegment(index, base)
           } else {
             recordSegment(index, {
@@ -853,6 +882,13 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   function warmFromCache() {
+    if (!isSynthesisCacheHydrated()) {
+      // On boot the IndexedDB-backed segment cache may still be loading; defer
+      // the scan until it lands so a reload surfaces previously synthesized
+      // segments instead of warming from an empty map.
+      onSynthesisCacheHydrated(() => warmFromCache())
+      return
+    }
     resetSession()
     const content = deps.settings.content
     if (!content.trim()) {

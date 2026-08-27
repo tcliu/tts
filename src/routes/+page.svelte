@@ -34,6 +34,14 @@
   import UploadIcon from '$lib/icons/UploadIcon.svelte'
 
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
+  import { splitTtsSegments } from '$lib/tts-reference'
+  import { synthesisCacheKey } from '$lib/tts-cache-key'
+  import {
+    clearSynthesisCache,
+    clearDocumentSynthesisCache,
+    getSynthesisCacheStats,
+    type SynthesisCacheStats,
+  } from '$lib/tts-client'
   import { formatClock, usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
   import { useMetadata, RESYNC_DEBOUNCE_MS } from '$lib/use-metadata.svelte'
   import { useSettings, type UiTheme } from '$lib/use-settings.svelte'
@@ -52,6 +60,7 @@
   const playback = usePlayback({
     settings,
     getEditor: () => editorRef,
+    getCacheScopeId: () => editor.cacheScopeId,
     segmentLabel: lang => segmentLanguageName(settings.locale, lang),
     prepareForPlayback: () => hooks.prepareForPlayback(),
   })
@@ -83,6 +92,43 @@
   // outlives panel close/reopen so toggling Info keeps the expanded layout.
   let metadataExpanded = $state(false)
 
+  // Client-side synthesis cache facts for the Settings dialog; null until the
+  // first IndexedDB scan for the currently open dialog lands.
+  let cacheStats = $state<SynthesisCacheStats | null>(null)
+
+  $effect(() => {
+    if (!settingsOpen) return
+    let current = true
+    void getSynthesisCacheStats().then(stats => {
+      if (current) cacheStats = stats
+    })
+    return () => {
+      current = false
+    }
+  })
+
+  async function clearClientSynthesisCache() {
+    await clearSynthesisCache()
+    cacheStats = { documents: 0, bytes: 0 }
+  }
+
+  // Cache keys for every segment of the current document that has a voice;
+  // only these can exist in the per-document client cache.
+  function documentSynthesisCacheKeys(): string[] {
+    const content = settings.content
+    if (!content.trim()) return []
+    const rate = settings.speed
+    return splitTtsSegments(content).flatMap(segment => {
+      const voice = settings.resolveVoiceForSegment(segment.lang)
+      return voice?.edge ? [synthesisCacheKey(segment.text, voice.edge, rate)] : []
+    })
+  }
+
+  function resetPlaybackAndCache() {
+    playback.resetSession()
+    void clearDocumentSynthesisCache(editor.cacheScopeId, documentSynthesisCacheKeys())
+  }
+
   const THEME_MENU_OPTIONS: { value: UiTheme }[] = [
     { value: 'dark' },
     { value: 'ember' },
@@ -105,7 +151,7 @@
 
   let uploadDragActive = $state(false)
 
-  let drawerButtonRef = $state<HTMLElement | null>(null)
+  let drawerButtonRef = $state<HTMLButtonElement | null>(null)
   let drawerPanelRef = $state<HTMLElement | null>(null)
   let drawerSearchRef = $state<HTMLInputElement | null>(null)
 
@@ -187,6 +233,27 @@
     }
     playbackSliderDraft = null
     await playback.seekTo(Number(target.value))
+  }
+
+  function isEditableActiveElement(el: Element | null): boolean {
+    if (!el) return false
+    if (el.tagName === 'TEXTAREA') return true
+    if (el.tagName === 'INPUT' && (el as HTMLInputElement).type !== 'range') return true
+    if ((el as HTMLElement).isContentEditable) return true
+    return false
+  }
+
+  function handlePlaybackArrowKey(event: KeyboardEvent) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    if (editorRef?.hasFocus?.()) return
+    if (isEditableActiveElement(document.activeElement)) return
+    if (dialogsOpen() || drawer.drawerOpen) return
+    if (playback.synthesizedCount === 0 || playbackSliderMax <= 0) return
+    event.preventDefault()
+    const step = playbackSliderMax * 0.05
+    const delta = event.key === 'ArrowRight' ? step : -step
+    const next = Math.min(playbackSliderMax, Math.max(0, playback.totalElapsed + delta))
+    void playback.seekTo(next)
   }
 
   // Overflow-menu contents per band, derived from the single-source ladder so
@@ -456,6 +523,8 @@
   <title>{text.appTitle}</title>
 </svelte:head>
 
+<svelte:window onkeydown={handlePlaybackArrowKey} />
+
 <div class="flex h-dvh flex-col bg-slate-950 text-slate-100">
   {#snippet copyIcon()}
     {#if editor.copyFeedback === 'copied'}
@@ -469,19 +538,18 @@
 
   <header class="flex shrink-0 items-center justify-between gap-4 border-b border-slate-800 px-3 py-3 sm:px-4">
     <div class="flex items-center gap-2">
-      <span bind:this={drawerButtonRef} class="inline-flex">
-        <Button
-          variant="secondary"
-          size="sm"
-          ariaLabel={text.documents}
-          ariaExpanded={drawer.drawerOpen}
-          tooltip={text.documents}
-          onClick={toggleDrawer}>
-          {#snippet icon()}
-            <MenuIcon className="h-4 w-4" />
-          {/snippet}
-        </Button>
-      </span>
+      <Button
+        bind:buttonEl={drawerButtonRef}
+        variant="secondary"
+        size="sm"
+        ariaLabel={text.documents}
+        ariaExpanded={drawer.drawerOpen}
+        tooltip={text.documents}
+        onClick={toggleDrawer}>
+        {#snippet icon()}
+          <MenuIcon className="h-4 w-4" />
+        {/snippet}
+      </Button>
       <h1 class="text-base font-semibold tracking-tight sm:text-lg">TTS</h1>
     </div>
     <div class="flex items-center gap-2">
@@ -717,7 +785,7 @@
             {#if playback.synthesizedCount > 0}
               <div class="flex-none">
                 <div class="flex items-center gap-3">
-                  <span class="w-11 flex-none text-xs font-mono text-slate-400">{formatClock(playbackSliderDisplayValue)}</span>
+                  <span class="w-11 flex-none select-none text-xs font-mono text-slate-400">{formatClock(playbackSliderDisplayValue)}</span>
                   <input
                     type="range"
                     min="0"
@@ -730,7 +798,7 @@
                     onchange={commitPlaybackSlider}
                     style={`background: linear-gradient(to right, var(--color-sky-400) 0%, var(--color-sky-400) ${playbackSliderProgress}%, var(--color-slate-800) ${playbackSliderProgress}%, var(--color-slate-800) 100%)`}
                     class="h-2 min-w-0 flex-1 cursor-pointer appearance-none rounded-full accent-cyan-500 outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 disabled:cursor-default disabled:opacity-50" />
-                  <span class="w-11 flex-none text-right text-xs font-mono text-slate-400">{formatClock(playback.totalDuration)}</span>
+                  <span class="w-11 flex-none select-none text-right text-xs font-mono text-slate-400">{formatClock(playback.totalDuration)}</span>
                 </div>
               </div>
             {/if}
@@ -766,6 +834,17 @@
                       aria-label={text.metadataSearch}
                       class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50" />
                   </label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    ariaLabel={text.resetPlaybackCache}
+                    tooltip={text.resetPlaybackCache}
+                    onClick={resetPlaybackAndCache}
+                    className="border border-slate-700 text-slate-400 hover:text-slate-200">
+                    {#snippet icon()}
+                      <RefreshIcon className="h-4 w-4" />
+                    {/snippet}
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -886,11 +965,13 @@
         synthesisConcurrency={settings.synthesisConcurrency}
         voiceSelections={settings.voiceSelections}
         groupSelections={settings.groupSelections}
+        cacheStats={cacheStats}
         onCancel={() => (settingsOpen = false)}
         onSelectVoice={settings.selectVoice}
         onSelectGroup={settings.selectGroup}
         onSelectSpeed={settings.setSpeed}
-        onSelectConcurrent={settings.setSynthesisConcurrency} />
+        onSelectConcurrent={settings.setSynthesisConcurrency}
+        onClearCache={() => void clearClientSynthesisCache()} />
     {:catch}
       <!-- Chunk load failed; drop the dialog instead of leaving an unhandled rejection. -->
       {settingsOpen = false}

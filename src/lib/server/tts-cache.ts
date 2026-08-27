@@ -16,9 +16,24 @@ export interface CachedSynthesis {
 interface CacheEnvelope {
   savedAt: number
   value: CachedSynthesis
+  etag: string
 }
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
+// Content hash for ETag/If-None-Match so a client can verify its IndexedDB
+// copy is still current without re-downloading the audio. Deterministic by
+// content (audio + boundaries), independent of encoding/storage quirks.
+export function synthesisEtag(value: CachedSynthesis): string {
+  const canonical = JSON.stringify({
+    audio: value.audio,
+    boundaries: value.boundaries,
+    wordBoundaries: value.wordBoundaries ?? [],
+    spokenStart: value.spokenStart ?? null,
+    spokenEnd: value.spokenEnd ?? null,
+  })
+  return createHash('sha256').update(canonical).digest('hex')
+}
 
 function cacheDir(): string {
   const override = process.env.TTS_CACHE_DIR
@@ -33,7 +48,12 @@ export function synthesisCacheKey(text: string, voice: string, rate: number): st
   return createHash('sha256').update(buildSynthesisCacheKey(text, voice, rate)).digest('hex')
 }
 
-export async function getCachedSynthesis(key: string): Promise<CachedSynthesis | null> {
+export interface CachedSynthesisResult {
+  value: CachedSynthesis
+  etag: string
+}
+
+export async function getCachedSynthesis(key: string): Promise<CachedSynthesisResult | null> {
   const file = path.join(cacheDir(), `${key}.json`)
   let raw: string
   try {
@@ -53,10 +73,19 @@ export async function getCachedSynthesis(key: string): Promise<CachedSynthesis |
 
   try {
     const envelope = JSON.parse(raw) as Partial<CacheEnvelope>
-    if (typeof envelope.savedAt !== 'number' || Date.now() - envelope.savedAt > CACHE_TTL_MS || !envelope.value) {
+    if (
+      typeof envelope.savedAt !== 'number' ||
+      Date.now() - envelope.savedAt > CACHE_TTL_MS ||
+      !envelope.value ||
+      typeof envelope.value.audio !== 'string'
+    ) {
       return null
     }
-    return envelope.value
+    // Envelopes written before etags existed lack one; derive it on read so
+    // the cached audio keeps serving instead of forcing re-synthesis.
+    const etag =
+      typeof envelope.etag === 'string' && envelope.etag ? envelope.etag : synthesisEtag(envelope.value)
+    return { value: envelope.value, etag }
   } catch (error) {
     // Corrupt envelope content: drop it so it is not re-read and re-parsed on
     // every subsequent lookup of this key.
@@ -70,10 +99,11 @@ export async function getCachedSynthesis(key: string): Promise<CachedSynthesis |
   }
 }
 
-export async function setCachedSynthesis(key: string, value: CachedSynthesis): Promise<void> {
+export async function setCachedSynthesis(key: string, value: CachedSynthesis): Promise<string> {
+  const etag = synthesisEtag(value)
   try {
     await mkdir(cacheDir(), { recursive: true })
-    const envelope: CacheEnvelope = { savedAt: Date.now(), value }
+    const envelope: CacheEnvelope = { savedAt: Date.now(), value, etag }
     await writeFile(path.join(cacheDir(), `${key}.json`), JSON.stringify(envelope), 'utf-8')
   } catch (error) {
     // Caching is best-effort; ignore filesystem errors and serve fresh results.
@@ -83,4 +113,15 @@ export async function setCachedSynthesis(key: string, value: CachedSynthesis): P
       details: { level: 'WARN', key, error: error instanceof Error ? error.message : 'Unknown error' },
     })
   }
+  return etag
+}
+
+// If-None-Match tolerates quoted and weak validators plus comma lists per RFC
+// 7232; strict equality would silently defeat reuse when a proxy rewrites the
+// form. The wildcard matches any current representation.
+export function matchesIfNoneMatch(header: string, etag: string): boolean {
+  if (header.trim() === '*') return true
+  return header
+    .split(',')
+    .some(candidate => candidate.trim().replace(/^W\//, '').replaceAll('"', '') === etag)
 }

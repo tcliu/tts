@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { logAccess } from '$lib/server/logging'
 import { synthesizeEdgeTts } from '$lib/server/edge-tts'
-import { synthesisCacheKey, getCachedSynthesis, setCachedSynthesis } from '$lib/server/tts-cache'
+import { synthesisCacheKey, getCachedSynthesis, setCachedSynthesis, matchesIfNoneMatch } from '$lib/server/tts-cache'
 import { REFERENCE_LANGUAGES } from '$lib/tts-reference'
 
 const KNOWN_VOICES = new Set(REFERENCE_LANGUAGES.flatMap(language => language.voices.map(voice => voice.edge)))
@@ -47,6 +47,25 @@ export const POST: RequestHandler = async event => {
   try {
     const cached = await getCachedSynthesis(key)
     if (cached) {
+      const ifNoneMatch = request.headers.get('if-none-match')
+      if (ifNoneMatch && matchesIfNoneMatch(ifNoneMatch, cached.etag)) {
+        // Client holds the current audio locally; no bytes need to travel.
+        logAccess({
+          event,
+          action: 'tts_synthesize_not_modified',
+          details: {
+            key,
+            voice,
+            rate,
+            text_length: text.length,
+            elapsed_ms: Date.now() - startedAt,
+          },
+        })
+        return new Response(null, {
+          status: 304,
+          headers: { 'Cache-Control': 'no-store', ETag: cached.etag },
+        })
+      }
       logAccess({
         event,
         action: 'tts_synthesize_cache_hit',
@@ -55,11 +74,11 @@ export const POST: RequestHandler = async event => {
           voice,
           rate,
           text_length: text.length,
-          audio_bytes: Buffer.byteLength(cached.audio, 'base64'),
+          audio_bytes: Buffer.byteLength(cached.value.audio, 'base64'),
           elapsed_ms: Date.now() - startedAt,
         },
       })
-      return json(cached, { headers: { 'Cache-Control': 'no-store' } })
+      return json(cached.value, { headers: { 'Cache-Control': 'no-store', ETag: cached.etag } })
     }
 
     const result = await synthesizeEdgeTts(text, voice, rate)
@@ -70,7 +89,7 @@ export const POST: RequestHandler = async event => {
       spokenStart: result.spokenStart,
       spokenEnd: result.spokenEnd,
     }
-    await setCachedSynthesis(key, payload)
+    const etag = await setCachedSynthesis(key, payload)
     logAccess({
       event,
       action: 'tts_synthesize_complete',
@@ -84,7 +103,7 @@ export const POST: RequestHandler = async event => {
         elapsed_ms: Date.now() - startedAt,
       },
     })
-    return json(payload, { headers: { 'Cache-Control': 'no-store' } })
+    return json(payload, { headers: { 'Cache-Control': 'no-store', ETag: etag } })
   } catch (error) {
     logAccess({
       event,

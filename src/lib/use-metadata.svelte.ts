@@ -30,6 +30,14 @@ export interface MetadataHandle {
 
 export const RESYNC_DEBOUNCE_MS = 500
 
+function segmentDuration(meta: PlaybackHandle['segments'][number]): number {
+  if (!meta) return 0
+  if (meta.spokenEnd != null && meta.spokenStart != null) {
+    return Math.max(0, meta.spokenEnd - meta.spokenStart)
+  }
+  return meta.duration ?? 0
+}
+
 export function useMetadata(deps: MetadataDeps): MetadataHandle {
   let metaSearch = $state('')
   let metaStale = $state(false)
@@ -70,8 +78,20 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     for (const i of indices) {
       const meta = segmentMetaMap[i]
       if (!meta) continue
-      const lastAt = meta.boundaries.length > 0 ? meta.boundaries[meta.boundaries.length - 1].at : 0
-      const segDuration = meta.duration ?? lastAt
+      const segDuration = segmentDuration(meta)
+      if (meta.boundaries.length === 0) {
+        // A segment without sentence boundaries must still appear in document
+        // order, or the Seg column shows gaps that read as shuffled rows.
+        result.push({
+          segmentIndex: meta.index,
+          at: cumulative,
+          offset: meta.baseOffset,
+          lang: meta.lang,
+          text: meta.text,
+          boundaryIndex: 0,
+          active: false,
+        })
+      }
       meta.boundaries.forEach((boundary, boundaryIndex) => {
         const range =
           meta.ranges.find(r => boundary.offset >= r.start && boundary.offset < r.end) ?? meta.ranges[meta.ranges.length - 1]
