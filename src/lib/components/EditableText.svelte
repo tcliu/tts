@@ -3,6 +3,7 @@
   import Button from './Button.svelte'
   import EditIcon from '$lib/icons/EditIcon.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
+  import { TEXT_SIZE, type TextSize } from '$lib/text-size'
 
   interface Props {
     locale: UiLocale
@@ -10,7 +11,7 @@
     // Return false to reject the committed value (e.g. duplicate name);
     // the component then restores the previous text and keeps editing.
     onChange: (text: string) => void | boolean
-    size?: 'xs' | 'sm' | 'md' | 'lg'
+    size?: TextSize
     className?: string
     onActivate?: () => void
     // maximum width (in px) the editable input may expand to; actual max
@@ -170,14 +171,14 @@
       data-escape-capture
       aria-label={uiText.editText}
       style={inputWidth ? `width: ${inputWidth}px; min-width: 0` : 'min-width: 0'}
-      class={`text-${size} max-w-full rounded-md bg-slate-950 px-2 py-1 text-slate-100 outline outline-1 outline-slate-700 transition focus:outline-cyan-500`} />
+      class={`${TEXT_SIZE[size]} max-w-full rounded-md bg-slate-950 px-2 py-1 text-slate-100 outline outline-1 outline-slate-700 transition motion-reduce:transition-none focus:outline-cyan-500`} />
   </div>
 {:else}
   {#snippet displayContent()}
     <button
       bind:this={displayBtn}
       type="button"
-      class={`text-${size} min-w-0 truncate bg-transparent p-0 pl-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 ${className}`}
+      class={`${TEXT_SIZE[size]} min-w-0 truncate bg-transparent p-0 pl-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 ${className}`}
       title={uiText.doubleClickToEdit}
       onclick={(e) => { e.stopPropagation(); scheduleActivate() }}
       onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation() }}

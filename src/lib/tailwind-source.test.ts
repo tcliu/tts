@@ -1,19 +1,26 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { TEXT_SIZE } from './text-size'
 
-// SelectDropdown builds `text-${size}` classes at runtime; Tailwind only emits
-// them because src/styles.css force-generates the candidates via @source inline.
-// This test fails when a size is added to SelectDropdown without updating that
-// rule (or vice versa).
+// TEXT_SIZE holds literal `text-*` classes so Tailwind's scanner sees them, and
+// src/styles.css force-generates the same candidates via @source inline as
+// defense-in-depth. This test keeps the two in lockstep in both directions.
 describe('tailwind @source inline contract', () => {
   const styles = readFileSync('src/styles.css', 'utf-8')
 
-  it('force-generates every text-size utility SelectDropdown can emit', () => {
+  it('keeps styles.css @source inline in sync with TEXT_SIZE', () => {
     const match = /@source\s+inline\("([^"]+)"\)/.exec(styles)
     expect(match).not.toBeNull()
     const declared = new Set((match?.[1] ?? '').split(/\s+/).filter(Boolean))
-    for (const size of ['text-xs', 'text-sm', 'text-md', 'text-lg']) {
-      expect(declared, `${size} must be listed in styles.css @source inline`).toContain(size)
+
+    const emitted = new Set(Object.values(TEXT_SIZE))
+    expect(emitted.size).toBeGreaterThan(0)
+
+    for (const token of emitted) {
+      expect(declared, `${token} must be listed in styles.css @source inline`).toContain(token)
+    }
+    for (const token of declared) {
+      expect(emitted, `${token} is declared in styles.css but not emitted by TEXT_SIZE`).toContain(token)
     }
   })
 })
