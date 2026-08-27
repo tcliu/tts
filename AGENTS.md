@@ -20,6 +20,13 @@ Project-specific development conventions for the TTS web app.
   parallel design system for equivalent controls.
 - Do not read or reuse any archived web implementation under `archive/`; it is
   out of scope for this project.
+- Code changes are applied in a separate git branch and worktree under
+  `.worktrees/` per the shared `references/git.md` worktree practice, unless the
+  user opts to apply them on top of the current worktree. Create worktrees with
+  `node scripts/create-worktree.mjs <branch>` from the default worktree; it
+  copies the gitignored local dev files (`.env`, `.env.local`, `.env.dev`) and
+  sets `DEV_TAG=<branch>` in the new worktree's `.env.dev` so the bottom-left
+  worktree-tag block identifies the branch.
 
 ## UI behavior
 
