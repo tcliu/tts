@@ -21,7 +21,7 @@ function createEditor(overrides: Partial<Parameters<typeof useDocumentEditor>[0]
   const deps = {
     settings,
     documents: {} as DocumentsHandle,
-    stopPlayback: vi.fn(),
+    resetPlaybackSession: vi.fn(),
     closeDrawer: vi.fn(),
     focusEditor: vi.fn(),
     openFilePicker: vi.fn(),
@@ -45,7 +45,7 @@ describe('useDocumentEditor upload', () => {
     await editor.importFile(new File(['hello'], 'a.txt'))
     expect(settings.content).toBe('hello')
     expect(editor.uploadNotice).toBe('uploaded')
-    expect(deps.stopPlayback).toHaveBeenCalledOnce()
+    expect(deps.resetPlaybackSession).toHaveBeenCalledOnce()
 
     vi.advanceTimersByTime(4000)
     expect(editor.uploadNotice).toBeNull()
@@ -88,7 +88,7 @@ describe('useDocumentEditor upload', () => {
   })
 
   it('keeps the upload discard kind distinct from new-document', () => {
-    const { editor, settings } = createEditor()
+    const { editor, settings, deps } = createEditor()
     editor.markBaseline()
     settings.content = 'edited'
     editor.requestUpload()
@@ -96,6 +96,19 @@ describe('useDocumentEditor upload', () => {
     editor.requestNewDocument()
     editor.confirmDiscard()
     expect(settings.content).toBe('')
+    expect(deps.resetPlaybackSession).toHaveBeenCalledOnce()
+  })
+
+  it('resets playback session when opening another document', () => {
+    const documents = {
+      findById: vi.fn(() => ({ id: 'doc-2', content: 'Loaded content' })),
+    } as unknown as DocumentsHandle
+    const { editor, settings, deps } = createEditor({ documents })
+
+    editor.requestOpenDocument('doc-2')
+
+    expect(settings.content).toBe('Loaded content')
+    expect(deps.resetPlaybackSession).toHaveBeenCalledOnce()
   })
 
   it('imports a dropped file immediately when the buffer is clean', async () => {

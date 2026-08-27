@@ -42,6 +42,13 @@ describe('splitHighlightRanges', () => {
       { start: 7, end: 14, lang: 'en' },
     ])
   })
+
+  it('splits long-dash-separated clauses into separate ranges', () => {
+    expect(splitHighlightRanges('政府宣佈即將重建彩虹邨──這條超過60年的名牌屋邨')).toEqual([
+      { start: 0, end: 13, lang: 'zh' },
+      { start: 13, end: 25, lang: 'zh' },
+    ])
+  })
 })
 
 describe('parseEdgeMetadata', () => {
@@ -53,8 +60,8 @@ describe('parseEdgeMetadata', () => {
       '{"Type":"SentenceBoundary","Data":{"Offset":18000000,"Duration":15875000,"text":{"Text":"second.","Length":7}}}' +
       ']}'
     expect(parseEdgeMetadata(message)).toEqual([
-      { type: 'WordBoundary', offset: 1000000, text: 'Hello' },
-      { type: 'SentenceBoundary', offset: 18000000, text: 'second.' },
+      { type: 'WordBoundary', offset: 1000000, duration: 3750000, text: 'Hello' },
+      { type: 'SentenceBoundary', offset: 18000000, duration: 15875000, text: 'second.' },
     ])
   })
 

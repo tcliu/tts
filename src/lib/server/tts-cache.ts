@@ -8,6 +8,9 @@ import { logEvent } from './logging'
 export interface CachedSynthesis {
   audio: string
   boundaries: TtsBoundary[]
+  wordBoundaries?: TtsBoundary[]
+  spokenStart?: number
+  spokenEnd?: number
 }
 
 interface CacheEnvelope {

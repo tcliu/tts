@@ -66,6 +66,9 @@ export const POST: RequestHandler = async event => {
     const payload = {
       audio: Buffer.from(result.audio).toString('base64'),
       boundaries: result.boundaries,
+      wordBoundaries: result.wordBoundaries,
+      spokenStart: result.spokenStart,
+      spokenEnd: result.spokenEnd,
     }
     await setCachedSynthesis(key, payload)
     logAccess({

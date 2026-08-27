@@ -4,9 +4,9 @@ export interface UiText {
   language: string
   settings: string
   playback: string
+  seek: string
   stop: string
   close: string
-  playbackRunning: string
   info: string
   infoCollapse: string
   synthesisConcurrency: string
@@ -102,9 +102,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     language: 'Language',
     settings: 'Settings',
     playback: 'Play',
+    seek: 'Playback position',
     stop: 'Stop',
     close: 'Close',
-    playbackRunning: 'Speaking',
     info: 'Info',
     infoCollapse: 'Collapse info',
     synthesisConcurrency: 'Synthesis concurrency',
@@ -182,9 +182,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     language: '語言',
     settings: '設定',
     playback: '播放',
+    seek: '播放位置',
     stop: '停止',
     close: '關閉',
-    playbackRunning: '播放中',
     info: '資訊',
     infoCollapse: '收合資訊',
     synthesisConcurrency: '並行合成數',
@@ -262,9 +262,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     language: '语言',
     settings: '设置',
     playback: '播放',
+    seek: '播放位置',
     stop: '停止',
     close: '关闭',
-    playbackRunning: '播放中',
     info: '信息',
     infoCollapse: '收起信息',
     synthesisConcurrency: '并行合成数',

@@ -47,14 +47,21 @@ coherent system instead of a new parallel one.
 
 ## Playback model
 
-- Playback input is the current editor selection when one exists; otherwise it
-  is the full editor content.
-- The selected playback text is segmented using the same rules as `tts.mjs`.
+- Playback always synthesizes and caches the full editor content; a manual text
+  selection never narrows synthesis scope, it only selects the segment and word
+  boundary where playback starts.
+- When a manual text selection exists, playback snaps to the first available
+  word boundary inside that selection; if the selection begins mid-word or no
+  in-range word boundary exists yet, it falls back to the nearest earlier
+  boundary in the same segment.
+- The full playback text is segmented using the same rules as `tts.mjs`.
 - Segments are played sequentially.
 - Upcoming segments synthesize in parallel while the current one plays, capped
   by the Synthesis concurrency setting; cancellation (Stop or unmount) aborts
   in-flight synthesis requests and settles the active audio element.
-- While a segment is active, the matching editor text range is selected.
+- While a segment is active, playback timing follows word boundaries when they
+  are available and the editor selects the current spoken word. Sentence
+  boundaries remain the metadata-table rows.
 - Stopping playback preserves the current selection.
 - When playback finishes, restore the pre-playback selection state so the editor
   returns to the selection the user had before playback started.

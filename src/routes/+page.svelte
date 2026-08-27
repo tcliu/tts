@@ -66,10 +66,8 @@
   const editor = useDocumentEditor({
     settings,
     documents,
-    stopPlayback: () => {
-      if (playback.isPlaying) {
-        playback.stopPlayback()
-      }
+    resetPlaybackSession: () => {
+      playback.resetSession()
     },
     closeDrawer: () => drawer.closeDrawer(),
     focusEditor: () => {
@@ -159,12 +157,44 @@
             : playback.statusMessage,
   )
   const uploadNoticeIsError = $derived(editor.uploadNotice !== null && editor.uploadNotice !== 'uploaded')
+  const playbackSliderMax = $derived(Math.max(playback.totalDuration, playback.totalElapsed, 0))
+  const playbackSliderValue = $derived(
+    playback.isPlaybackEnded ? playback.totalDuration : Math.min(playback.totalElapsed, playbackSliderMax),
+  )
+  let playbackSliderDraft = $state<string | null>(null)
+  const playbackSliderDisplayValue = $derived(
+    playbackSliderDraft === null ? playbackSliderValue : Number(playbackSliderDraft),
+  )
+  const playbackSliderProgress = $derived(
+    playbackSliderMax > 0
+      ? Math.min(100, Math.max(0, (playbackSliderDisplayValue / playbackSliderMax) * 100))
+      : 0,
+  )
+
+  function handlePlaybackSliderInput(event: Event) {
+    const target = event.currentTarget
+    if (!(target instanceof HTMLInputElement)) {
+      return
+    }
+    playbackSliderDraft = target.value
+  }
+
+  async function commitPlaybackSlider(event: Event) {
+    const target = event.currentTarget
+    if (!(target instanceof HTMLInputElement)) {
+      playbackSliderDraft = null
+      return
+    }
+    playbackSliderDraft = null
+    await playback.seekTo(Number(target.value))
+  }
 
   // Overflow-menu contents per band, derived from the single-source ladder so
   // band boundaries and menu contents cannot drift apart. Index parallels
   // TOOLBAR_BANDS; the last entry is empty because every action is inline.
   const toolbarMode: ToolbarMode = $derived(editor.currentDocId ? 'doc' : 'fresh')
   const toolbarMenus = $derived(TOOLBAR_BANDS.map(band => menuFor(band.name, toolbarMode)))
+  let lastPlaybackContent = $state(settings.content)
 
   function panelActionDisabled(action: PanelAction): boolean {
     if (action === 'play') {
@@ -181,6 +211,15 @@
     }
     return false
   }
+
+  $effect(() => {
+    const content = settings.content
+    if (content === lastPlaybackContent) {
+      return
+    }
+    lastPlaybackContent = content
+    playback.resetSession()
+  })
 
   function toggleDrawer() {
     const opened = drawer.toggleDrawer()
@@ -469,9 +508,9 @@
         onDelete={editor.requestDeleteDocument} />
     {/if}
 
-    <main class="flex min-w-0 flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4">
+    <main class="flex min-w-0 flex-1 flex-col gap-2 px-3 py-2 sm:px-4 sm:py-2">
       {#if editor.currentDocId}
-        <div class="mb-2 flex flex-none min-w-0 items-center">
+        <div class="flex flex-none min-w-0 items-center">
           <EditableText locale={settings.locale} text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
         </div>
       {/if}
@@ -484,7 +523,6 @@
           ariaPressed={playback.isPlaying}
           disabled={playback.isPlaying ? false : !settings.canPlay}
           ariaLabel={playback.isPlaying ? text.stop : text.playback}
-          tooltip={playback.isPlaying ? text.stop : text.playback}
           onClick={playback.isPlaying ? playback.stopPlayback : playback.startPlayback}
           className="px-2.5 py-1.5 text-sm">
           {#snippet icon()}
@@ -504,7 +542,6 @@
           size="sm"
           disabled={editor.currentDocId ? !editor.isDirty : !settings.canPlay}
           ariaLabel={text.reset}
-          tooltip={text.reset}
           onClick={editor.resetEditor}
           className="px-2.5 py-1.5 text-sm">
           {#snippet icon()}
@@ -520,7 +557,6 @@
           size="sm"
           disabled={editor.saveDisabled}
           ariaLabel={text.save}
-          tooltip={text.save}
           onClick={editor.openSaveDialog}
           className="px-2.5 py-1.5 text-sm">
           {#snippet icon()}
@@ -536,7 +572,6 @@
           size="sm"
           disabled={!settings.canPlay}
           ariaLabel={text.copy}
-          tooltip={text.copy}
           onClick={() => void editor.copyEditorContent()}
           className="px-2.5 py-1.5 text-sm"
           icon={copyIcon}>
@@ -550,7 +585,6 @@
             variant="secondary"
             size="sm"
             ariaLabel={text.delete}
-            tooltip={text.delete}
             onClick={() => {
               if (editor.currentDocId) {
                 editor.requestDeleteDocument(editor.currentDocId)
@@ -572,7 +606,6 @@
           ariaPressed={showMetadata}
           disabled={!settings.canPlay}
           ariaLabel={text.info}
-          tooltip={text.info}
           onClick={() => (showMetadata = !showMetadata)}
           className="px-2.5 py-1.5 text-sm">
           {#snippet icon()}
@@ -588,7 +621,6 @@
             variant="secondary"
             size="sm"
             ariaLabel={text.clone}
-            tooltip={text.clone}
             onClick={editor.requestCloneDocument}
             className="px-2.5 py-1.5 text-sm">
             {#snippet icon()}
@@ -609,7 +641,6 @@
           variant="secondary"
           size="sm"
           ariaLabel={text.upload}
-          tooltip={text.upload}
           onClick={editor.requestUpload}
           className="px-2.5 py-1.5 text-sm">
           {#snippet icon()}
@@ -634,27 +665,51 @@
       {/each}
     </section>
 
-      <div class="mt-3 flex min-h-0 flex-1 flex-col gap-3">
-        <div class="flex flex-none items-center gap-2 text-sm text-slate-400">
-          <span aria-live="polite" class={uploadNoticeIsError ? 'text-rose-400' : ''}>
-            {editor.uploadNotice || !playback.isPlaying ? statusMessage : text.playbackRunning}
-          </span>
-          {#if playback.isPlaying}
-            <span aria-hidden="true" class="truncate">
-              {`· ${playback.currentSegmentIndex}/${playback.totalSegments} · ${playback.currentSegmentLabel} · ${playback.currentVoiceName} · ${
-                playback.totalDuration > 0 ? `${formatClock(playback.totalElapsed)}/${formatClock(playback.totalDuration)}` : formatClock(playback.totalElapsed)
-              }`}
-            </span>
-          {/if}
-        </div>
-        {#if playback.isPlaying}
-          <div class="flex-none">
-            <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-valuemin={0} aria-valuemax={playback.totalSegments} aria-valuenow={playback.synthesizedCount}>
-              <div
-                class="h-full rounded-full bg-cyan-500 transition-[width] duration-200 motion-reduce:transition-none"
-                style={`width: ${playback.totalSegments > 0 ? (playback.synthesizedCount / playback.totalSegments) * 100 : 0}%`}></div>
+      <div class="flex min-h-0 flex-1 flex-col gap-2">
+        {#if editor.uploadNotice || playback.synthesizedCount > 0}
+          <div class="flex flex-none flex-col gap-3">
+            <div class="flex items-center gap-2 text-sm text-slate-400">
+              {#if editor.uploadNotice}
+                <span aria-live="polite" class={uploadNoticeIsError ? 'text-rose-400' : ''}>
+                  {statusMessage}
+                </span>
+              {/if}
+              {#if playback.synthesizedCount > 0}
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <span class="inline-flex max-w-full items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-200">
+                    <span class="truncate">{playback.currentSegmentLabel}</span>
+                  </span>
+                  {#if playback.currentVoiceName}
+                    <span class="inline-flex max-w-full items-center rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-200">
+                      <span class="truncate">{playback.currentVoiceName}</span>
+                    </span>
+                  {/if}
+                  <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-200">
+                    {`${playback.currentSegmentIndex}/${playback.totalSegments}`}
+                  </span>
+                </div>
+              {/if}
             </div>
-            <div class="mt-1 text-xs text-slate-400">{text.synthesized} {playback.synthesizedCount}/{playback.totalSegments}</div>
+            {#if playback.synthesizedCount > 0}
+              <div class="flex-none">
+                <div class="flex items-center gap-3">
+                  <span class="w-11 flex-none text-xs font-mono text-slate-400">{formatClock(playbackSliderDisplayValue)}</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max={String(playbackSliderMax)}
+                    step="0.01"
+                    value={String(playbackSliderDisplayValue)}
+                    aria-label={text.seek}
+                    disabled={playbackSliderMax <= 0}
+                    oninput={handlePlaybackSliderInput}
+                    onchange={commitPlaybackSlider}
+                    style={`background: linear-gradient(to right, var(--color-sky-400) 0%, var(--color-sky-400) ${playbackSliderProgress}%, var(--color-slate-800) ${playbackSliderProgress}%, var(--color-slate-800) 100%)`}
+                    class="h-2 min-w-0 flex-1 cursor-pointer appearance-none rounded-full accent-cyan-500 outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 disabled:cursor-default disabled:opacity-50" />
+                  <span class="w-11 flex-none text-right text-xs font-mono text-slate-400">{formatClock(playback.totalDuration)}</span>
+                </div>
+              </div>
+            {/if}
           </div>
         {/if}
         <div class="flex min-h-0 flex-1 gap-2 {showMetadata ? (isDocked ? 'flex-row' : 'flex-col') : 'flex-col'}">
@@ -663,6 +718,7 @@
             <CodeEditor
               bind:this={editorRef}
               bind:content={settings.content}
+              onSelectionChange={range => playback.syncSelectionStart(range)}
               editable={!playback.isPlaying}
               theme={settings.theme}
               autoFocus={true}
@@ -738,8 +794,6 @@
                   </Button>
                 </div>
                 <div class="flex flex-none flex-wrap items-center gap-2 text-xs text-slate-400">
-                  <span>{text.synthesized} {playback.synthesizedCount}/{playback.totalSegments}</span>
-                  <span aria-hidden="true">·</span>
                   {#if metadata.syncing}
                     <span>{text.metadataRefreshing}</span>
                   {:else if metadata.stale}

@@ -20,6 +20,7 @@
     autoFocus?: boolean
     onReady?: () => void
     onContentChange?: (content: string) => void
+    onSelectionChange?: (range: { from: number; to: number } | null) => void
   }
 
   let {
@@ -32,6 +33,7 @@
     autoFocus = false,
     onReady,
     onContentChange,
+    onSelectionChange,
   }: Props = $props()
 
   // Colors the bundled github themes do not cover: caret, gutter chrome,
@@ -176,8 +178,13 @@
     if (!editorView) return
     const current = editorView.state.doc.toString()
     if (current === nextContent) return
+    // Replacing the whole buffer invalidates any selection computed against
+    // the previous document; mapping it instead would leak the old playback
+    // highlight into the new document as a phantom range. Collapse to the
+    // start of the incoming text explicitly.
     editorView.dispatch({
       changes: { from: 0, to: current.length, insert: nextContent },
+      selection: EditorSelection.cursor(0),
     })
   }
 
@@ -210,6 +217,10 @@
               const next = update.state.doc.toString()
               content = next
               onContentChange?.(next)
+            }
+            if (update.selectionSet) {
+              const main = update.state.selection.main
+              onSelectionChange?.(main.from === main.to ? null : { from: main.from, to: main.to })
             }
           }),
           keymap.of([

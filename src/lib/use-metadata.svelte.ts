@@ -180,15 +180,15 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     const editor = deps.getEditor()
     const selectedRange = editor?.getSelectionRange() ?? null
     const content = settings.content
-    const playbackText = selectedRange ? content.slice(selectedRange.from, selectedRange.to) : content
-    const playbackOffset = selectedRange?.from ?? 0
     const signature = currentMetaSignature()
-    const segments = splitTtsSegments(playbackText)
+    // Playback always covers the full document; a selection only decides
+    // where playback starts.
+    const segments = splitTtsSegments(content)
 
     // Keep the replay session in lockstep with the table: rows are rendered
     // from this segmentation, so playFromSegment must index into exactly it.
     playback.clearSegments()
-    playback.primeSession(segments, playbackOffset, selectedRange)
+    playback.primeSession(segments, 0, selectedRange)
     metaStale = false
     if (segments.length === 0) {
       metaSignature = signature
@@ -205,15 +205,21 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
       // failures are best-effort and must not leak into the playback status line.
       let nextIndex = 0
       const workerCount = Math.max(1, Math.min(settings.synthesisConcurrency, segments.length))
-      const recordSegment = (index: number, boundaries: TtsBoundary[]) => {
+      const recordSegment = (
+        index: number,
+        entry: { boundaries: TtsBoundary[]; wordBoundaries?: TtsBoundary[]; spokenStart?: number; spokenEnd?: number },
+      ) => {
         const segment = segments[index]
         const record: SegmentMeta = {
           index,
           lang: segment.lang,
           text: segment.text,
           ranges: splitHighlightRanges(segment.text),
-          boundaries,
-          baseOffset: playbackOffset + segment.indexStart,
+          boundaries: entry.boundaries,
+          wordBoundaries: entry.wordBoundaries ?? [],
+          baseOffset: segment.indexStart,
+          spokenStart: entry.spokenStart,
+          spokenEnd: entry.spokenEnd,
         }
         playback.recordSegment(index, record)
       }
@@ -232,7 +238,7 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
             if (controller.cancelled || abort.signal.aborted) {
               return
             }
-            recordSegment(index, entry.boundaries)
+            recordSegment(index, entry)
           } catch {
             if (controller.cancelled || abort.signal.aborted) {
               return

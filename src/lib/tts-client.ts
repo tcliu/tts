@@ -4,6 +4,9 @@ import type { TtsBoundary } from './tts-reference'
 export interface SynthesizedSegment {
   blob: Blob
   boundaries: TtsBoundary[]
+  wordBoundaries?: TtsBoundary[]
+  spokenStart?: number
+  spokenEnd?: number
 }
 
 const SYNTHESIS_CACHE_MAX = 200
@@ -39,13 +42,25 @@ async function requestSynthesis(
     throw new Error(typeof data.error === 'string' ? data.error : 'Synthesis failed.')
   }
 
-  const data = (await response.json()) as { audio: string; boundaries: TtsBoundary[] }
+  const data = (await response.json()) as {
+    audio: string
+    boundaries: TtsBoundary[]
+    wordBoundaries?: TtsBoundary[]
+    spokenStart?: number
+    spokenEnd?: number
+  }
   const binary = atob(data.audio)
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i += 1) {
     bytes[i] = binary.charCodeAt(i)
   }
-  return { blob: new Blob([bytes], { type: 'audio/mpeg' }), boundaries: data.boundaries }
+  return {
+    blob: new Blob([bytes], { type: 'audio/mpeg' }),
+    boundaries: data.boundaries,
+    wordBoundaries: data.wordBoundaries ?? [],
+    spokenStart: data.spokenStart,
+    spokenEnd: data.spokenEnd,
+  }
 }
 
 export async function getCachedSynthesis(

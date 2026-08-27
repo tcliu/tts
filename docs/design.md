@@ -36,14 +36,20 @@
 ## Playback
 
 - The playback button is enabled only when there is input text.
-- If the editor has a text selection, playback uses that selection.
-- Otherwise playback uses the full editor content.
+- Playback always speaks the full editor content; when the editor has a text
+  selection, playback starts from the selected text instead of the beginning.
 - Playback splits the input into segments and speaks them sequentially.
-- During playback, the current segment is selected in the editor.
+- During playback, the current spoken word is selected in the editor.
 - During playback, the playback button becomes a Stop button.
 - Activating Stop ends playback and leaves the current segment selected.
 - When playback completes, clear the selection only when playback started
   without a pre-existing selection.
+- Once synthesis returns its first result, playback controls appear above the
+  editor: chips showing the current language, voice, and segment counter, plus
+  a seek slider with elapsed and total time. Editing the content or switching
+  documents hides them until the next synthesis produces a result.
+- Dragging the seek slider previews the position; releasing starts or resumes
+  playback there.
 
 ## Upload
 

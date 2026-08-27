@@ -27,19 +27,26 @@ export interface HighlightRange {
 export interface TtsBoundary {
   offset: number
   at: number
+  duration?: number
   text?: string
 }
 
 export interface EdgeBoundaryEvent {
   type: 'WordBoundary' | 'SentenceBoundary'
   offset: number
+  duration?: number
   text: string
 }
 
 export function parseEdgeMetadata(message: string): EdgeBoundaryEvent[] {
   const separator = message.indexOf('\r\n\r\n')
   const jsonPart = separator >= 0 ? message.slice(separator + 4) : message
-  let data: { Metadata?: { Type?: string; Data?: { Offset?: number; text?: { Text?: string } } }[] }
+  let data: {
+    Metadata?: {
+      Type?: string
+      Data?: { Offset?: number; Duration?: number; text?: { Text?: string } }
+    }[]
+  }
   try {
     data = JSON.parse(jsonPart)
   } catch {
@@ -50,9 +57,15 @@ export function parseEdgeMetadata(message: string): EdgeBoundaryEvent[] {
   for (const item of data.Metadata) {
     const type = item?.Type
     const offset = Number(item?.Data?.Offset)
+    const duration = Number(item?.Data?.Duration)
     const text = item?.Data?.text?.Text ?? ''
     if ((type === 'WordBoundary' || type === 'SentenceBoundary') && Number.isFinite(offset)) {
-      events.push({ type, offset, text })
+      events.push({
+        type,
+        offset,
+        duration: Number.isFinite(duration) ? duration : undefined,
+        text,
+      })
     }
   }
   return events
@@ -205,6 +218,10 @@ function splitTtsRuns(text: string) {
       continue
     }
     if (/\d/.test(char) && currentCjk !== null) {
+      currentText += char
+      continue
+    }
+    if (currentCjk && /[—─]/.test(char)) {
       currentText += char
       continue
     }
@@ -430,7 +447,7 @@ export function splitTtsSegments(text: string, maxSegmentLength = MAX_SEGMENT_LE
 function splitSentenceRanges(text: string) {
   const sentences: { text: string; start: number; end: number }[] = []
   let last = 0
-  const termRe = /[.!?。！？]+\s*/g
+  const termRe = /(?:[.!?。！？]+\s*|[—─]{2,}\s*)/g
   let match: RegExpExecArray | null
   while ((match = termRe.exec(text)) !== null) {
     const end = match.index + match[0].length

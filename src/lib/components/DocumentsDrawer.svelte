@@ -40,7 +40,7 @@
   bind:this={panelRef}
   aria-label={text.documents}
   class="absolute inset-y-0 left-0 z-20 flex w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-900 shadow-xl lg:static lg:bg-slate-900/40 lg:shadow-none lg:w-72">
-  <div class="flex flex-none flex-col gap-2 p-3">
+  <div class="flex flex-none flex-col gap-2 px-3 py-2">
     <Button variant="outline" accent="cyan" size="sm" onClick={onNew} className="justify-center px-2.5 py-1.5 text-sm">
       {#snippet icon()}
         <PlusIcon className="h-4 w-4" />
@@ -49,7 +49,7 @@
     </Button>
     <SearchInput bind:value={search} bind:inputRef={inputRef} ariaLabel={text.documentSearch} placeholder={text.documentSearch} />
   </div>
-  <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+  <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
     {#if documents.length === 0}
       <p class="px-1 text-xs text-slate-500">{search.trim() ? text.noMatchingDocuments : text.noSavedDocuments}</p>
     {:else}

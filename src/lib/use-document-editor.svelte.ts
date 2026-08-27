@@ -11,7 +11,7 @@ const UPLOAD_NOTICE_MS = 4000
 interface DocumentEditorDeps {
   settings: SettingsHandle
   documents: DocumentsHandle
-  stopPlayback: () => void
+  resetPlaybackSession: () => void
   closeDrawer: () => void
   focusEditor: () => void
   openFilePicker: () => void
@@ -71,7 +71,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     if (!target) {
       return
     }
-    deps.stopPlayback()
+    deps.resetPlaybackSession()
     settings.content = target.content
     currentDocId = target.id
     baselineContent = target.content
@@ -147,7 +147,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function createNewDocument() {
-    deps.stopPlayback()
+    deps.resetPlaybackSession()
     settings.content = ''
     currentDocId = null
     baselineContent = ''
@@ -161,7 +161,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
       loadDocument(current.id)
       return
     }
-    deps.stopPlayback()
+    deps.resetPlaybackSession()
     settings.content = ''
     baselineContent = ''
     deps.focusEditor()
@@ -217,7 +217,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
       return
     }
     // Replacing the buffer invalidates any running playback session.
-    deps.stopPlayback()
+    deps.resetPlaybackSession()
     settings.content = result.text
     showUploadNotice('uploaded')
   }
@@ -297,7 +297,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
       if (source) {
         // Confirmed discard: drop the unsaved edits so the detached copy
         // carries only the source document's saved content.
-        deps.stopPlayback()
+        deps.resetPlaybackSession()
         settings.content = source.content
         cloneCurrentDocument()
       }

@@ -29,7 +29,7 @@ export async function synthesizeEdgeTts(
   text: string,
   edgeVoice: string,
   rate = 1,
-): Promise<{ audio: Uint8Array; boundaries: TtsBoundary[] }> {
+): Promise<{ audio: Uint8Array; boundaries: TtsBoundary[]; wordBoundaries: TtsBoundary[]; spokenStart?: number; spokenEnd?: number }> {
   const ratePercent = `${Math.round((rate - 1) * 100)}%`
   const url =
     'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1' +
@@ -43,10 +43,20 @@ export async function synthesizeEdgeTts(
     },
   })
 
-  return new Promise<{ audio: Uint8Array; boundaries: TtsBoundary[] }>((resolve, reject) => {
+  return new Promise<{
+    audio: Uint8Array
+    boundaries: TtsBoundary[]
+    wordBoundaries: TtsBoundary[]
+    spokenStart?: number
+    spokenEnd?: number
+  }>((resolve, reject) => {
     const audioChunks: Uint8Array[] = []
     const boundaries: TtsBoundary[] = []
+    const wordBoundaries: TtsBoundary[] = []
     let wordCursor = 0
+    let sentenceCursor = 0
+    let wordSpanStart: number | undefined
+    let wordSpanEnd: number | undefined
     let closed = false
 
     const timeout = setTimeout(() => {
@@ -66,7 +76,7 @@ export async function synthesizeEdgeTts(
         context: {
           synthesis: {
             audio: {
-              metadataoptions: { sentenceBoundaryEnabled: true, wordBoundaryEnabled: false },
+              metadataoptions: { sentenceBoundaryEnabled: true, wordBoundaryEnabled: true },
               outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
             },
           },
@@ -93,13 +103,38 @@ export async function synthesizeEdgeTts(
 
       if (str.includes('audio.metadata')) {
         for (const event of parseEdgeMetadata(str)) {
-           if (!event.text) continue
-           if (event.type !== 'SentenceBoundary') continue
-          let index = text.indexOf(event.text, wordCursor)
+          if (event.type === 'WordBoundary') {
+            const at = event.offset * 1e-7
+            const dur = (event.duration ?? 0) * 1e-7
+            if (wordSpanStart == null || at < wordSpanStart) wordSpanStart = at
+            if (wordSpanEnd == null || at + dur > wordSpanEnd) wordSpanEnd = at + dur
+            if (event.text) {
+              let index = text.indexOf(event.text, wordCursor)
+              if (index < 0) index = text.indexOf(event.text)
+              if (index >= 0) {
+                wordCursor = index + event.text.length
+                wordBoundaries.push({
+                  offset: index,
+                  at,
+                  duration: event.duration != null ? event.duration * 1e-7 : undefined,
+                  text: event.text,
+                })
+              }
+            }
+            continue
+          }
+          if (event.type !== 'SentenceBoundary') continue
+          if (!event.text) continue
+          let index = text.indexOf(event.text, sentenceCursor)
           if (index < 0) index = text.indexOf(event.text)
           if (index < 0) continue
-          wordCursor = index + event.text.length
-          boundaries.push({ offset: index, at: event.offset * 1e-7, text: event.text })
+          sentenceCursor = index + event.text.length
+          boundaries.push({
+            offset: index,
+            at: event.offset * 1e-7,
+            duration: event.duration != null ? event.duration * 1e-7 : undefined,
+            text: event.text,
+          })
         }
         return
       }
@@ -124,7 +159,11 @@ export async function synthesizeEdgeTts(
           offset += chunk.length
         }
         boundaries.sort((a, b) => a.at - b.at)
-        settle(() => resolve({ audio: output, boundaries }))
+        wordBoundaries.sort((a, b) => a.at - b.at)
+        const spokenStart = wordSpanStart ?? boundaries[0]?.at
+        const lastBoundary = boundaries.length > 0 ? boundaries[boundaries.length - 1] : undefined
+        const spokenEnd = wordSpanEnd ?? (lastBoundary ? (lastBoundary.at ?? 0) + (lastBoundary.duration ?? 0) : undefined)
+        settle(() => resolve({ audio: output, boundaries, wordBoundaries, spokenStart, spokenEnd }))
       }
     })
 
