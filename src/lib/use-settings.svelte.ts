@@ -93,7 +93,11 @@ export function useSettings(): SettingsHandle {
     }
   })
 
-  function hydrate() {
+  let hydrateRan = false
+
+  function hydrate(): () => void {
+    if (hydrateRan) return () => {}
+    hydrateRan = true
     if (typeof localStorage !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
