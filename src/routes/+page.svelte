@@ -18,10 +18,7 @@
   import CloudIcon from '$lib/icons/CloudIcon.svelte'
   import SettingsIcon from '$lib/icons/SettingsIcon.svelte'
   import InfoIcon from '$lib/icons/InfoIcon.svelte'
-  import FollowIcon from '$lib/icons/FollowIcon.svelte'
-  import MaximizeIcon from '$lib/icons/MaximizeIcon.svelte'
-  import MinimizeIcon from '$lib/icons/MinimizeIcon.svelte'
-  import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
+
   import SpeakerIcon from '$lib/icons/SpeakerIcon.svelte'
   import StopIcon from '$lib/icons/StopIcon.svelte'
   import MenuIcon from '$lib/icons/MenuIcon.svelte'
@@ -42,8 +39,10 @@
     getSynthesisCacheStats,
     type SynthesisCacheStats,
   } from '$lib/tts-client'
-  import { formatClock, usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
+  import { usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
   import { useMetadata, RESYNC_DEBOUNCE_MS } from '$lib/use-metadata.svelte'
+  import PlaybackSlider from '$lib/components/PlaybackSlider.svelte'
+  import MetadataPanel from '$lib/components/MetadataPanel.svelte'
   import { useSettings, type UiTheme } from '$lib/use-settings.svelte'
   import { useDocuments } from '$lib/use-documents.svelte'
   import { useDocumentEditor } from '$lib/use-document-editor.svelte'
@@ -158,11 +157,6 @@
   let saveNameInputRef = $state<HTMLInputElement | null>(null)
 
   let editorRef = $state<CodeEditorHandle | null>(null)
-  let tableBodyRef = $state<HTMLDivElement | null>(null)
-
-  $effect(() => {
-    metadata.attachScrollContainer(tableBodyRef)
-  })
 
   // Mirrors Tailwind's `lg` breakpoint for JS-only interaction gating: the
   // drawer is docked into the layout at this width, overlay below it. Must
@@ -471,7 +465,7 @@
     if (!input) {
       return
     }
-    requestAnimationFrame(() => input.focus())
+    void tick().then(() => input.focus())
   })
 
   $effect(() => {
@@ -482,7 +476,7 @@
     if (!input) {
       return
     }
-    requestAnimationFrame(() => {
+    void tick().then(() => {
       input.focus()
       input.select()
     })
@@ -550,7 +544,7 @@
           <MenuIcon className="h-4 w-4" />
         {/snippet}
       </Button>
-      <h1 class="text-base font-semibold tracking-tight sm:text-lg">TTS</h1>
+      <h1 class="text-base font-semibold tracking-tight sm:text-lg">{text.appShortTitle}</h1>
     </div>
     <div class="flex items-center gap-2">
       <HeaderRadioMenu
@@ -604,7 +598,7 @@
           <EditableText locale={settings.locale} text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
         </div>
       {/if}
-      <section aria-label="Playback controls" class="@container flex flex-none flex-wrap items-center gap-1.5">
+      <section aria-label={text.playbackControls} class="@container flex flex-none flex-wrap items-center gap-1.5">
       <span class={REVEAL_CLASS.play}>
         <Button
           variant="outline"
@@ -783,24 +777,15 @@
               {/if}
             </div>
             {#if playback.synthesizedCount > 0}
-              <div class="flex-none">
-                <div class="flex items-center gap-3">
-                  <span class="w-11 flex-none select-none text-xs font-mono text-slate-400">{formatClock(playbackSliderDisplayValue)}</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max={String(playbackSliderMax)}
-                    step="0.01"
-                    value={String(playbackSliderDisplayValue)}
-                    aria-label={text.seek}
-                    disabled={playbackSliderMax <= 0}
-                    oninput={handlePlaybackSliderInput}
-                    onchange={commitPlaybackSlider}
-                    style={`background: linear-gradient(to right, var(--color-sky-400) 0%, var(--color-sky-400) ${playbackSliderProgress}%, var(--color-slate-800) ${playbackSliderProgress}%, var(--color-slate-800) 100%)`}
-                    class="h-2 min-w-0 flex-1 cursor-pointer appearance-none rounded-full accent-cyan-500 outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 disabled:cursor-default disabled:opacity-50" />
-                  <span class="w-11 flex-none select-none text-right text-xs font-mono text-slate-400">{formatClock(playback.totalDuration)}</span>
-                </div>
-              </div>
+              <PlaybackSlider
+                displayValue={playbackSliderDisplayValue}
+                totalDuration={playback.totalDuration}
+                max={playbackSliderMax}
+                progress={playbackSliderProgress}
+                disabled={playbackSliderMax <= 0}
+                seekLabel={text.seek}
+                onInput={handlePlaybackSliderInput}
+                onCommit={commitPlaybackSlider} />
             {/if}
           </div>
         {/if}
@@ -820,130 +805,23 @@
           </div>
 
           {#if showMetadata}
-            <section
-              aria-label={text.info}
-              class="flex min-h-0 min-w-0 {!isDocked || metadataExpanded ? 'flex-1' : 'w-[32%] min-w-[18rem]'} flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-              <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
-                <div class="flex flex-none items-center gap-2">
-                  <label class="relative block flex-1">
-                    <span class="sr-only">{text.metadataSearch}</span>
-                    <input
-                      type="search"
-                      bind:value={metadata.search}
-                      placeholder={text.metadataSearch}
-                      aria-label={text.metadataSearch}
-                      class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50" />
-                  </label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    ariaLabel={text.resetPlaybackCache}
-                    tooltip={text.resetPlaybackCache}
-                    onClick={resetPlaybackAndCache}
-                    className="border border-slate-700 text-slate-400 hover:text-slate-200">
-                    {#snippet icon()}
-                      <RefreshIcon className="h-4 w-4" />
-                    {/snippet}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    ariaPressed={metadata.followSentence}
-                    ariaLabel={text.followSentence}
-                    tooltip={text.followSentence}
-                    onClick={() => (metadata.followSentence = !metadata.followSentence)}
-                    className={metadata.followSentence ? 'border border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border border-slate-700 text-slate-400 hover:text-slate-200'}>
-                    {#snippet icon()}
-                      <FollowIcon className="h-4 w-4" />
-                    {/snippet}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    ariaExpanded={!metadataExpanded}
-                    ariaLabel={metadataExpanded ? text.metadataRestore : text.metadataExpand}
-                    tooltip={metadataExpanded ? text.metadataRestore : text.metadataExpand}
-                    onClick={() => {
-                      metadataExpanded = !metadataExpanded
-                      if (!metadataExpanded) {
-                        void tick().then(() => editorRef?.focus())
-                      }
-                    }}
-                    className={`border ${metadataExpanded ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border-slate-700 text-slate-400 hover:text-slate-200'}`}>
-                    {#snippet icon()}
-                      {#if metadataExpanded}
-                        <MinimizeIcon className="h-4 w-4" />
-                      {:else}
-                        <MaximizeIcon className="h-4 w-4" />
-                      {/if}
-                    {/snippet}
-                  </Button>
-                  <!-- Mobile only: the panel stacks below the editor, so it
-                       needs an in-panel collapse control; desktop toggles via
-                       the Info button in the toolbar. -->
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    ariaLabel={text.infoCollapse}
-                    tooltip={text.infoCollapse}
-                    onClick={() => {
-                      showMetadata = false
-                      editorRef?.focus()
-                    }}
-                    className="border border-slate-700 text-slate-400 hover:text-slate-200 lg:hidden">
-                    {#snippet icon()}
-                      <ChevronDownIcon className="h-4 w-4" />
-                    {/snippet}
-                  </Button>
-                </div>
-                <div class="flex flex-none flex-wrap items-center gap-2 text-xs text-slate-400">
-                  {#if metadata.stale}
-                    <span>{text.metadataStale}</span>
-                  {:else}
-                    <span>{text.segmentHint}</span>
-                  {/if}
-                </div>
-                {#if metadata.rows.length === 0}
-                  <p class="text-xs text-slate-500">{metadata.search.trim() ? text.metadataNoResults : text.noMetadata}</p>
-                {:else}
-                  <div bind:this={tableBodyRef} class="min-h-0 flex-1 overflow-auto">
-                    <table class="w-full border-collapse text-sm">
-                      <thead class="sticky top-0 z-10 bg-slate-950">
-                        <tr class="text-left text-xs text-slate-400">
-                          <th scope="col" class="px-2 py-1 font-medium">{text.tableSeg}</th>
-                          <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
-                          <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
-                          <th scope="col" class="px-2 py-1 font-medium">{text.tableLang}</th>
-                          <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {#each metadata.rows as row}
-                          <tr
-                            data-active={row.active}
-                            class="relative border-t border-slate-800 align-top {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
-                            <td class="px-2 py-1 whitespace-nowrap">
-                              <!-- Stretched over the row so the entire line plays the sentence; the tr is the positioning context. -->
-                              <button
-                                type="button"
-                                aria-label={`${text.playSegment} ${row.segmentIndex + 1}`}
-                                onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
-                                class="absolute inset-0 flex cursor-pointer items-start rounded px-2 py-1 text-left font-mono outline-none transition hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 motion-reduce:transition-none">
-                                {row.segmentIndex + 1}
-                              </button>
-                            </td>
-                            <td class="px-2 py-1 font-mono whitespace-nowrap">{row.at.toFixed(2)}s</td>
-                            <td class="px-2 py-1 font-mono whitespace-nowrap">{row.offset}</td>
-                            <td class="px-2 py-1 whitespace-nowrap">{row.lang}</td>
-                            <td class="px-2 py-1">{row.text}</td>
-                          </tr>
-                        {/each}
-                      </tbody>
-                    </table>
-                  </div>
-                {/if}
-              </div>
-            </section>
+            <MetadataPanel
+              metadata={metadata}
+              playback={playback}
+              text={text}
+              isDocked={isDocked}
+              expanded={metadataExpanded}
+              onToggleExpand={() => {
+                metadataExpanded = !metadataExpanded
+                if (!metadataExpanded) {
+                  void tick().then(() => editorRef?.focus())
+                }
+              }}
+              onCollapse={() => {
+                showMetadata = false
+                void tick().then(() => editorRef?.focus())
+              }}
+              onResetCache={resetPlaybackAndCache} />
           {/if}
         </div>
       </div>

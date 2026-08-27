@@ -7,6 +7,8 @@ export interface UiText {
   seek: string
   editorLabel: string
   appTitle: string
+  appShortTitle: string
+  playbackControls: string
   stop: string
   close: string
   info: string
@@ -112,6 +114,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     seek: 'Playback position',
     editorLabel: 'Editor',
     appTitle: 'Text-to-Speech',
+    appShortTitle: 'TTS',
+    playbackControls: 'Playback controls',
     stop: 'Stop',
     close: 'Close',
     info: 'Info',
@@ -199,6 +203,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     seek: '播放位置',
     editorLabel: '編輯器',
     appTitle: '文字轉語音',
+    appShortTitle: 'TTS',
+    playbackControls: '播放控制',
     stop: '停止',
     close: '關閉',
     info: '資訊',
@@ -286,6 +292,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     seek: '播放位置',
     editorLabel: '编辑器',
     appTitle: '文字转语音',
+    appShortTitle: 'TTS',
+    playbackControls: '播放控制',
     stop: '停止',
     close: '关闭',
     info: '信息',

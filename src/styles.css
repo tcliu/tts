@@ -24,6 +24,16 @@
 
 :root {
   color-scheme: dark;
+
+  /* CodeMirror chrome — see src/lib/components/CodeEditor.svelte. Values are
+     consumed via var(--cm-*) inside EditorView.theme so the palette lives
+     only here alongside the Tailwind remaps. */
+  --cm-caret: rgb(103 232 249);
+  --cm-gutterColor: rgb(100 116 139);
+  --cm-gutterBorder: rgb(51 65 85);
+  --cm-activeLineGutter: rgba(22, 27, 34, 0.95);
+  --cm-activeLine: rgba(48, 54, 61, 0.45);
+  --cm-selection: rgba(56, 139, 253, 0.35);
 }
 
 /*
@@ -86,6 +96,13 @@
   --color-slate-800: #e2e8f0;
   --color-slate-900: #ffffff;
   --color-slate-950: #f8fafc;
+
+  --cm-caret: #0e7490;
+  --cm-gutterColor: #64748b;
+  --cm-gutterBorder: #e2e8f0;
+  --cm-activeLineGutter: rgba(241, 245, 249, 0.95);
+  --cm-activeLine: rgba(2, 6, 23, 0.04);
+  --cm-selection: rgba(9, 105, 218, 0.18);
 }
 
 [data-theme='sepia'] {
@@ -107,6 +124,13 @@
   --color-cyan-300: #b45309;
   --color-cyan-400: #d97706;
   --color-cyan-500: #f59e0b;
+
+  --cm-caret: #b45309;
+  --cm-gutterColor: #7d7159;
+  --cm-gutterBorder: #d6caab;
+  --cm-activeLineGutter: rgba(245, 238, 222, 0.95);
+  --cm-activeLine: rgba(120, 90, 30, 0.06);
+  --cm-selection: rgba(180, 83, 9, 0.16);
 }
 
 [data-theme='ember'] {
@@ -129,6 +153,13 @@
   --color-cyan-300: #fcd34d;
   --color-cyan-400: #fbbf24;
   --color-cyan-500: #f59e0b;
+
+  --cm-caret: #fcd34d;
+  --cm-gutterColor: #a08c7d;
+  --cm-gutterBorder: #452f27;
+  --cm-activeLineGutter: rgba(33, 23, 20, 0.95);
+  --cm-activeLine: rgba(120, 70, 30, 0.25);
+  --cm-selection: rgba(245, 158, 11, 0.25);
 }
 
 [data-theme='nebula'] {
@@ -151,6 +182,13 @@
   --color-cyan-300: #c4b5fd;
   --color-cyan-400: #a78bfa;
   --color-cyan-500: #8b5cf6;
+
+  --cm-caret: #c4b5fd;
+  --cm-gutterColor: #9a90bd;
+  --cm-gutterBorder: #322751;
+  --cm-activeLineGutter: rgba(23, 18, 35, 0.95);
+  --cm-activeLine: rgba(120, 100, 190, 0.28);
+  --cm-selection: rgba(167, 139, 250, 0.3);
 }
 
 [data-theme='sky'] {
@@ -166,6 +204,13 @@
   --color-slate-800: #d3e2ee;
   --color-slate-900: #ffffff;
   --color-slate-950: #eff5fa;
+
+  --cm-caret: #0369a1;
+  --cm-gutterColor: #556a80;
+  --cm-gutterBorder: #bcd0e0;
+  --cm-activeLineGutter: rgba(239, 245, 250, 0.95);
+  --cm-activeLine: rgba(2, 132, 199, 0.07);
+  --cm-selection: rgba(14, 116, 233, 0.16);
 }
 
 html,

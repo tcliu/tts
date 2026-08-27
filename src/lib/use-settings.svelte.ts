@@ -40,7 +40,7 @@ export function useSettings(): SettingsHandle {
   let groupSelections = $state<Record<string, string>>(defaultGroupByLanguage())
   let theme = $state<UiTheme>('dark')
 
-  const canPlay = $derived(content.length > 0)
+  const canPlay = $derived(content.trim().length > 0)
 
   function flushSettingsSave() {
     if (saveTimer) {

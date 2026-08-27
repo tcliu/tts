@@ -45,21 +45,21 @@
   }: Props = $props()
 
   const primaryClasses: Record<string, string> = {
-    cyan: 'bg-cyan-500 text-onaccent hover:bg-cyan-400 focus:bg-cyan-400',
-    emerald: 'bg-emerald-500 text-onaccent hover:bg-emerald-400 focus:bg-emerald-400',
-    amber: 'bg-amber-500 text-onaccent hover:bg-amber-400 focus:bg-amber-400',
-    violet: 'bg-violet-500 text-onaccent hover:bg-violet-400 focus:bg-violet-400',
-    rose: 'bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400',
+    cyan: 'bg-cyan-500 text-onaccent hover:bg-cyan-400 focus:bg-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+    emerald: 'bg-emerald-500 text-onaccent hover:bg-emerald-400 focus:bg-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+    amber: 'bg-amber-500 text-onaccent hover:bg-amber-400 focus:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+    violet: 'bg-violet-500 text-onaccent hover:bg-violet-400 focus:bg-violet-400 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+    rose: 'bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
   }
 
   const outlineClasses: Record<string, string> = {
-    cyan: 'border border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:border-cyan-400 hover:text-cyan-100 focus:border-cyan-400 focus:text-cyan-100',
+    cyan: 'border border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:border-cyan-400 hover:text-cyan-100 focus:border-cyan-400 focus:text-cyan-100 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
     emerald:
-      'border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400 hover:text-emerald-100 focus:border-emerald-400 focus:text-emerald-100',
-    amber: 'border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:border-amber-400 hover:text-amber-100 focus:border-amber-400 focus:text-amber-100',
+      'border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400 hover:text-emerald-100 focus:border-emerald-400 focus:text-emerald-100 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+    amber: 'border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:border-amber-400 hover:text-amber-100 focus:border-amber-400 focus:text-amber-100 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
     violet:
-      'border border-violet-500/40 bg-violet-500/10 text-violet-200 hover:border-violet-400 hover:text-violet-100 focus:border-violet-400 focus:text-violet-100',
-    rose: 'border border-rose-500/40 bg-rose-500/10 text-rose-200 hover:border-rose-400 hover:text-rose-100 focus:border-rose-400 focus:text-rose-100',
+      'border border-violet-500/40 bg-violet-500/10 text-violet-200 hover:border-violet-400 hover:text-violet-100 focus:border-violet-400 focus:text-violet-100 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+    rose: 'border border-rose-500/40 bg-rose-500/10 text-rose-200 hover:border-rose-400 hover:text-rose-100 focus:border-rose-400 focus:text-rose-100 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
   }
 
   const iconSizeClass = $derived(size === 'sm' ? 'h-4 w-4' : 'h-5 w-5')
@@ -67,23 +67,23 @@
   const disabledState = $derived(disabled || pending)
 
   const baseClass = $derived.by(() => {
-    const common = `${size === 'sm' ? 'p-1.5 relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-[\'\']' : 'inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold'} cursor-pointer outline-none transition disabled:cursor-not-allowed disabled:opacity-40`
+    const common = `${size === 'sm' ? 'p-1.5 relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-[\'\']' : 'inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
     if (variant === 'primary') {
       return `${common} ${primaryClasses[accent]}`
     }
     if (variant === 'danger') {
-      return `${common} bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400`
+      return `${common} bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950`
     }
     if (variant === 'outline') {
       return `${common} ${outlineClasses[accent]}`
     }
     if (variant === 'ghost') {
-      return `${common}`
+      return `${common} text-slate-400 hover:text-cyan-300 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950`
     }
     if (size === 'sm') {
-      return `${common} border border-slate-700 bg-slate-950 text-slate-200 hover:border-cyan-500 hover:text-cyan-300 focus:border-cyan-500 focus:text-cyan-300`
+      return `${common} border border-slate-700 bg-slate-950 text-slate-200 hover:border-cyan-500 hover:text-cyan-300 focus:border-cyan-500 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950`
     }
-    return `${common} border border-slate-700 bg-slate-950 hover:border-slate-500 hover:text-slate-100 focus:border-slate-500 focus:text-slate-100`
+    return `${common} border border-slate-700 bg-slate-950 hover:border-slate-500 hover:text-slate-100 focus:border-slate-500 focus:text-slate-100 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950`
   })
 
   function handlePreventFocusSteal(event: PointerEvent) {

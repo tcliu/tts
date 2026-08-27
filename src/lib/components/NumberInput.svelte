@@ -125,7 +125,7 @@
 </script>
 
 <div
-  class={`flex items-stretch ${showControls ? 'overflow-hidden rounded-lg border border-slate-700 bg-slate-950 transition focus-within:border-cyan-500' : ''}`}>
+  class={`flex items-stretch ${showControls ? 'overflow-hidden rounded-lg border border-slate-700 bg-slate-950 transition motion-reduce:transition-none focus-within:border-cyan-500' : ''}`}>
   <input
     bind:this={inputEl}
     {id}
@@ -141,25 +141,23 @@
     }}
     onblur={handleBlur}
     onkeydown={handleKeydown}
-    class={`flex-1 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500 disabled:opacity-40 ${showControls ? 'min-w-0 border-0 bg-transparent' : ''} ${className}`} />
+    class={`flex-1 px-3 py-2 text-sm text-slate-100 outline-none transition motion-reduce:transition-none focus:border-cyan-500 disabled:opacity-40 ${showControls ? 'min-w-0 border-0 bg-transparent' : ''} ${className}`} />
   {#if showControls}
     <div class="flex flex-col">
       <button
         type="button"
         onclick={() => adjust(1)}
         disabled={disabled || isAtMax}
-        tabindex="-1"
         aria-label={incrementLabel || ariaLabel}
-        class="flex flex-1 items-center justify-center border-b border-slate-700 bg-slate-900 px-1 text-slate-400 outline-none transition hover:text-cyan-300 focus:text-cyan-300 disabled:opacity-40">
+        class="flex flex-1 items-center justify-center border-b border-slate-700 bg-slate-900 px-1 text-slate-400 outline-none transition motion-reduce:transition-none hover:text-cyan-300 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset disabled:opacity-40">
         <ChevronUpSmallIcon className="h-3 w-3" />
       </button>
       <button
         type="button"
         onclick={() => adjust(-1)}
         disabled={disabled || isAtMin}
-        tabindex="-1"
         aria-label={decrementLabel || ariaLabel}
-        class="flex flex-1 items-center justify-center bg-slate-900 px-1 text-slate-400 outline-none transition hover:text-cyan-300 focus:text-cyan-300 disabled:opacity-40">
+        class="flex flex-1 items-center justify-center bg-slate-900 px-1 text-slate-400 outline-none transition motion-reduce:transition-none hover:text-cyan-300 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset disabled:opacity-40">
         <ChevronDownSmallIcon className="h-3 w-3" />
       </button>
     </div>
