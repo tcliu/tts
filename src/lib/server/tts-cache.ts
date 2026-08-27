@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { synthesisCacheKey as buildSynthesisCacheKey } from '$lib/tts-cache-key'
 import type { TtsBoundary } from '$lib/tts-reference'
@@ -34,16 +34,33 @@ export function synthesisCacheKey(text: string, voice: string, rate: number): st
 }
 
 export async function getCachedSynthesis(key: string): Promise<CachedSynthesis | null> {
+  const file = path.join(cacheDir(), `${key}.json`)
+  let raw: string
   try {
-    const raw = await readFile(path.join(cacheDir(), `${key}.json`), 'utf-8')
+    raw = await readFile(file, 'utf-8')
+  } catch (error) {
+    // A missing file is a normal cache miss; anything else is unexpected.
+    // Never unlink on I/O errors — a transient EBUSY/EPERM must not destroy a
+    // valid entry.
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return null
+    logEvent({
+      ip: 'unknown',
+      action: 'tts_cache_read_error',
+      details: { level: 'WARN', key, error: error instanceof Error ? error.message : 'Unknown error' },
+    })
+    return null
+  }
+
+  try {
     const envelope = JSON.parse(raw) as Partial<CacheEnvelope>
     if (typeof envelope.savedAt !== 'number' || Date.now() - envelope.savedAt > CACHE_TTL_MS || !envelope.value) {
       return null
     }
     return envelope.value
   } catch (error) {
-    // A missing file is a normal cache miss; anything else is unexpected.
-    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return null
+    // Corrupt envelope content: drop it so it is not re-read and re-parsed on
+    // every subsequent lookup of this key.
+    await unlink(file).catch(() => {})
     logEvent({
       ip: 'unknown',
       action: 'tts_cache_read_error',
