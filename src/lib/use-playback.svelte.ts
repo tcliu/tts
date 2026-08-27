@@ -764,7 +764,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           measuredTotal += playbackDuration
           playedDuration = measuredTotal
         }
-        setSegmentDuration(index, playbackDuration)
       }
 
       if (wasCancelled) return
