@@ -17,7 +17,6 @@ export interface UiText {
   playSegment: string
   segmentHint: string
   metadataSearch: string
-  metadataRefreshing: string
   metadataStale: string
   metadataNoResults: string
   followSentence: string
@@ -117,7 +116,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     playSegment: 'Play segment',
     segmentHint: 'Click a row to play from that segment.',
     metadataSearch: 'Search',
-    metadataRefreshing: 'Updating segment info…',
     metadataStale: 'Segment info cleared after edit.',
     metadataNoResults: 'No matching rows.',
     followSentence: 'Follow current sentence',
@@ -199,7 +197,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     playSegment: '播放段落',
     segmentHint: '點擊列可從該段落開始播放。',
     metadataSearch: '搜尋',
-    metadataRefreshing: '更新段落資訊中…',
     metadataStale: '編輯後已清除段落資訊。',
     metadataNoResults: '沒有符合的列。',
     followSentence: '追蹤目前句子',
@@ -281,7 +278,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     playSegment: '播放段落',
     segmentHint: '点击行可从该段落开始播放。',
     metadataSearch: '搜索',
-    metadataRefreshing: '正在更新段落信息…',
     metadataStale: '编辑后已清除段落信息。',
     metadataNoResults: '没有匹配的行。',
     followSentence: '跟随当前句子',

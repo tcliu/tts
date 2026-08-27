@@ -6,6 +6,7 @@ vi.mock('./tts-client', () => ({
     blob: new Blob(['audio'], { type: 'audio/mpeg' }),
     boundaries: [] as Array<{ offset: number; at: number }>,
   })),
+  peekCachedSynthesis: vi.fn(() => null),
 }))
 
 import {
@@ -17,7 +18,7 @@ import {
 import type { SettingsHandle } from './use-settings.svelte'
 import { splitHighlightRanges, splitTtsSegments, type TtsBoundary, type TtsSegment } from './tts-reference'
 import { createPlaybackHost } from '../test/create-playback.svelte'
-import { getCachedSynthesis } from './tts-client'
+import { getCachedSynthesis, peekCachedSynthesis } from './tts-client'
 
 class AudioStub {
   static instances: AudioStub[] = []
@@ -404,7 +405,9 @@ describe('usePlayback stop', () => {
     playback.primeSession(segments, 0, null)
     playback.syncSelectionStart({ from: selectionStart, to: selectionEnd })
 
-    expect(playback.totalSegments).toBe(0)
+    // The primed session stays intact; the selection change without metadata
+    // must not zero or re-prime it.
+    expect(playback.totalSegments).toBe(2)
     expect(playback.totalDuration).toBe(0)
     expect(playback.currentSegmentIndex).toBe(0)
   })
@@ -622,5 +625,151 @@ describe('usePlayback stop', () => {
       expect(playback.totalDuration).toBeCloseTo(2.3 - 0.1, 5)
       dispose()
     })
+
+    it('treats a stop at the spoken end as a completed playback', async () => {
+      const { playback, dispose } = createPlayback()
+      playback.primeSession(splitTtsSegments('One sentence here.'), 0)
+
+      const finished = playback.playFromSegment(0)
+      await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+      await vi.waitFor(() => expect(playback.totalDuration).toBeGreaterThan(0))
+
+      // Stop lands after the spoken end (e.g. during the trailing silence).
+      const audio = AudioStub.instances[AudioStub.instances.length - 1]
+      audio.currentTime = 2.31
+      playback.stopPlayback()
+
+      expect(playback.isPlaybackEnded).toBe(true)
+      expect(playback.totalElapsed).toBeCloseTo(2.3 - 0.1, 5)
+      expect(playback.totalDuration).toBeCloseTo(2.3 - 0.1, 5)
+
+      await finished
+      dispose()
+    })
+  })
+
+  it('keeps a seek to the end at the end instead of snapping back to a word', () => {
+    // The editor echoes programmatic selections back through
+    // syncSelectionStart, like CodeEditor's updateListener does.
+    let echo: ((from: number, to: number) => void) | null = null
+    const editor: CodeEditorHandle = {
+      getSelectionText: () => '',
+      getSelectionRange: () => null,
+      setSelection: (from, to) => {
+        echo?.(from, to)
+        return true
+      },
+      clearSelection: () => {},
+      focus: () => {},
+    }
+    const { playback, dispose } = createPlaybackHost(createDeps('First paragraph here.', editor))
+    echo = (from, to) => playback.syncSelectionStart({ from, to })
+
+    const segments = splitTtsSegments('First paragraph here.')
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    playback.seekTo(1.5)
+    flushSync()
+
+    // The selection echo of the seek must not rewind the position to the
+    // last word boundary (1.1s).
+    expect(playback.playbackElapsed).toBeCloseTo(1.5, 5)
+    expect(playback.totalElapsed).toBeCloseTo(1.5, 5)
+
+    dispose()
+  })
+
+  it('derives status-strip facts from the segment at the slider position', () => {
+    const { playback, dispose } = createPlayback()
+    const segments = splitTtsSegments('First paragraph here.\n\nSecond paragraph here.')
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+    playback.recordSegment(1, createSegmentMeta(1, segments[1], {
+      boundaries: SECOND_SEGMENT_BOUNDARIES,
+      wordBoundaries: SECOND_SEGMENT_BOUNDARIES,
+      spokenEnd: 1,
+      duration: 1,
+    }))
+
+    // Before any playback the position sits at the first segment.
+    expect(playback.positionSegmentIndex).toBe(0)
+    expect(playback.positionSegmentLabel).toBe('English')
+    expect(playback.positionVoiceName).toBe('Aria')
+
+    playback.seekTo(2.5)
+    flushSync()
+
+    // 2.5s lands inside the second segment (first spans 0-1.5s).
+    expect(playback.positionSegmentIndex).toBe(1)
+    expect(playback.positionSegmentLabel).toBe('English')
+    expect(playback.positionVoiceName).toBe('Aria')
+
+    dispose()
+  })
+
+  it('warmFromCache surfaces only cached segments without playing', () => {
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const segments = splitTtsSegments(content)
+    vi.mocked(peekCachedSynthesis).mockImplementation((text) =>
+      text === segments[0].text
+        ? {
+            blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+            boundaries: FIRST_SEGMENT_BOUNDARIES,
+            wordBoundaries: FIRST_SEGMENT_BOUNDARIES,
+            spokenStart: 0,
+            spokenEnd: 1.5,
+          }
+        : null,
+    )
+
+    const { playback, dispose } = createPlaybackHost(createDeps(content))
+
+    playback.warmFromCache()
+
+    expect(playback.hasSession).toBe(true)
+    expect(playback.totalSegments).toBe(2)
+    expect(playback.synthesizedCount).toBe(1)
+    expect(playback.totalDuration).toBeCloseTo(1.5, 5)
+    expect(playback.positionSegmentIndex).toBe(0)
+    expect(playback.isPlaying).toBe(false)
+
+    vi.mocked(peekCachedSynthesis).mockReset()
+    dispose()
+  })
+
+  it('synthesizes segments ahead of playback, not just on demand', async () => {
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const segments = splitTtsSegments(content)
+    const requested: string[] = []
+    let releaseSynthesis: () => void = () => {}
+    const firstGate = new Promise<void>(resolve => {
+      releaseSynthesis = resolve
+    })
+    vi.mocked(getCachedSynthesis).mockImplementation(async text => {
+      requested.push(text)
+      if (text === segments[0].text) {
+        await firstGate
+      }
+      return {
+        blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+        boundaries: [] as Array<{ offset: number; at: number }>,
+      }
+    })
+
+    const { playback, dispose } = createPlaybackHost(createDeps(content))
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+
+    // Both segments are requested while the first audio is still playing.
+    await vi.waitFor(() => expect(requested).toContain(segments[1].text))
+    expect(requested).toContain(segments[0].text)
+
+    releaseSynthesis()
+    playback.stopPlayback()
+    await finished
+
+    vi.mocked(getCachedSynthesis).mockReset()
+    dispose()
   })
 })

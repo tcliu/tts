@@ -1,6 +1,4 @@
-import { splitHighlightRanges, splitTtsSegments, type TtsBoundary } from './tts-reference'
-import { getCachedSynthesis } from './tts-client'
-import type { PlaybackHandle, CodeEditorHandle, SegmentMeta } from './use-playback.svelte'
+import type { PlaybackHandle, CodeEditorHandle } from './use-playback.svelte'
 import type { SettingsHandle } from './use-settings.svelte'
 
 export interface MetadataRow {
@@ -24,23 +22,19 @@ export interface MetadataHandle {
   readonly rows: MetadataRow[]
   readonly search: string
   setSearch: (value: string) => void
-  readonly syncing: boolean
   readonly stale: boolean
   followSentence: boolean
   attachScrollContainer: (element: HTMLDivElement | null) => void
   prepareForPlayback: () => void
 }
 
-const RESYNC_DEBOUNCE_MS = 500
+export const RESYNC_DEBOUNCE_MS = 500
 
 export function useMetadata(deps: MetadataDeps): MetadataHandle {
   let metaSearch = $state('')
-  let metaSyncing = $state(false)
   let metaStale = $state(false)
   let metaDirty = $state(false)
 
-  let metaController: { cancelled: boolean } | null = null
-  let metaAbort: AbortController | null = null
   let metaBaseline = ''
   let metaDebounce: ReturnType<typeof setTimeout> | null = null
 
@@ -145,16 +139,17 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     scrollActiveIntoView()
   })
 
-  // Content edits invalidate the session metadata; refresh it in the
-  // background once typing pauses.
+  // Content edits invalidate the session metadata; refresh the cached
+  // segments in the background once typing pauses. Uncached synthesis stays
+  // deferred to Play (warmFromCache only records cached results).
   $effect(() => {
     if (playback.isPlaying) {
       return
     }
     const signature = settings.content
-    // Compare against the last-synced content. Unlike the prior metaSignature
-    // gate this bootstraps from an empty baseline, so edits made before any
-    // playback still mark the table stale and trigger a background refresh.
+    // Compare against the last-synced content. This bootstraps from an empty
+    // baseline, so edits made before any playback still mark the table stale
+    // and trigger a background refresh.
     if (signature !== metaBaseline && !metaDirty) {
       metaDirty = true
     }
@@ -163,9 +158,7 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     }
     metaDirty = false
     metaBaseline = signature
-    cancelPendingSynthesis()
-    playback.clearSegments()
-    playback.setMetadataAvailability(false)
+    cancelPendingResync()
     metaStale = true
     metaDebounce = setTimeout(() => {
       metaDebounce = null
@@ -181,111 +174,24 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     return settings.content
   }
 
-  function cancelPendingSynthesis() {
-    if (metaController) {
-      metaController.cancelled = true
-    }
-    metaAbort?.abort()
-    metaAbort = null
+  function cancelPendingResync() {
     if (metaDebounce) {
       clearTimeout(metaDebounce)
       metaDebounce = null
     }
   }
 
-  async function resyncMetadata() {
-    cancelPendingSynthesis()
-    const controller: { cancelled: boolean } = { cancelled: false }
-    metaController = controller
-    const abort = new AbortController()
-    metaAbort = abort
-    const editor = deps.getEditor()
-    const selectedRange = editor?.getSelectionRange() ?? null
-    const content = settings.content
+  function resyncMetadata() {
+    cancelPendingResync()
     const signature = currentMetaSignature()
-    // Playback always covers the full document; a selection only decides
-    // where playback starts.
-    const segments = splitTtsSegments(content)
-
-    // Keep the replay session in lockstep with the table: rows are rendered
-    // from this segmentation, so playFromSegment must index into exactly it.
-    playback.clearSegments()
-    playback.primeSession(segments, 0, selectedRange)
+    // The page effect already primes the session from cache on open and on
+    // debounced edits; skip the redundant full re-warm when it already did.
+    if (playback.sessionSource !== signature) {
+      playback.warmFromCache()
+    }
+    metaBaseline = signature
+    metaDirty = false
     metaStale = false
-    if (segments.length === 0) {
-      metaBaseline = signature
-      if (metaController === controller) {
-        metaController = null
-      }
-      metaAbort = null
-      return
-    }
-
-    metaSyncing = true
-    try {
-      // Bounded parallel warm-up honoring the synthesis concurrency setting;
-      // failures are best-effort and must not leak into the playback status line.
-      let nextIndex = 0
-      const workerCount = Math.max(1, Math.min(settings.synthesisConcurrency, segments.length))
-      const recordSegment = (
-        index: number,
-        entry: { boundaries: TtsBoundary[]; wordBoundaries?: TtsBoundary[]; spokenStart?: number; spokenEnd?: number },
-      ) => {
-        const segment = segments[index]
-        const record: SegmentMeta = {
-          index,
-          lang: segment.lang,
-          text: segment.text,
-          ranges: splitHighlightRanges(segment.text),
-          boundaries: entry.boundaries,
-          wordBoundaries: entry.wordBoundaries ?? [],
-          baseOffset: segment.indexStart,
-          spokenStart: entry.spokenStart,
-          spokenEnd: entry.spokenEnd,
-        }
-        playback.recordSegment(index, record)
-      }
-      const workers = Array.from({ length: workerCount }, async () => {
-        while (!controller.cancelled && !abort.signal.aborted) {
-          const index = nextIndex
-          if (index >= segments.length) return
-          nextIndex += 1
-          const segment = segments[index]
-          const voice = settings.resolveVoiceForSegment(segment.lang)
-          if (!voice?.edge) {
-            continue
-          }
-          try {
-            const entry = await getCachedSynthesis(segment.text, voice.edge, settings.speed, abort.signal)
-            if (controller.cancelled || abort.signal.aborted) {
-              return
-            }
-            recordSegment(index, entry)
-          } catch {
-            if (controller.cancelled || abort.signal.aborted) {
-              return
-            }
-            console.error(`Metadata synthesis failed for segment ${index + 1}.`)
-          }
-        }
-      })
-      await Promise.all(workers)
-      if (controller.cancelled || abort.signal.aborted) {
-        return
-      }
-      metaBaseline = signature
-      metaDirty = false
-      metaStale = false
-      playback.setMetadataAvailability(Object.keys(playback.segments).length > 0)
-    } finally {
-      if (metaController === controller) {
-        metaController = null
-        metaSyncing = false
-      }
-      if (metaAbort === abort) {
-        metaAbort = null
-      }
-    }
   }
 
   function prepareForPlayback() {
@@ -293,7 +199,7 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     metaSearch = ''
     metaStale = false
     metaDirty = false
-    cancelPendingSynthesis()
+    cancelPendingResync()
   }
 
   return {
@@ -305,9 +211,6 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     },
     setSearch(value) {
       metaSearch = value
-    },
-    get syncing() {
-      return metaSyncing
     },
     get stale() {
       return metaStale

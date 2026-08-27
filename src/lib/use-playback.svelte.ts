@@ -5,7 +5,7 @@ import {
   type HighlightRange,
   type TtsBoundary,
 } from './tts-reference'
-import { getCachedSynthesis } from './tts-client'
+import { getCachedSynthesis, peekCachedSynthesis } from './tts-client'
 import { UI_TEXT, segmentLanguageName, type UiLocale } from './ui-text'
 import type { SettingsHandle } from './use-settings.svelte'
 
@@ -46,8 +46,9 @@ export interface PlaybackHandle {
   readonly totalSegments: number
   readonly synthesizedCount: number
   readonly playedDuration: number
-  readonly currentSegmentLabel: string
-  readonly currentVoiceName: string
+  readonly positionSegmentIndex: number
+  readonly positionSegmentLabel: string
+  readonly positionVoiceName: string
   readonly currentSynthesisRate: number
   readonly playbackElapsed: number
   readonly playbackDuration: number
@@ -56,6 +57,7 @@ export interface PlaybackHandle {
   readonly statusMessage: string
   readonly metadataAvailable: boolean
   readonly segments: Record<number, SegmentMeta>
+  readonly sessionSource: string
   initStatus: () => void
   onLocaleChanged: (locale: UiLocale) => void
   startPlayback: () => Promise<void>
@@ -63,6 +65,7 @@ export interface PlaybackHandle {
   seekTo: (elapsed: number) => Promise<void>
   playFromSegment: (index: number, charOffset?: number) => Promise<void>
   syncSelectionStart: (range: { from: number; to: number } | null) => void
+  warmFromCache: () => void
   primeSession: (
     segments: ReturnType<typeof splitTtsSegments>,
     offset: number,
@@ -198,8 +201,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let synthesizedCount = $state(0)
   let playedDuration = $state(0)
   let measuredTotal = $state(0)
-  let currentSegmentLabel = $state('')
-  let currentVoiceName = $state('')
   let currentSynthesisRate = $state(1)
   let playbackElapsed = $state(0)
   let playbackDuration = $state(0)
@@ -219,6 +220,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let sessionSelectedRange: { from: number; to: number } | null = null
   let sessionSourceContent = ''
   let sessionResumeSelection: { from: number; to: number } | null = null
+  let applyingResumeSelection = false
   let resumeSegmentIndex = 0
   let resumeSegmentTime = 0
 
@@ -229,6 +231,19 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       total += segmentDurationAt(i)
     }
     return total
+  })
+
+  // Status-strip facts for the segment at the slider position, so lang and
+  // voice stay meaningful before, during, and after playback.
+  const positionLocation = $derived(locatePlaybackPosition(totalElapsed))
+  const positionSegmentIndex = $derived(positionLocation ? positionLocation.index : -1)
+  const positionSegmentLabel = $derived.by(() => {
+    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
+    return segment ? deps.segmentLabel(segment.lang) : ''
+  })
+  const positionVoiceName = $derived.by(() => {
+    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
+    return segment ? (deps.settings.resolveVoiceForSegment(segment.lang)?.name ?? '') : ''
   })
 
   $effect(() => {
@@ -255,6 +270,26 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     }
   })
 
+  // A stop landing at (or in the trailing silence after) the spoken end means
+  // the segment finished; treat it as a completed playback, not a pause.
+  function finishedSegmentIndexAtStop(): number {
+    const audio = currentAudio
+    if (!audio) {
+      return -1
+    }
+    const index = Math.max(0, currentSegmentIndex - 1)
+    const meta = segmentMetaMap[index]
+    if (!meta) {
+      return -1
+    }
+    const segmentDuration = segmentDurationAt(index)
+    if (segmentDuration <= 0) {
+      return -1
+    }
+    const audioAt = Math.max(0, audio.currentTime - (meta.spokenStart ?? 0))
+    return audioAt >= segmentDuration - RESUME_EPSILON ? index : -1
+  }
+
   function stopPlayback() {
     if (playbackEnded) {
       return
@@ -262,6 +297,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (!currentController) {
       return
     }
+    const finishedIndex = finishedSegmentIndexAtStop()
     rememberResumePosition()
     const controller = currentController
     controller.cancelled = true
@@ -274,6 +310,18 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (currentAudioUrl) {
       URL.revokeObjectURL(currentAudioUrl)
       currentAudioUrl = ''
+    }
+    if (finishedIndex >= 0) {
+      measuredTotal += segmentDurationAt(finishedIndex)
+      playedDuration = measuredTotal
+      playbackElapsed = 0
+      lastStatusReason = 'finished'
+      playbackEnded = true
+      synthesizedCount = finishedIndex + 1
+      resumeSegmentIndex = 0
+      resumeSegmentTime = 0
+      statusMessage = UI_TEXT[deps.settings.locale].playbackFinished
+      return
     }
     lastStatusReason = 'stopped'
     playbackEnded = false
@@ -344,18 +392,24 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     resumeSegmentTime = clampedAt
     currentSegmentIndex = clampedIndex + 1
     totalSegments = sessionSegments.length
-    currentSegmentLabel = deps.segmentLabel(sessionSegments[clampedIndex].lang)
     measuredTotal = accumulated
     playedDuration = accumulated
     playbackElapsed = clampedAt
     playbackDuration = segmentDuration
     if (applySelection) {
-      updateSelectionForPosition(clampedIndex, clampedAt)
+      // The selection echo of our own positioning must not re-enter
+      // syncSelectionStart, or a seek to the end snaps back to the last word.
+      applyingResumeSelection = true
+      try {
+        updateSelectionForPosition(clampedIndex, clampedAt)
+      } finally {
+        applyingResumeSelection = false
+      }
     }
   }
 
   function syncSelectionStart(range: { from: number; to: number } | null) {
-    if (isPlaying) return
+    if (isPlaying || applyingResumeSelection) return
     const content = deps.settings.content
     if (!content) {
       resetSession()
@@ -619,6 +673,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           active += 1
           next()
         }
+        // Keep the synthesis pipeline full: launch follow-up segments without
+        // waiting for playback to reach them.
+        scheduleNext()
       }
       const launch = (index: number) => {
         const existing = tasks.get(index)
@@ -653,30 +710,30 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         task.then((res) => {
           if (controller.cancelled) return
           const existingMeta = segmentMetaMap[index]
-          const meta: SegmentMeta = {
+          const base = buildSegmentMeta(
             index,
-            lang: segment.lang,
-            text: segment.text,
-            ranges: splitHighlightRanges(segment.text),
-            boundaries: res.boundaries,
-            wordBoundaries: res.wordBoundaries,
-            baseOffset: playbackOffset + segment.indexStart,
-            duration: res.duration,
-            spokenStart: res.spokenStart,
-            spokenEnd: res.spokenEnd,
-          }
+            segment,
+            {
+              boundaries: res.boundaries,
+              wordBoundaries: res.wordBoundaries,
+              duration: res.duration,
+              spokenStart: res.spokenStart,
+              spokenEnd: res.spokenEnd,
+            },
+            playbackOffset + segment.indexStart,
+          )
           if (!existingMeta) {
-            recordSegment(index, meta)
+            recordSegment(index, base)
           } else {
             recordSegment(index, {
               ...existingMeta,
-              ...meta,
-              boundaries: meta.boundaries.length > 0 ? meta.boundaries : existingMeta.boundaries,
+              ...base,
+              boundaries: base.boundaries.length > 0 ? base.boundaries : existingMeta.boundaries,
               wordBoundaries:
-                (meta.wordBoundaries?.length ?? 0) > 0 ? meta.wordBoundaries : (existingMeta.wordBoundaries ?? []),
-              duration: existingMeta.duration ?? meta.duration,
-              spokenStart: meta.spokenStart ?? existingMeta.spokenStart,
-              spokenEnd: meta.spokenEnd ?? existingMeta.spokenEnd,
+                (base.wordBoundaries?.length ?? 0) > 0 ? base.wordBoundaries : (existingMeta.wordBoundaries ?? []),
+              duration: existingMeta.duration ?? base.duration,
+              spokenStart: base.spokenStart ?? existingMeta.spokenStart,
+              spokenEnd: base.spokenEnd ?? existingMeta.spokenEnd,
             })
           }
         })
@@ -685,7 +742,8 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       }
 
       // Prioritize the segment where playback begins so it is synthesized
-      // first; the rest of the whole text synthesizes in the background.
+      // first; the whole text then synthesizes ahead in the background as
+      // concurrency slots free up, independent of playback progress.
       void launch(startIndex)
       scheduleNext()
       for (let index = startIndex; index < segments.length; index += 1) {
@@ -693,14 +751,12 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         if (controller.cancelled) return
         currentSegmentIndex = index + 1
         totalSegments = segments.length
-        currentSegmentLabel = deps.segmentLabel(segment.lang)
         playbackElapsed = index === startIndex ? startAt : 0
         playbackDuration = 0
         const ranges = splitHighlightRanges(segment.text)
         const absoluteBase = playbackOffset + segment.indexStart
         const result = await launch(index)
         if (controller.cancelled) return
-        currentVoiceName = result.voiceName
         currentSynthesisRate = result.rate
         metadataAvailable = result.boundaries.length > 0 || result.wordBoundaries.length > 0
         playbackDuration = result.duration
@@ -796,6 +852,48 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     }
   }
 
+  function warmFromCache() {
+    resetSession()
+    const content = deps.settings.content
+    if (!content.trim()) {
+      return
+    }
+    const segments = splitTtsSegments(content)
+    if (segments.length === 0) {
+      return
+    }
+    const selectedRange = deps.getEditor()?.getSelectionRange() ?? null
+    primeSession(segments, 0, selectedRange)
+    // Surface only already-cached segments so the status strip and slider can
+    // appear without the Info panel; uncached synthesis stays deferred to Play.
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index]
+      const voice = deps.settings.resolveVoiceForSegment(segment.lang)
+      if (!voice?.edge) {
+        continue
+      }
+      const cached = peekCachedSynthesis(segment.text, voice.edge, deps.settings.speed)
+      if (!cached) {
+        continue
+      }
+      recordSegment(
+        index,
+        buildSegmentMeta(
+          index,
+          segment,
+          {
+            boundaries: cached.boundaries,
+            wordBoundaries: cached.wordBoundaries,
+            spokenStart: cached.spokenStart,
+            spokenEnd: cached.spokenEnd,
+          },
+          segment.indexStart,
+        ),
+      )
+    }
+    metadataAvailable = Object.keys(segmentMetaMap).length > 0
+  }
+
   function primeSession(
     segments: ReturnType<typeof splitTtsSegments>,
     offset: number,
@@ -808,6 +906,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     sessionResumeSelection = selectedRange
     resumeSegmentIndex = 0
     resumeSegmentTime = 0
+    totalSegments = segments.length
   }
 
   async function startPlayback() {
@@ -864,6 +963,32 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     await runPlayback(sessionSegments, sessionOffset, index, startAt)
   }
 
+  function buildSegmentMeta(
+    index: number,
+    segment: ReturnType<typeof splitTtsSegments>[number],
+    fields: {
+      boundaries: TtsBoundary[]
+      wordBoundaries?: TtsBoundary[]
+      duration?: number
+      spokenStart?: number
+      spokenEnd?: number
+    },
+    baseOffset: number,
+  ): SegmentMeta {
+    return {
+      index,
+      lang: segment.lang,
+      text: segment.text,
+      ranges: splitHighlightRanges(segment.text),
+      boundaries: fields.boundaries,
+      wordBoundaries: fields.wordBoundaries ?? [],
+      baseOffset,
+      duration: fields.duration,
+      spokenStart: fields.spokenStart,
+      spokenEnd: fields.spokenEnd,
+    }
+  }
+
   function recordSegment(index: number, record: SegmentMeta) {
     segmentMetaMap[index] = record
     synthesizedCount = Object.keys(segmentMetaMap).length
@@ -885,8 +1010,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     measuredTotal = 0
     playbackElapsed = 0
     playbackDuration = 0
-    currentSegmentLabel = ''
-    currentVoiceName = ''
     currentSynthesisRate = deps.settings.speed
     metadataAvailable = false
   }
@@ -930,6 +1053,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     get hasSession() {
       return sessionSegments.length > 0
     },
+    get sessionSource() {
+      return sessionSourceContent
+    },
     get isPlaybackEnded() {
       return playbackEnded
     },
@@ -945,11 +1071,14 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     get playedDuration() {
       return playedDuration
     },
-    get currentSegmentLabel() {
-      return currentSegmentLabel
+    get positionSegmentIndex() {
+      return positionSegmentIndex
     },
-    get currentVoiceName() {
-      return currentVoiceName
+    get positionSegmentLabel() {
+      return positionSegmentLabel
+    },
+    get positionVoiceName() {
+      return positionVoiceName
     },
     get currentSynthesisRate() {
       return currentSynthesisRate
@@ -985,6 +1114,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     seekTo,
     playFromSegment,
     syncSelectionStart,
+    warmFromCache,
     primeSession,
     recordSegment,
     setSegmentDuration,

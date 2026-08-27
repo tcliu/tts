@@ -35,7 +35,7 @@
 
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
   import { formatClock, usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
-  import { useMetadata } from '$lib/use-metadata.svelte'
+  import { useMetadata, RESYNC_DEBOUNCE_MS } from '$lib/use-metadata.svelte'
   import { useSettings, type UiTheme } from '$lib/use-settings.svelte'
   import { useDocuments } from '$lib/use-documents.svelte'
   import { useDocumentEditor } from '$lib/use-document-editor.svelte'
@@ -194,7 +194,11 @@
   // TOOLBAR_BANDS; the last entry is empty because every action is inline.
   const toolbarMode: ToolbarMode = $derived(editor.currentDocId ? 'doc' : 'fresh')
   const toolbarMenus = $derived(TOOLBAR_BANDS.map(band => menuFor(band.name, toolbarMode)))
-  let lastPlaybackContent = $state(settings.content)
+  // Plain locals, not $state: writing them from inside the effect must not
+  // re-trigger the effect (a $state write here would rerun the effect, whose
+  // cleanup would cancel the pending debounced warm-up below).
+  let lastPlaybackContent: string | null = null
+  let lastWarmedDocId: string | null | undefined = undefined
 
   function panelActionDisabled(action: PanelAction): boolean {
     if (action === 'play') {
@@ -212,13 +216,31 @@
     return false
   }
 
+  let warmTimer: ReturnType<typeof setTimeout> | null = null
   $effect(() => {
     const content = settings.content
-    if (content === lastPlaybackContent) {
+    const docId = editor.currentDocId ?? null
+    if (content === lastPlaybackContent && docId === lastWarmedDocId) {
       return
     }
+    const isOpening = docId !== lastWarmedDocId || lastPlaybackContent === null
     lastPlaybackContent = content
-    playback.resetSession()
+    lastWarmedDocId = docId
+    if (isOpening) {
+      // Doc open or switch: surface cached synthesis in the same flush so the
+      // status strip shows instantly. Uncached synthesis stays deferred to Play.
+      if (warmTimer) clearTimeout(warmTimer)
+      playback.warmFromCache()
+      return
+    }
+    // Same-document edit: debounce the warm-up so a full-document re-segment
+    // plus per-segment cache scan does not run on every keystroke; shares the
+    // metadata module's RESYNC_DEBOUNCE_MS cadence.
+    if (warmTimer) clearTimeout(warmTimer)
+    warmTimer = setTimeout(() => playback.warmFromCache(), RESYNC_DEBOUNCE_MS)
+    return () => {
+      if (warmTimer) clearTimeout(warmTimer)
+    }
   })
 
   function toggleDrawer() {
@@ -674,19 +696,21 @@
                   {statusMessage}
                 </span>
               {/if}
-              {#if playback.synthesizedCount > 0}
+              {#if playback.synthesizedCount > 0 && playback.positionSegmentIndex >= 0}
                 <div class="flex min-w-0 flex-wrap items-center gap-2">
                   <span class="inline-flex max-w-full items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-200">
-                    <span class="truncate">{playback.currentSegmentLabel}</span>
+                    <span class="truncate">{playback.positionSegmentLabel}</span>
                   </span>
-                  {#if playback.currentVoiceName}
+                  {#if playback.positionVoiceName}
                     <span class="inline-flex max-w-full items-center rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-200">
-                      <span class="truncate">{playback.currentVoiceName}</span>
+                      <span class="truncate">{playback.positionVoiceName}</span>
                     </span>
                   {/if}
-                  <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-200">
-                    {`${playback.currentSegmentIndex}/${playback.totalSegments}`}
-                  </span>
+                  {#if playback.totalSegments > 0}
+                    <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-200">
+                      {`${playback.positionSegmentIndex + 1}/${playback.totalSegments}`}
+                    </span>
+                  {/if}
                 </div>
               {/if}
             </div>
@@ -794,9 +818,7 @@
                   </Button>
                 </div>
                 <div class="flex flex-none flex-wrap items-center gap-2 text-xs text-slate-400">
-                  {#if metadata.syncing}
-                    <span>{text.metadataRefreshing}</span>
-                  {:else if metadata.stale}
+                  {#if metadata.stale}
                     <span>{text.metadataStale}</span>
                   {:else}
                     <span>{text.segmentHint}</span>
