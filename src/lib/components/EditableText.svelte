@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte'
+  import { onDestroy, tick } from 'svelte'
   import Button from './Button.svelte'
   import EditIcon from '$lib/icons/EditIcon.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
@@ -127,7 +127,7 @@
 
   $effect(() => {
     if (!editing) return
-    input?.focus()
+    void tick().then(() => input?.focus())
   })
 
   // Auto-resize the input to fit its content while editing, but don't shrink
@@ -178,14 +178,14 @@
     <button
       bind:this={displayBtn}
       type="button"
-      class={`${TEXT_SIZE[size]} min-w-0 truncate bg-transparent p-0 pl-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 ${className}`}
+      class={`${TEXT_SIZE[size]} min-w-0 truncate bg-transparent p-0 pl-2 text-left transition motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 ${className}`}
       title={uiText.doubleClickToEdit}
       onclick={(e) => { e.stopPropagation(); scheduleActivate() }}
       onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation() }}
       ondblclick={handleTextDoubleClick}>
       {text}
     </button>
-    <span bind:this={editBtn} class="[@media(hover:hover)]:opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+    <span bind:this={editBtn} class="[@media(hover:hover)]:opacity-0 transition motion-reduce:transition-none group-hover:opacity-100 focus-within:opacity-100">
       <Button
         size="sm"
         variant="ghost"

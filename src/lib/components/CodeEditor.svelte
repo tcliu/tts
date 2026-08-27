@@ -36,62 +36,11 @@
     onSelectionChange,
   }: Props = $props()
 
-  // Colors the bundled github themes do not cover: caret, gutter chrome,
-  // active line, and selection. Kept next to the github theme pair so both
-  // swap together through one compartment.
-  const EDITOR_CHROME = {
-    dark: {
-      caret: 'rgb(103 232 249)',
-      gutterColor: 'rgb(100 116 139)',
-      gutterBorder: 'rgb(51 65 85)',
-      activeLineGutter: 'rgba(22, 27, 34, 0.95)',
-      activeLine: 'rgba(48, 54, 61, 0.45)',
-      selection: 'rgba(56, 139, 253, 0.35)',
-    },
-    light: {
-      caret: '#0e7490',
-      gutterColor: '#64748b',
-      gutterBorder: '#e2e8f0',
-      activeLineGutter: 'rgba(241, 245, 249, 0.95)',
-      activeLine: 'rgba(2, 6, 23, 0.04)',
-      selection: 'rgba(9, 105, 218, 0.18)',
-    },
-    ember: {
-      caret: '#fcd34d',
-      gutterColor: '#a08c7d',
-      gutterBorder: '#452f27',
-      activeLineGutter: 'rgba(33, 23, 20, 0.95)',
-      activeLine: 'rgba(120, 70, 30, 0.25)',
-      selection: 'rgba(245, 158, 11, 0.25)',
-    },
-    sepia: {
-      caret: '#b45309',
-      gutterColor: '#7d7159',
-      gutterBorder: '#d6caab',
-      activeLineGutter: 'rgba(245, 238, 222, 0.95)',
-      activeLine: 'rgba(120, 90, 30, 0.06)',
-      selection: 'rgba(180, 83, 9, 0.16)',
-    },
-    nebula: {
-      caret: '#c4b5fd',
-      gutterColor: '#9a90bd',
-      gutterBorder: '#322751',
-      activeLineGutter: 'rgba(23, 18, 35, 0.95)',
-      activeLine: 'rgba(120, 100, 190, 0.28)',
-      selection: 'rgba(167, 139, 250, 0.3)',
-    },
-    sky: {
-      caret: '#0369a1',
-      gutterColor: '#556a80',
-      gutterBorder: '#bcd0e0',
-      activeLineGutter: 'rgba(239, 245, 250, 0.95)',
-      activeLine: 'rgba(2, 132, 199, 0.07)',
-      selection: 'rgba(14, 116, 233, 0.16)',
-    },
-  } as const
-
+  // Chrome colors are CSS variables defined in src/styles.css per [data-theme].
+  // Keeping them there satisfies AGENTS.md "palettes live only in styles.css"
+  // while the CodeMirror compartment only maps the variables to the required
+  // editor selectors.
   function colorThemeExtensions(theme: UiTheme) {
-    const colors = EDITOR_CHROME[theme]
     return [
       theme === 'dark' || theme === 'ember' || theme === 'nebula' ? githubDark : githubLight,
       EditorView.theme({
@@ -111,23 +60,23 @@
           paddingBottom: '0.75rem',
           paddingLeft: '0.5rem',
           minHeight: '100%',
-          caretColor: colors.caret,
+          caretColor: 'var(--cm-caret)',
         },
         '.cm-gutters': {
-          color: colors.gutterColor,
-          borderRight: `1px solid ${colors.gutterBorder}`,
+          color: 'var(--cm-gutterColor)',
+          borderRight: `1px solid var(--cm-gutterBorder)`,
         },
         '.cm-activeLineGutter': {
-          backgroundColor: colors.activeLineGutter,
+          backgroundColor: 'var(--cm-activeLineGutter)',
         },
         '.cm-activeLine': {
-          backgroundColor: colors.activeLine,
+          backgroundColor: 'var(--cm-activeLine)',
         },
         '.cm-cursor, .cm-dropCursor': {
-          borderLeftColor: colors.caret,
+          borderLeftColor: 'var(--cm-caret)',
         },
         '.cm-selectionBackground, ::selection': {
-          backgroundColor: colors.selection,
+          backgroundColor: 'var(--cm-selection)',
         },
         '.cm-focused': {
           outline: 'none',

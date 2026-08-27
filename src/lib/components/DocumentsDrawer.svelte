@@ -68,7 +68,7 @@
               <DocumentIcon className="h-4 w-4 shrink-0 text-slate-500" />
               <span class="truncate">{doc.name}</span>
             </button>
-            <span class="[@media(hover:hover)]:opacity-0 transition group-hover/row:opacity-100 focus-within:opacity-100">
+            <span class="[@media(hover:hover)]:opacity-0 transition motion-reduce:transition-none group-hover/row:opacity-100 focus-within:opacity-100">
               <Button
                 size="sm"
                 variant="ghost"

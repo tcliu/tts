@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import CloseIcon from '$lib/icons/CloseIcon.svelte'
 
   interface Props {
@@ -37,7 +37,7 @@
     dialogIndex = openDialogCount
     titleId = `tts-dialog-title-${dialogIndex}`
     previouslyFocused = document.activeElement
-    requestAnimationFrame(() => {
+    void tick().then(() => {
       dialogRef?.focus()
     })
   })

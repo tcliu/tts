@@ -1,0 +1,144 @@
+<script lang="ts">
+  import Button from './Button.svelte'
+  import RefreshIcon from '$lib/icons/RefreshIcon.svelte'
+  import FollowIcon from '$lib/icons/FollowIcon.svelte'
+  import MaximizeIcon from '$lib/icons/MaximizeIcon.svelte'
+  import MinimizeIcon from '$lib/icons/MinimizeIcon.svelte'
+  import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
+  import type { MetadataHandle } from '$lib/use-metadata.svelte'
+  import type { PlaybackHandle } from '$lib/use-playback.svelte'
+  import type { UiText } from '$lib/ui-text'
+
+  interface Props {
+    metadata: MetadataHandle
+    playback: PlaybackHandle
+    text: UiText
+    isDocked: boolean
+    expanded: boolean
+    onToggleExpand: () => void
+    onCollapse: () => void
+    onResetCache: () => void
+  }
+
+  let { metadata, playback, text, isDocked, expanded, onToggleExpand, onCollapse, onResetCache }: Props = $props()
+
+  let tableBodyRef = $state<HTMLDivElement | null>(null)
+
+  $effect(() => {
+    metadata.attachScrollContainer(tableBodyRef)
+  })
+</script>
+
+<section
+  aria-label={text.info}
+  class="flex min-h-0 min-w-0 {!isDocked || expanded ? 'flex-1' : 'w-[32%] min-w-[18rem]'} flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+  <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
+    <div class="flex flex-none items-center gap-2">
+      <label class="relative block flex-1">
+        <span class="sr-only">{text.metadataSearch}</span>
+        <input
+          type="search"
+          bind:value={() => metadata.search, v => metadata.setSearch(v)}
+          placeholder={text.metadataSearch}
+          aria-label={text.metadataSearch}
+          class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition motion-reduce:transition-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50" />
+      </label>
+      <Button
+        variant="ghost"
+        size="sm"
+        ariaLabel={text.resetPlaybackCache}
+        tooltip={text.resetPlaybackCache}
+        onClick={onResetCache}
+        className="border border-slate-700 text-slate-400 hover:text-slate-200">
+        {#snippet icon()}
+          <RefreshIcon className="h-4 w-4" />
+        {/snippet}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        ariaPressed={metadata.followSentence}
+        ariaLabel={text.followSentence}
+        tooltip={text.followSentence}
+        onClick={() => (metadata.followSentence = !metadata.followSentence)}
+        className={metadata.followSentence ? 'border border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border border-slate-700 text-slate-400 hover:text-slate-200'}>
+        {#snippet icon()}
+          <FollowIcon className="h-4 w-4" />
+        {/snippet}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        ariaExpanded={!expanded}
+        ariaLabel={expanded ? text.metadataRestore : text.metadataExpand}
+        tooltip={expanded ? text.metadataRestore : text.metadataExpand}
+        onClick={onToggleExpand}
+        className={`border ${expanded ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border-slate-700 text-slate-400 hover:text-slate-200'}`}>
+        {#snippet icon()}
+          {#if expanded}
+            <MinimizeIcon className="h-4 w-4" />
+          {:else}
+            <MaximizeIcon className="h-4 w-4" />
+          {/if}
+        {/snippet}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        ariaLabel={text.infoCollapse}
+        tooltip={text.infoCollapse}
+        onClick={onCollapse}
+        className="border border-slate-700 text-slate-400 hover:text-slate-200 lg:hidden">
+        {#snippet icon()}
+          <ChevronDownIcon className="h-4 w-4" />
+        {/snippet}
+      </Button>
+    </div>
+    <div class="flex flex-none flex-wrap items-center gap-2 text-xs text-slate-400">
+      {#if metadata.stale}
+        <span>{text.metadataStale}</span>
+      {:else}
+        <span>{text.segmentHint}</span>
+      {/if}
+    </div>
+    {#if metadata.rows.length === 0}
+      <p class="text-xs text-slate-500">{metadata.search.trim() ? text.metadataNoResults : text.noMetadata}</p>
+    {:else}
+      <div bind:this={tableBodyRef} class="min-h-0 flex-1 overflow-auto">
+        <table class="w-full border-collapse text-sm">
+          <thead class="sticky top-0 z-10 bg-slate-950">
+            <tr class="text-left text-xs text-slate-400">
+              <th scope="col" class="px-2 py-1 font-medium">{text.tableSeg}</th>
+              <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
+              <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
+              <th scope="col" class="px-2 py-1 font-medium">{text.tableLang}</th>
+              <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each metadata.rows as row}
+              <tr
+                data-active={row.active}
+                aria-current={row.active ? 'true' : undefined}
+                class="relative border-t border-slate-800 align-top {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
+                <td class="relative px-2 py-1 whitespace-nowrap">
+                  <button
+                    type="button"
+                    aria-label={`${text.playSegment} ${row.segmentIndex + 1}`}
+                    onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
+                    class="absolute inset-0 flex cursor-pointer items-start rounded px-2 py-1 text-left font-mono outline-none transition motion-reduce:transition-none hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500">
+                    {row.segmentIndex + 1}
+                  </button>
+                </td>
+                <td class="px-2 py-1 font-mono whitespace-nowrap">{row.at.toFixed(2)}s</td>
+                <td class="px-2 py-1 font-mono whitespace-nowrap">{row.offset}</td>
+                <td class="px-2 py-1 whitespace-nowrap">{row.lang}</td>
+                <td class="px-2 py-1">{row.text}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  </div>
+</section>
