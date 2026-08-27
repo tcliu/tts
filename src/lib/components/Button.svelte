@@ -20,6 +20,7 @@
     tooltipAlign?: 'center' | 'left' | 'right'
     icon?: Snippet
     children?: Snippet
+    buttonEl?: HTMLButtonElement | null
   }
 
   let {
@@ -34,12 +35,13 @@
     onKeyDown,
     preventFocusSteal = false,
     ariaLabel,
-    ariaExpanded = false,
+    ariaPressed,
+    ariaExpanded,
     tooltip,
     tooltipAlign = 'center',
     icon,
     children,
-    ariaPressed = false,
+    buttonEl = $bindable<HTMLButtonElement | null>(null),
   }: Props = $props()
 
   const primaryClasses: Record<string, string> = {
@@ -100,11 +102,11 @@
   {/if}
 {/snippet}
 
-{#snippet buttonElement()}
-  <button {type} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded ? true : false} onclick={onClick} onkeydown={onKeyDown} onpointerdown={preventFocusSteal ? handlePreventFocusSteal : undefined} disabled={disabledState} class={`${baseClass} ${className}`}>
-    {@render buttonInner()}
-  </button>
-{/snippet}
+  {#snippet buttonElement()}
+    <button bind:this={buttonEl} {type} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} onclick={onClick} onkeydown={onKeyDown} onpointerdown={preventFocusSteal ? handlePreventFocusSteal : undefined} disabled={disabledState} class={`${baseClass} ${className}`}>
+      {@render buttonInner()}
+    </button>
+  {/snippet}
 
 {#if tooltip}
   <span class="group relative inline-flex">

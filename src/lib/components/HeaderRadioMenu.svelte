@@ -20,7 +20,7 @@
   let { label, menuLabel, options, selected, onSelect, escapeYield, icon }: Props = $props()
 
   let open = $state(false)
-  let buttonRef = $state<HTMLElement | null>(null)
+  let buttonRef = $state<HTMLButtonElement | null>(null)
   let panelRef = $state<HTMLDivElement | null>(null)
   let index = $state(0)
 
@@ -96,9 +96,7 @@
   })
 </script>
 
-<span bind:this={buttonRef} class="inline-flex">
-  <Button variant="secondary" size="sm" ariaLabel={label} ariaExpanded={open} tooltip={label} onClick={toggle} icon={icon} />
-</span>
+<Button bind:buttonEl={buttonRef} variant="secondary" size="sm" ariaLabel={label} ariaExpanded={open} tooltip={label} onClick={toggle} icon={icon} />
 
 {#if open}
   <div
