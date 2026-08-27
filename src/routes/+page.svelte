@@ -47,6 +47,7 @@
   import { useDocuments } from '$lib/use-documents.svelte'
   import { useDocumentEditor } from '$lib/use-document-editor.svelte'
   import { useDocumentsDrawer } from '$lib/use-documents-drawer.svelte'
+  import { clickOutside } from '$lib/actions/click-outside'
 
   const settings = useSettings()
   const documents = useDocuments()
@@ -167,6 +168,7 @@
 
   let uploadDragActive = $state(false)
 
+  let headerRef = $state<HTMLElement | null>(null)
   let drawerButtonRef = $state<HTMLButtonElement | null>(null)
   let drawerPanelRef = $state<HTMLElement | null>(null)
   let drawerSearchRef = $state<HTMLInputElement | null>(null)
@@ -447,11 +449,10 @@
       if (dialogsOpen()) {
         return
       }
-      const target = event.target
-      // Header interactions (toggle, language/theme menus, settings) keep the
-      // drawer open; its panels are DOM descendants of the header even though
-      // they render position-fixed.
-      if (target instanceof Element && (target.closest('header') || drawerPanelRef?.contains(target))) {
+      const target = event.target as Node | null
+      if (!target) return
+      // Svelte-native: use bound refs instead of string-based closest()
+      if (headerRef?.contains(target) || drawerPanelRef?.contains(target)) {
         return
       }
       dismissDrawerAndFocusTrigger()
@@ -538,7 +539,7 @@
     {/if}
   {/snippet}
 
-  <header class="flex shrink-0 items-center justify-between gap-4 border-b border-slate-800 px-3 py-3 sm:px-4">
+  <header bind:this={headerRef} class="flex shrink-0 items-center justify-between gap-4 border-b border-slate-800 px-3 py-3 sm:px-4">
     <div class="flex items-center gap-2">
       <Button
         bind:buttonEl={drawerButtonRef}

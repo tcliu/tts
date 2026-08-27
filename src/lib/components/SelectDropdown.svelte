@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import { clickOutside } from '$lib/actions/click-outside'
   import { positionPanel } from '$lib/position-panel.svelte'
   import { TEXT_SIZE, type TextSize } from '$lib/text-size'
   import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
@@ -204,22 +205,20 @@
         close()
       }
     }
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node
-      if (controlRef && !controlRef.contains(target) && panelRef && !panelRef.contains(target)) {
-        close()
-      }
-    }
     window.addEventListener('keydown', handleKeydownCapture, true)
-    document.addEventListener('mousedown', handlePointerDown)
     return () => {
       window.removeEventListener('keydown', handleKeydownCapture, true)
-      document.removeEventListener('mousedown', handlePointerDown)
     }
   })
 </script>
 
-<div class="relative" bind:this={containerRef} data-escape-capture={open ? '' : null}>
+<div
+  class="relative"
+  bind:this={containerRef}
+  data-escape-capture={open ? '' : null}
+  use:clickOutside={() => {
+    if (open) close()
+  }}>
   {#if filterable}
     <div class="relative w-fit" bind:this={controlRef}>
       <input

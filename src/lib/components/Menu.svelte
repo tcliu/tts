@@ -10,6 +10,7 @@
 
 <script lang="ts" generics="T">
   import { positionPanel } from '$lib/position-panel.svelte'
+  import { clickOutside } from '$lib/actions/click-outside'
   import { tick } from 'svelte'
 
   interface Props {
@@ -161,25 +162,23 @@
         close()
       }
     }
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node
-      if (containerRef && !containerRef.contains(target) && panelRef && !panelRef.contains(target)) {
-        close(false)
-      }
-    }
     const handleScroll = () => close(false)
     window.addEventListener('keydown', handleKeydownCapture, true)
-    document.addEventListener('mousedown', handlePointerDown)
     window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
     return () => {
       window.removeEventListener('keydown', handleKeydownCapture, true)
-      document.removeEventListener('mousedown', handlePointerDown)
       window.removeEventListener('scroll', handleScroll, { capture: true })
     }
   })
 </script>
 
-<div class="relative inline-flex" bind:this={containerRef} data-escape-capture={open ? '' : null}>
+<div
+  class="relative inline-flex"
+  bind:this={containerRef}
+  data-escape-capture={open ? '' : null}
+  use:clickOutside={() => {
+    if (open) close(false)
+  }}>
   <button
     type="button"
     bind:this={triggerRef}
