@@ -431,7 +431,7 @@
 </script>
 
 <svelte:head>
-  <title>TTS</title>
+  <title>{text.appTitle}</title>
 </svelte:head>
 
 <div class="flex h-dvh flex-col bg-slate-950 text-slate-100">
@@ -722,7 +722,7 @@
               editable={!playback.isPlaying}
               theme={settings.theme}
               autoFocus={true}
-              editorAriaLabel="TTS editor"
+              editorAriaLabel={text.editorLabel}
               containerClass="min-h-0 flex-1"
               editorClass="h-full" />
           </div>
