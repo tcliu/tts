@@ -75,6 +75,8 @@
 - A Documents button toggles a side drawer that lists saved documents.
 - The drawer has a `New document` button and a search field filtering rows by
   name; the list is empty before any document is saved.
+- On mobile the drawer overlays the content and also closes by dragging/swiping
+  it left.
 - Activating a row opens that document.
 - Documents persist in the browser's `localStorage`; they are not sent to a
   server.

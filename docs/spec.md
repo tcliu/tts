@@ -84,6 +84,12 @@ coherent system instead of a new parallel one.
   top of the save dialog rather than destroying it silently.
 - The drawer is a view over `use-documents-drawer`'s filtered list; it only
   triggers handlers on the document editor and never mutates the store directly.
+  Below `lg` it overlays the content (`absolute`) and above it docks inline
+  (`lg:static`); the overlay supports closing by dragging/swiping left through
+  the shared `dragCloseLeft` action (touch/pen pointers, `touch-action: pan-y`,
+  horizontal dominance, clamped `translateX`, ~30% width or fast-swipe
+  threshold) gated by the docked state, and returns focus to the trigger on
+  close.
 
 ## Upload model
 

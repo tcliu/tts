@@ -64,6 +64,19 @@ Project-specific development conventions for the TTS web app.
 - Settings dialog keeps the same outer size across all tabs, anchored to the
   Voices tab (largest content); Speed and Synthesis tabs must not shrink the
   dialog — fix the outer height and scroll the Voices list internally.
+- Settings Voices tab follows the aligned label + control-group row pattern (see `references/responsive-design.md`): voice model group = spoken-language selector (if any) + voice-model selector; support four states a) `label | spoken | voice`, b) `label | voice` (no spoken), c) `label` / `spoken + voice`, d) `label` / `spoken` / `voice` with voice-group left aligned across languages and stacked `flex-col` below `sm` so shrinking forces label and voice-group into separate rows.
+- Documents drawer is docked at `lg` (`lg:static lg:w-72`) and overlayed below it
+  (`absolute inset-y-0 left-0 w-64 z-20`); keep `DOCKED_QUERY` (`(min-width: 64rem)`)
+  in `+page.svelte` synced with `DocumentsDrawer`'s `lg:*` docking classes and gate
+  overlay-only dismissals (click-outside, Escape, swipe) with `isDocked`.
+- Overlay drawer must close by dragging/swiping left on mobile — the shared
+  `dragCloseLeft` action owns the pointer state machine (touch/pen only,
+  `touch-action: pan-y`, pointer capture, horizontal dominance, left-only
+  motion, clamped `translateX`) and dismisses on ~30% width or fast-swipe
+  (>0.5px/ms and >40px) threshold; `DocumentsDrawer` renders the drag offset,
+  suppresses the snap animation when `prefers-reduced-motion: reduce` is active,
+  and routes `onClose` through `dismissDrawerAndFocusTrigger` to return focus;
+  disable the gesture when docked (see `references/responsive-design.md`).
 
 ## Theming
 
@@ -86,8 +99,8 @@ Project-specific development conventions for the TTS web app.
   remapping that powers the app's themes.
 - Follow `references/accessibility.md` for focus management, keyboard access,
   labels, and reduced motion.
-- Follow `references/responsive-design.md` for breakpoint and touch-target
-  behavior.
+- Follow `references/responsive-design.md` for breakpoint, touch-target, and
+  overlay-drawer (docked vs overlay, swipe-to-close) behavior.
 - Follow `references/portals.md` for portal and overlay positioning
   (dropdown panels, tooltips, dialogs) including viewport clamping and
   flip-when-crowded placement.

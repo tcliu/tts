@@ -614,8 +614,10 @@
         currentDocId={editor.currentDocId}
         bind:panelRef={drawerPanelRef}
         bind:inputRef={drawerSearchRef}
+        isDocked={isDocked}
         onNew={editor.requestNewDocument}
-        onOpen={editor.requestOpenDocument} />
+        onOpen={editor.requestOpenDocument}
+        onClose={dismissDrawerAndFocusTrigger} />
     {/if}
 
     <main class="flex min-w-0 flex-1 flex-col gap-2 px-3 py-2 sm:px-4 sm:py-2">
