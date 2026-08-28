@@ -8,8 +8,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
-import { franc } from 'franc-min';
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 
@@ -94,18 +92,6 @@ const GREEK_RE = /[\u0370-\u03FF]/;
 const HEBREW_RE = /[\u0590-\u05FF]/;
 const ARMENIAN_RE = /[\u0530-\u058F]/;
 
-const FRANC_TO_LANGUAGE = {
-  eng: 'en', cmn: 'zh', yue: 'yue', jpn: 'ja', kor: 'ko', spa: 'es', fra: 'fr', rus: 'ru',
-  afr: 'af', amh: 'am', arb: 'ar', aze: 'az', bul: 'bg', ben: 'bn', bos: 'bs', cat: 'ca',
-  ces: 'cs', cym: 'cy', dan: 'da', deu: 'de', ell: 'el', est: 'et', pes: 'fa', fin: 'fi',
-  fil: 'fil', gle: 'ga', glg: 'gl', guj: 'gu', heb: 'he', hin: 'hi', hrv: 'hr', hun: 'hu',
-  ind: 'id', isl: 'is', ita: 'it', iku: 'iu', jav: 'jv', kat: 'ka', kaz: 'kk', khm: 'km',
-  kan: 'kn', lao: 'lo', lit: 'lt', lav: 'lv', mkd: 'mk', mal: 'ml', mon: 'mn', mar: 'mr',
-  msa: 'ms', mlt: 'mt', mya: 'my', nob: 'nb', nep: 'ne', nld: 'nl', pol: 'pl', pus: 'ps',
-  por: 'pt', ron: 'ro', sin: 'si', slk: 'sk', slv: 'sl', som: 'so', sqi: 'sq', srp: 'sr',
-  sun: 'su', swe: 'sv', swa: 'sw', tam: 'ta', tel: 'te', tha: 'th', tur: 'tr', ukr: 'uk',
-  urd: 'ur', uzb: 'uz', vie: 'vi', zul: 'zu',
-};
 const ENGLISH_WORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'for', 'with', 'at', 'by', 'from',
   'is', 'are', 'was', 'were', 'be', 'been', 'being', 'that', 'this', 'these', 'those', 'it', 'its',
@@ -180,30 +166,9 @@ function detectTtsLanguage(text) {
   if (GREEK_RE.test(text)) return 'el';
   if (HEBREW_RE.test(text)) return 'he';
   if (CANADIAN_ABORIGINAL_RE.test(text)) return 'iu';
-  if (ARABIC_RE.test(text)) {
-    if (text.trim().length >= 15) {
-      const c = franc(text, { minLength: 3 });
-      const m = FRANC_TO_LANGUAGE[c];
-      if (m && ['ar', 'fa', 'ps', 'ur'].includes(m)) return m;
-    }
-    return 'ar';
-  }
-  if (DEVANAGARI_RE.test(text)) {
-    if (text.trim().length >= 15) {
-      const c = franc(text, { minLength: 3 });
-      const m = FRANC_TO_LANGUAGE[c];
-      if (m && ['hi', 'mr', 'ne'].includes(m)) return m;
-    }
-    return 'hi';
-  }
-  if (/[\u0400-\u052f]/.test(text)) {
-    if (text.trim().length >= 15) {
-      const c = franc(text, { minLength: 3 });
-      const m = FRANC_TO_LANGUAGE[c];
-      if (m && ['bg', 'mk', 'ru', 'sr', 'uk', 'kk'].includes(m)) return m;
-    }
-    return 'ru';
-  }
+  if (ARABIC_RE.test(text)) return 'ar';
+  if (DEVANAGARI_RE.test(text)) return 'hi';
+  if (/[\u0400-\u052f]/.test(text)) return 'ru';
   if (/[^\x00-\x7F]/.test(text)) {
     let foreignBest = 0;
     for (const lang of Object.keys(FOREIGN_WORDS)) foreignBest = Math.max(foreignBest, foreignWordScore(text, lang));
@@ -218,9 +183,6 @@ function detectTtsLanguage(text) {
       }
     }
     if (bestLang && bestScore > 0) return bestLang;
-    const c = franc(text, { minLength: 3 });
-    const m = FRANC_TO_LANGUAGE[c];
-    if (m && m !== 'en') return m;
     return 'en';
   }
   if (isProbablyEnglish(text)) return 'en';
@@ -236,12 +198,7 @@ function detectTtsLanguage(text) {
     }
     if (bestLang && bestScore > 0) return bestLang;
   }
-  if (text.trim().length < 10) return 'en';
-  const c = franc(text, { minLength: 3 });
-  const m = FRANC_TO_LANGUAGE[c];
-  if (!m || m === 'en') return 'en';
-  if (text.trim().length < 30) return 'en';
-  return m;
+  return 'en';
 }
 
 function minimumLength(lang) {
