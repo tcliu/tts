@@ -106,7 +106,7 @@
   })
 </script>
 
-<div class="fixed inset-0 z-50 @container">
+<div class="fixed inset-0 z-40 @container">
   <button
     type="button"
     aria-label={closeLabel}

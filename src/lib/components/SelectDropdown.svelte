@@ -263,7 +263,7 @@
       role="listbox"
       aria-label={ariaLabel}
       use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, align, autoPlace })}
-      class={`fixed left-0 top-0 z-50 will-change-transform ${panelClass}`}>
+      class={`fixed left-0 top-0 z-40 will-change-transform ${panelClass}`}>
       {#each filteredOptions as option, index}
         <button
           type="button"
