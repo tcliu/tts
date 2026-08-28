@@ -99,31 +99,25 @@
         {#each filteredLanguages as language, i}
           {@const validGroups = voiceGroups(language.code)}
           {@const group = validGroups.includes(groupSelections[language.code]) ? groupSelections[language.code] : validGroups[0] ?? ''}
-          <section aria-label={language.name} class="p-3 {i > 0 ? 'border-t border-slate-800' : ''}">
-            <h3 class="mb-2.5 text-sm font-semibold text-slate-100">{language.name}</h3>
-
-            <div class="flex flex-wrap gap-2.5">
+          <section aria-label={language.name} class="flex flex-col gap-y-2.5 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 {i > 0 ? 'border-t border-slate-800' : ''}">
+            <h3 class="w-full truncate text-left text-sm font-semibold text-slate-100 sm:w-32 sm:shrink-0">{language.name}</h3>
+            <div class="flex w-full min-w-0 flex-1 flex-wrap items-center gap-2.5 text-sm text-slate-300 sm:w-auto">
               {#if validGroups.length > 1}
-                <div class="flex flex-col gap-2 text-sm text-slate-300">
-                  <SelectDropdown
-                    ariaLabel={`${language.name} ${text.spokenLanguage}`}
-                    buttonLabel={group}
-                    activeValue={group}
-                    options={validGroups.map(group => ({ value: group, label: group }))}
-                    size="sm"
-                    onSelect={group => onSelectGroup(language.code, group)} />
-                </div>
-              {/if}
-
-              <div class="flex flex-col gap-2 text-sm text-slate-300">
                 <SelectDropdown
-                  ariaLabel={`${language.name} ${text.voiceModel}`}
-                  buttonLabel={voiceLabel(voicesFor(language.code, group).find(voice => voice.edge === voiceSelections[language.code]) ?? voicesFor(language.code, group)[0])}
-                  activeValue={voiceSelections[language.code]}
-                  options={voicesFor(language.code, group).map(voice => ({ value: voice.edge, label: voiceLabel(voice) }))}
+                  ariaLabel={`${language.name} ${text.spokenLanguage}`}
+                  buttonLabel={group}
+                  activeValue={group}
+                  options={validGroups.map(group => ({ value: group, label: group }))}
                   size="sm"
-                  onSelect={voiceId => onSelectVoice(language.code, voiceId)} />
-              </div>
+                  onSelect={group => onSelectGroup(language.code, group)} />
+              {/if}
+              <SelectDropdown
+                ariaLabel={`${language.name} ${text.voiceModel}`}
+                buttonLabel={voiceLabel(voicesFor(language.code, group).find(voice => voice.edge === voiceSelections[language.code]) ?? voicesFor(language.code, group)[0])}
+                activeValue={voiceSelections[language.code]}
+                options={voicesFor(language.code, group).map(voice => ({ value: voice.edge, label: voiceLabel(voice) }))}
+                size="sm"
+                onSelect={voiceId => onSelectVoice(language.code, voiceId)} />
             </div>
           </section>
         {/each}
