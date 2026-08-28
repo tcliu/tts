@@ -46,6 +46,7 @@ Project-specific development conventions for the TTS web app.
   accessible names for icon-only buttons.
 - Playback state must drive editor selection so the current spoken segment is
   visibly selected while audio is active.
+- Document navigation is reflected in the URL as `{base}/{docId}` and history-backed so Back/Forward moves between documents.
 - All user-facing strings must go through `UI_TEXT` (keyed by `UiLocale`); add
   each new string to every locale (`en`, `zh-TW`, `zh-CN`).
 - The app shell fills the dynamic viewport with `h-dvh` over the

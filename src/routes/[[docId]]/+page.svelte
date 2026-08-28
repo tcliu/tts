@@ -415,12 +415,26 @@
   onMount(() => {
     const disposeSettings = settings.hydrate()
     documents.hydrate()
+    // Restore the document referenced by the URL (deep link / reload); this
+    // also settles the history baseline before any user navigation.
+    editor.handleHistoryNavigation()
     editor.markBaseline()
     playback.initStatus()
     return () => {
       disposeSettings()
       playback.stopPlayback()
     }
+  })
+
+  // Browser Back/Forward moves between documents; respect unsaved-changes
+  // and playback guards (like toolbar navigation) instead of silently wiping.
+  $effect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const onPopState = () => editor.handleHistoryNavigation()
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
   })
 
   function dismissDrawerAndFocusTrigger() {

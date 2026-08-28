@@ -90,6 +90,7 @@ coherent system instead of a new parallel one.
   horizontal dominance, clamped `translateX`, ~30% width or fast-swipe
   threshold) gated by the docked state, and returns focus to the trigger on
   close.
+- History: the page lives at `src/routes/[[docId]]/+page.svelte` (optional single segment) so `/{docId}` deep-links render the same shell and avoid a 404. Navigation is reflected as `{base}/{docId}` (base path for a fresh buffer) via `src/lib/document-history.ts`; Open, New, Save, Clone, and Delete-current push a new entry (`pushDocHistory`), pure content edits do not, `popstate` and initial load replay through the single guarded path `editor.handleHistoryNavigation` (which reverts with `replaceDocHistory` when the discard/playback gates trip).
 
 ## Upload model
 
