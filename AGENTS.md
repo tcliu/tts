@@ -65,6 +65,12 @@ Project-specific development conventions for the TTS web app.
 - Settings dialog keeps the same outer size across all tabs, anchored to the
   Voices tab (largest content); Speed and Synthesis tabs must not shrink the
   dialog — fix the outer height and scroll the Voices list internally.
+- BaseDialog spans full screen (sheet) only on phone-class viewports: the fixed
+  scrim carries `@container` (its width equals the viewport) and the padded
+  centering row plus panel use `@max-md:*` — the default Tailwind *container*
+  token `md` (28rem/448px), not the viewport `md` breakpoint (48rem/768px);
+  don't confuse the two. The scrim padding (`px-3 py-4`) lives on the centering
+  row, not the scrim, because a container cannot query itself.
 - Settings Voices tab follows the aligned label + control-group row pattern (see `references/responsive-design.md`): voice model group = spoken-language selector (if any) + voice-model selector; support four states a) `label | spoken | voice`, b) `label | voice` (no spoken), c) `label` / `spoken + voice`, d) `label` / `spoken` / `voice` with voice-group left aligned across languages and stacked `flex-col` below `sm` so shrinking forces label and voice-group into separate rows.
 - Documents drawer is docked at `lg` (`lg:static lg:w-72`) and overlayed below it
   (`absolute inset-y-0 left-0 w-64 z-20`); keep `DOCKED_QUERY` (`(min-width: 64rem)`)
