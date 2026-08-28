@@ -121,23 +121,33 @@ coherent system instead of a new parallel one.
   the cached audio.
 - Each persisted entry is tagged with the document id, so the cache can be
   cleared for a single document (the Reset action clears the open document's
-  cached audio) or for every document from the Settings Cache tab.
+  cached audio) or for every document from the Settings Synthesis tab (Cache entry).
 
 ## Settings model
 
 - Supported languages and voice options come from the reference script.
+  Chinese exposes the spoken-language groups `Mandarin`, `Cantonese`,
+  `Taiwanese`, and `Northeastern Mandarin` (Cantonese voices are merged into
+  Chinese; labels omit `Traditional`/`Simplified`).
 - Languages with a single spoken-language group expose one voice-model
   dropdown.
 - Languages with multiple spoken-language groups expose a spoken-language
   dropdown plus a voice-model dropdown scoped to that spoken language.
+- The Voices tab has a search box filtering by language name or voice name.
+- The settings dialog keeps the same outer size across all tabs, sized to the
+  Voices tab (largest); other tabs do not shrink it.
+- The Speed tab shows the default speed as a NumberInput (`0.5–2`, step `0.25`,
+  default `1`); the Synthesis tab shows the Synthesis concurrency NumberInput
+  (`1–8`, step `1`).
 - Default speed options must match the speed list in `tts.mjs`.
 
 ## Theming
 
 - `use-settings` owns the theme preference (`dark`, `light`, `ember`, `sepia`,
-  `nebula`, `sky`) through the same persisted, validated settings flow as the
-  other preferences. Dark is the default and needs no DOM attribute; every
-  other theme sets `data-theme` on `<html>`.
+  `nebula`, `sky`, `forest`, `midnight`, `mint`, `lavender`) through the same
+  persisted, validated settings flow as the other preferences. Dark is the
+  default and needs no DOM attribute; every other theme sets `data-theme` on
+  `<html>`.
 - A pre-paint inline script in `app.html` applies the stored theme before first
   paint; its allowlist must stay in lockstep with the theme union and its
   validation in `use-settings`.
@@ -148,8 +158,9 @@ coherent system instead of a new parallel one.
   slate grade.
 - The editor swaps its CodeMirror base theme and chrome colors through a
   compartment driven by the same theme value.
-- The theme menu's option list, localized labels, and trigger-icon map
-  enumerate the themes; extend them together with the union.
+- The theme menu's option list, localized labels, and per-option icon map
+  enumerate the themes; the trigger uses a static palette icon. Extend them
+  together with the union.
 - Both header radio menus render through the shared `HeaderRadioMenu`
   component, which owns open state, portal placement, dismissal, and roving
   keyboard handling via `$lib/menu-keyboard`.

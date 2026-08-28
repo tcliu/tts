@@ -6,7 +6,7 @@ const SAVE_DEBOUNCE_MS = 300
 const MIN_CONCURRENCY = 1
 const MAX_CONCURRENCY = 8
 
-export type UiTheme = 'dark' | 'light' | 'ember' | 'sepia' | 'nebula' | 'sky'
+export type UiTheme = 'dark' | 'light' | 'ember' | 'sepia' | 'nebula' | 'sky' | 'forest' | 'midnight' | 'mint' | 'lavender'
 
 export interface SettingsHandle {
   readonly locale: UiLocale
@@ -123,7 +123,11 @@ export function useSettings(): SettingsHandle {
             parsed.theme === 'ember' ||
             parsed.theme === 'sepia' ||
             parsed.theme === 'nebula' ||
-            parsed.theme === 'sky'
+            parsed.theme === 'sky' ||
+            parsed.theme === 'forest' ||
+            parsed.theme === 'midnight' ||
+            parsed.theme === 'mint' ||
+            parsed.theme === 'lavender'
           ) {
             theme = parsed.theme
           }

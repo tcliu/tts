@@ -176,7 +176,7 @@
   class="relative inline-flex"
   bind:this={containerRef}
   data-escape-capture={open ? '' : null}
-  use:clickOutside={{ enabled: open, handler: () => close(false) }}>
+  use:clickOutside={{ enabled: open, handler: () => close(false), include: [panelRef] }}>
   <button
     type="button"
     bind:this={triggerRef}

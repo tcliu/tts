@@ -16,6 +16,11 @@
   import LightBulbIcon from '$lib/icons/LightBulbIcon.svelte'
   import SparklesIcon from '$lib/icons/SparklesIcon.svelte'
   import CloudIcon from '$lib/icons/CloudIcon.svelte'
+  import ForestIcon from '$lib/icons/ForestIcon.svelte'
+  import MidnightIcon from '$lib/icons/MidnightIcon.svelte'
+  import MintIcon from '$lib/icons/MintIcon.svelte'
+  import LavenderIcon from '$lib/icons/LavenderIcon.svelte'
+  import PaletteIcon from '$lib/icons/PaletteIcon.svelte'
   import SettingsIcon from '$lib/icons/SettingsIcon.svelte'
   import InfoIcon from '$lib/icons/InfoIcon.svelte'
 
@@ -149,18 +154,26 @@
   const THEME_MENU_OPTIONS: { value: UiTheme }[] = [
     { value: 'dark' },
     { value: 'ember' },
+    { value: 'forest' },
+    { value: 'midnight' },
     { value: 'nebula' },
     { value: 'light' },
+    { value: 'mint' },
     { value: 'sepia' },
+    { value: 'lavender' },
     { value: 'sky' },
   ]
 
   const THEME_ICONS: Record<UiTheme, typeof MoonIcon> = {
     dark: MoonIcon,
     ember: FireIcon,
+    forest: ForestIcon,
+    midnight: MidnightIcon,
     nebula: SparklesIcon,
     light: SunIcon,
+    mint: MintIcon,
     sepia: LightBulbIcon,
+    lavender: LavenderIcon,
     sky: CloudIcon,
   }
 
@@ -182,13 +195,19 @@
   const themeLabels = $derived<Record<UiTheme, string>>({
     dark: text.themeDark,
     ember: text.themeEmber,
+    forest: text.themeForest,
+    midnight: text.themeMidnight,
     nebula: text.themeNebula,
     light: text.themeLight,
+    mint: text.themeMint,
     sepia: text.themeSepia,
+    lavender: text.themeLavender,
     sky: text.themeSky,
   })
 
-  const themeOptions = $derived(THEME_MENU_OPTIONS.map(option => ({ value: option.value, label: themeLabels[option.value] })))
+  const themeOptions = $derived(
+    THEME_MENU_OPTIONS.map(option => ({ value: option.value, label: themeLabels[option.value], icon: THEME_ICONS[option.value] })),
+  )
 
   const statusMessage = $derived(
     editor.uploadNotice === 'uploaded'
@@ -575,8 +594,7 @@
         onSelect={selectTheme}
         escapeYield={dialogsOpen}>
         {#snippet icon()}
-          {@const ThemeIcon = THEME_ICONS[settings.theme]}
-          <ThemeIcon className="h-4 w-4" />
+          <PaletteIcon className="h-4 w-4" />
         {/snippet}
       </HeaderRadioMenu>
       <Button variant="secondary" size="sm" ariaLabel={text.settings} tooltip={text.settings} onClick={() => (settingsOpen = true)}>
@@ -597,8 +615,7 @@
         bind:panelRef={drawerPanelRef}
         bind:inputRef={drawerSearchRef}
         onNew={editor.requestNewDocument}
-        onOpen={editor.requestOpenDocument}
-        onDelete={editor.requestDeleteDocument} />
+        onOpen={editor.requestOpenDocument} />
     {/if}
 
     <main class="flex min-w-0 flex-1 flex-col gap-2 px-3 py-2 sm:px-4 sm:py-2">

@@ -61,6 +61,9 @@ Project-specific development conventions for the TTS web app.
   buttons, list-collapse buttons) pass the `Button` `preventFocusSteal` prop so
   the button never takes focus on `pointerdown` while its `click` still fires;
   raw controls use `onpointerdown={e => e.preventDefault()}` for the same effect.
+- Settings dialog keeps the same outer size across all tabs, anchored to the
+  Voices tab (largest content); Speed and Synthesis tabs must not shrink the
+  dialog — fix the outer height and scroll the Voices list internally.
 
 ## Theming
 

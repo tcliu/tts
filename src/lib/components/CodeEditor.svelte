@@ -42,7 +42,7 @@
   // editor selectors.
   function colorThemeExtensions(theme: UiTheme) {
     return [
-      theme === 'dark' || theme === 'ember' || theme === 'nebula' ? githubDark : githubLight,
+      theme === 'dark' || theme === 'ember' || theme === 'forest' || theme === 'midnight' || theme === 'nebula' ? githubDark : githubLight,
       EditorView.theme({
         '&': {
           height: '100%',

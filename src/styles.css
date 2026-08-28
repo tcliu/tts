@@ -43,14 +43,18 @@
  * Tailwind v4 compiles every palette utility to a `var(--color-<name>-<grade>)`
  * reference, overriding those variables under [data-theme='…'] re-themes the
  * whole app centrally. Mapping rules per theme:
- *   - Light themes ('light', 'sepia', 'sky') mirror the slate scale around
- *     its midpoint so surface/border/text roles invert (slate-900 becomes
- *     white so panels read raised on the canvas), and darken accent grades
- *     100–400 so text/hover roles keep AA contrast on light surfaces.
- *   - Dark variants ('ember', 'nebula') shift surface and text hues; text
- *     grades stay light and hover fills brighten past the base.
+ *   - Light themes ('light', 'sepia', 'sky', 'mint', 'lavender') mirror the
+ *     slate scale around its midpoint so surface/border/text roles invert
+ *     (slate-900 becomes white so panels read raised on the canvas), and
+ *     darken accent grades 100–400 so text/hover roles keep AA contrast on
+ *     light surfaces.
+ *   - Dark variants ('ember', 'nebula', 'forest', 'midnight') shift surface
+ *     and text hues; text grades stay light and hover fills brighten past
+ *     the base.
  *   - 'sepia' and 'ember' remap cyan to amber so the accent family matches
- *     their warm palettes; 'nebula' remaps cyan to violet.
+ *     their warm palettes; 'nebula' and 'lavender' remap cyan to violet;
+ *     'forest' and 'mint' remap cyan to emerald; 'midnight' remaps it to
+ *     sky-blue.
  * Grade 500+ accents are otherwise untouched: vivid accent fills work on both
  * dark and light surfaces. When introducing new colors, prefer grades these
  * mappings already cover so components theme automatically. Colored shadows
@@ -59,7 +63,9 @@
  */
 [data-theme='light'],
 [data-theme='sepia'],
-[data-theme='sky'] {
+[data-theme='sky'],
+[data-theme='mint'],
+[data-theme='lavender'] {
   color-scheme: light;
 
   --color-cyan-100: #164e63;
@@ -193,7 +199,7 @@
 
 [data-theme='sky'] {
   /* Cool blue-white ramp mirroring the light roles; the shared light-family
-     rule already darkens the cyan accents. */
+      rule already darkens the cyan accents. */
   --color-slate-100: #14263c;
   --color-slate-200: #24374f;
   --color-slate-300: #3c516b;
@@ -211,6 +217,116 @@
   --cm-activeLineGutter: rgba(239, 245, 250, 0.95);
   --cm-activeLine: rgba(2, 132, 199, 0.07);
   --cm-selection: rgba(14, 116, 233, 0.16);
+}
+
+[data-theme='mint'] {
+  /* Fresh mint ramp mirroring the light roles; cyan shifts to emerald. */
+  --color-slate-100: #152a1f;
+  --color-slate-200: #1e3a2e;
+  --color-slate-300: #355244;
+  --color-slate-400: #4d6b5c;
+  --color-slate-500: #587269;
+  --color-slate-600: #8da99b;
+  --color-slate-700: #b9d1c3;
+  --color-slate-800: #d5e8dd;
+  --color-slate-900: #ffffff;
+  --color-slate-950: #effaf3;
+
+  --color-cyan-100: #064e3b;
+  --color-cyan-200: #065f46;
+  --color-cyan-300: #047857;
+  --color-cyan-400: #059669;
+  --color-cyan-500: #10b981;
+
+  --cm-caret: #047857;
+  --cm-gutterColor: #587269;
+  --cm-gutterBorder: #b9d1c3;
+  --cm-activeLineGutter: rgba(239, 250, 243, 0.95);
+  --cm-activeLine: rgba(5, 122, 90, 0.07);
+  --cm-selection: rgba(5, 150, 105, 0.16);
+}
+
+[data-theme='lavender'] {
+  /* Soft lavender ramp mirroring the light roles; cyan shifts to violet. */
+  --color-slate-100: #201a33;
+  --color-slate-200: #322b4a;
+  --color-slate-300: #4a4066;
+  --color-slate-400: #645c83;
+  --color-slate-500: #706a84;
+  --color-slate-600: #9e96ba;
+  --color-slate-700: #c4bdd9;
+  --color-slate-800: #ddd8ea;
+  --color-slate-900: #ffffff;
+  --color-slate-950: #f5f3ff;
+
+  --color-cyan-100: #4c1d95;
+  --color-cyan-200: #5b21b6;
+  --color-cyan-300: #6d28d9;
+  --color-cyan-400: #7c3aed;
+  --color-cyan-500: #8b5cf6;
+
+  --cm-caret: #6d28d9;
+  --cm-gutterColor: #706a84;
+  --cm-gutterBorder: #c4bdd9;
+  --cm-activeLineGutter: rgba(245, 243, 255, 0.95);
+  --cm-activeLine: rgba(109, 40, 217, 0.06);
+  --cm-selection: rgba(124, 58, 237, 0.16);
+}
+
+[data-theme='forest'] {
+  /* Deep forest dark ramp: green-black surfaces and sage text neutrals. */
+  --color-slate-100: #eef5ef;
+  --color-slate-200: #d6e3d6;
+  --color-slate-300: #b8cabb;
+  --color-slate-400: #92a69a;
+  --color-slate-500: #75847a;
+  --color-slate-600: #55635a;
+  --color-slate-700: #2f3d33;
+  --color-slate-800: #233028;
+  --color-slate-900: #17201c;
+  --color-slate-950: #0f1812;
+
+  /* Accent family shifts from cyan to emerald, keeping the dark-theme grade direction. */
+  --color-cyan-100: #d1fae5;
+  --color-cyan-200: #a7f3d0;
+  --color-cyan-300: #6ee7b7;
+  --color-cyan-400: #34d399;
+  --color-cyan-500: #10b981;
+
+  --cm-caret: #6ee7b7;
+  --cm-gutterColor: #92a69a;
+  --cm-gutterBorder: #2f3d33;
+  --cm-activeLineGutter: rgba(23, 32, 28, 0.95);
+  --cm-activeLine: rgba(40, 110, 80, 0.3);
+  --cm-selection: rgba(52, 211, 153, 0.25);
+}
+
+[data-theme='midnight'] {
+  /* Deep midnight dark ramp: blue-black surfaces and cool text neutrals. */
+  --color-slate-100: #eef2ff;
+  --color-slate-200: #d6ddf5;
+  --color-slate-300: #b9c2e2;
+  --color-slate-400: #94a0c2;
+  --color-slate-500: #7a86a6;
+  --color-slate-600: #555e7a;
+  --color-slate-700: #2b324d;
+  --color-slate-800: #1d2439;
+  --color-slate-900: #151a2b;
+  --color-slate-950: #0e1120;
+
+  /* Accent family shifts from cyan to sky-blue, keeping the dark-theme grade direction. */
+  --color-cyan-100: #dbeafe;
+  --color-cyan-200: #bfdbfe;
+  --color-cyan-300: #93c5fd;
+  --color-cyan-400: #60a5fa;
+  --color-cyan-500: #3b82f6;
+
+  --cm-caret: #93c5fd;
+  --cm-gutterColor: #94a0c2;
+  --cm-gutterBorder: #2b324d;
+  --cm-activeLineGutter: rgba(21, 26, 43, 0.95);
+  --cm-activeLine: rgba(50, 90, 160, 0.28);
+  --cm-selection: rgba(96, 165, 250, 0.28);
 }
 
 html,

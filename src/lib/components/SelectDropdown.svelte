@@ -216,7 +216,7 @@
   class="relative"
   bind:this={containerRef}
   data-escape-capture={open ? '' : null}
-  use:clickOutside={{ enabled: open, handler: () => close() }}>
+  use:clickOutside={{ enabled: open, handler: () => close(), include: [panelRef] }}>
   {#if filterable}
     <div class="relative w-fit" bind:this={controlRef}>
       <input

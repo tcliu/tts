@@ -35,7 +35,10 @@ describe('theme id parity across sync points', () => {
   })
 
   it('allowlists every non-default theme in the app.html pre-paint script', () => {
-    const allowed = new Set([...appHtml.matchAll(/stored === '([a-z]+)'/g)].map(entry => entry[1]))
+    const arrayMatch = appHtml.match(/var themes = \[([^\]]+)\]/)
+    const allowed = new Set(
+      arrayMatch ? [...arrayMatch[1].matchAll(/'([a-z]+)'/g)].map(entry => entry[1]) : [...appHtml.matchAll(/stored === '([a-z]+)'/g)].map(entry => entry[1]),
+    )
     for (const theme of themes) {
       if (theme === 'dark') {
         expect(allowed.has(theme), 'dark is the no-attribute default').toBe(false)

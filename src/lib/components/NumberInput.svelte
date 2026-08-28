@@ -47,6 +47,28 @@
   const currentValue = $derived(Number.parseFloat(value))
   const isAtMax = $derived(max !== undefined && !Number.isNaN(currentValue) && currentValue >= max)
   const isAtMin = $derived(min !== undefined && !Number.isNaN(currentValue) && currentValue <= min)
+  const inputType = $derived(step !== undefined && !Number.isInteger(step) ? 'decimal' : 'numeric')
+
+  function stepDecimals() {
+    if (step === undefined) return 0
+    const s = String(step)
+    if (s.includes('e-')) {
+      const parts = s.split('e-')
+      return Number(parts[1] ?? 0)
+    }
+    const dot = s.indexOf('.')
+    return dot === -1 ? 0 : s.length - dot - 1
+  }
+
+  function snapToStep(val: number): number {
+    if (step === undefined || min === undefined) return val
+    const decimals = stepDecimals()
+    const steps = Math.round((val - min) / step)
+    const snapped = min + steps * step
+    const clampedSnap =
+      max !== undefined ? Math.min(max, Math.max(min, snapped)) : snapped
+    return Number(clampedSnap.toFixed(decimals))
+  }
 
   function handleInput(event: Event) {
     const input = event.target as HTMLInputElement
@@ -83,8 +105,11 @@
     if (max !== undefined && clamped > max) {
       clamped = max
     }
-    if (clamped !== numValue) {
-      const next = String(clamped)
+    const snapped = snapToStep(clamped)
+    const finalValue = snapped !== numValue ? snapped : clamped !== numValue ? clamped : null
+    if (finalValue !== null) {
+      const decimals = stepDecimals()
+      const next = decimals > 0 ? String(Number(finalValue.toFixed(decimals))) : String(finalValue)
       input.value = next
       value = next
     }
@@ -104,9 +129,13 @@
     if (max !== undefined && next > max) {
       next = max
     }
-    value = String(next)
+    next = snapToStep(next)
+    // Ensure fixed decimals for display consistency when step has decimals
+    const decimals = stepDecimals()
+    const nextStr = decimals > 0 ? String(Number(next.toFixed(decimals))) : String(next)
+    value = nextStr
     if (inputEl) {
-      inputEl.value = String(next)
+      inputEl.value = nextStr
       inputEl.dispatchEvent(new Event('input', { bubbles: true }))
       inputEl.focus()
     }
@@ -130,7 +159,7 @@
     bind:this={inputEl}
     {id}
     type="text"
-    inputmode="numeric"
+    inputmode={inputType}
     {placeholder}
     {disabled}
     aria-label={ariaLabel}

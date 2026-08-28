@@ -1,5 +1,7 @@
 export type UiLocale = 'en' | 'zh-TW' | 'zh-CN'
 
+import { REFERENCE_LANGUAGES } from './tts-reference'
+
 export interface UiText {
   language: string
   settings: string
@@ -85,7 +87,14 @@ export interface UiText {
   themeNebula: string
   themeSky: string
   themeSepia: string
+  themeForest: string
+  themeMidnight: string
+  themeMint: string
+  themeLavender: string
+  /** @deprecated — use synthesisTab */
   cacheTab: string
+  synthesisTab: string
+  /** @deprecated — use cache label inside Synthesis tab (value is now "Cache") */
   synthesisCache: string
   segmentsUnit: string
   cachedSegmentsNone: string
@@ -95,6 +104,8 @@ export interface UiText {
   cachedDocumentsNone: string
   clearSynthesisCache: string
   resetPlaybackCache: string
+  voiceSearch: string
+  noMatchingVoices: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [
@@ -110,7 +121,7 @@ export const LANGUAGE_DISPLAY_NAMES: Record<UiLocale, Record<string, string>> = 
 }
 
 export function segmentLanguageName(locale: UiLocale, lang: string): string {
-  return LANGUAGE_DISPLAY_NAMES[locale]?.[lang] ?? lang
+  return LANGUAGE_DISPLAY_NAMES[locale]?.[lang] ?? REFERENCE_LANGUAGES.find(item => item.code === lang)?.name ?? lang
 }
 
 export const UI_TEXT: Record<UiLocale, UiText> = {
@@ -199,14 +210,21 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeNebula: 'Nebula',
     themeSky: 'Sky',
     themeSepia: 'Sepia',
-    cacheTab: 'Cache',
-    synthesisCache: 'Synthesis cache',
+    themeForest: 'Forest',
+    themeMidnight: 'Midnight',
+    themeMint: 'Mint',
+    themeLavender: 'Lavender',
+    cacheTab: 'Synthesis',
+    synthesisTab: 'Synthesis',
+    synthesisCache: 'Cache',
     segmentsUnit: 'segments',
     cachedSegmentsNone: 'No cached segments.',
     documentsUnit: 'segments',
     cachedDocumentsNone: 'No cached segments.',
     clearSynthesisCache: 'Clear cache',
     resetPlaybackCache: 'Reset playback, segment info, and cached audio',
+    voiceSearch: 'Search languages or voices',
+    noMatchingVoices: 'No matching voices.',
   },
   'zh-TW': {
     language: '語言',
@@ -293,14 +311,21 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeNebula: '星雲',
     themeSky: '天藍',
     themeSepia: '暖色',
-    cacheTab: '快取',
-    synthesisCache: '語音合成快取',
+    themeForest: '森林',
+    themeMidnight: '午夜',
+    themeMint: '薄荷',
+    themeLavender: '薰衣草',
+    cacheTab: '語音合成',
+    synthesisTab: '語音合成',
+    synthesisCache: '快取',
     segmentsUnit: '個片段',
     cachedSegmentsNone: '沒有已快取的片段。',
     documentsUnit: '個片段',
     cachedDocumentsNone: '沒有已快取的片段。',
     clearSynthesisCache: '清除快取',
     resetPlaybackCache: '重設播放、段落資訊與已快取音訊',
+    voiceSearch: '搜尋語言或語音',
+    noMatchingVoices: '沒有符合的語音。',
   },
   'zh-CN': {
     language: '语言',
@@ -387,13 +412,20 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeNebula: '星云',
     themeSky: '天蓝',
     themeSepia: '暖色',
-    cacheTab: '缓存',
-    synthesisCache: '语音合成缓存',
+    themeForest: '森林',
+    themeMidnight: '午夜',
+    themeMint: '薄荷',
+    themeLavender: '薰衣草',
+    cacheTab: '语音合成',
+    synthesisTab: '语音合成',
+    synthesisCache: '缓存',
     segmentsUnit: '个片段',
     cachedSegmentsNone: '暂无已缓存的片段。',
     documentsUnit: '个片段',
     cachedDocumentsNone: '暂无已缓存的片段。',
     clearSynthesisCache: '清除缓存',
     resetPlaybackCache: '重置播放、段落信息与已缓存音频',
+    voiceSearch: '搜索语言或语音',
+    noMatchingVoices: '没有匹配的语音。',
   },
 }

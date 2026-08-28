@@ -15,10 +15,10 @@
 - The language panel lists English, Traditional Chinese, and Simplified Chinese
   in their respective languages.
 - Activating the theme button opens a color-theme panel.
-- The theme panel lists Dark, Ember, and Nebula, then Light, Sepia, and Sky;
-  the active theme shows a selected marker.
+- The theme panel lists Dark, Ember, Forest, Midnight, Nebula, Light, Mint,
+  Sepia, Lavender, and Sky; the active theme shows a selected marker and each
+  option carries its own icon, while the trigger uses a static palette icon.
 - Dark is the default theme, and the choice persists across reloads.
-- The theme button's icon reflects the active theme.
 - Activating the settings button opens the settings dialog.
 
 ## Main body
@@ -75,8 +75,7 @@
 - A Documents button toggles a side drawer that lists saved documents.
 - The drawer has a `New document` button and a search field filtering rows by
   name; the list is empty before any document is saved.
-- Activating a row opens that document; a delete button appears on the row on
-  hover or keyboard focus.
+- Activating a row opens that document.
 - Documents persist in the browser's `localStorage`; they are not sent to a
   server.
 - Opening a different document, starting a new document, cloning, uploading, or
@@ -91,8 +90,8 @@
 - Copy copies the editor text to the clipboard and confirms success or failure
   via the action icon.
 - Reset reverts to the saved document (or empties the editor when none is open).
-- Deleting a document asks for confirmation; deleting the open document clears it
-  from the editor.
+- Deleting a document (via the toolbar Delete action when a document is open)
+  asks for confirmation; deleting the open document clears it from the editor.
 
 ## Metadata panel
 
@@ -114,16 +113,25 @@
 
 ## Settings dialog
 
-- The dialog has `Voices` and `Speed` tabs.
+- The dialog has `Voices`, `Speed`, and `Synthesis` tabs.
 - The Voices tab lists all supported languages from the reference script.
+  Chinese includes the spoken-language groups `Mandarin`, `Cantonese`,
+  `Taiwanese`, and `Northeastern Mandarin` (Cantonese voices are merged into
+  Chinese; group labels omit `Traditional`/`Simplified`).
 - Languages with one spoken-language group show one voice-model dropdown.
 - Languages with multiple spoken-language groups show a spoken-language
   dropdown and a voice-model dropdown.
-- The Speed tab shows the default speed field with `1x` as the default and a
-  Synthesis concurrency field that caps how many segments synthesize in
-  parallel.
-- The Cache tab shows how many documents have stored synthesis and the total
-  size on disk, with a button to clear every cached audio file.
+- The Speed tab shows the default speed field (`1` as the default, NumberInput
+  with `0.5–2` range and `0.25` step).
+- The Synthesis tab contains a Synthesis concurrency field that caps how many
+  segments synthesize in parallel and a Cache entry showing how many segments
+  have stored synthesis and the total size on disk, with a button to clear
+  every cached audio file.
+- The dialog keeps the same outer size across all tabs, anchored to the Voices
+  tab (largest content); switching to Speed or Synthesis does not shrink the
+  dialog.
+- The Voices tab has a search box filtering languages and voices by language
+  name or voice name.
 
 ## Responsive behavior
 

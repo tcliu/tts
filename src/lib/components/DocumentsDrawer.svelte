@@ -2,7 +2,6 @@
   import Button from './Button.svelte'
   import SearchInput from './SearchInput.svelte'
   import DocumentIcon from '$lib/icons/DocumentIcon.svelte'
-  import DeleteIcon from '$lib/icons/DeleteIcon.svelte'
   import PlusIcon from '$lib/icons/PlusIcon.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
   import type { StoredDocument } from '$lib/use-documents.svelte'
@@ -16,7 +15,6 @@
     inputRef?: HTMLInputElement | null
     onNew: () => void
     onOpen: (id: string) => void
-    onDelete: (id: string) => void
   }
 
   let {
@@ -28,7 +26,6 @@
     inputRef = $bindable(null),
     onNew,
     onOpen,
-    onDelete,
   }: Props = $props()
 
   const text = $derived(UI_TEXT[locale])
@@ -39,8 +36,8 @@
 <aside
   bind:this={panelRef}
   aria-label={text.documents}
-  class="absolute inset-y-0 left-0 z-20 flex w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-900 shadow-xl lg:static lg:bg-slate-900/40 lg:shadow-none lg:w-72">
-  <div class="flex flex-none flex-col gap-2 px-3 py-2">
+  class="absolute inset-y-0 left-0 z-20 flex w-64 shrink-0 flex-col gap-2 border-r border-slate-800 bg-slate-900 py-2 shadow-xl lg:static lg:bg-slate-900/40 lg:shadow-none lg:w-72">
+  <div class="flex flex-none flex-col gap-2 px-3">
     <Button variant="outline" accent="cyan" size="sm" onClick={onNew} className="justify-center px-2.5 py-1.5 text-sm">
       {#snippet icon()}
         <PlusIcon className="h-4 w-4" />
@@ -49,18 +46,18 @@
     </Button>
     <SearchInput bind:value={search} bind:inputRef={inputRef} ariaLabel={text.documentSearch} placeholder={text.documentSearch} />
   </div>
-  <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
+  <div class="min-h-0 flex-1 overflow-y-auto px-3">
     {#if documents.length === 0}
-      <p class="px-1 text-xs text-slate-500">{search.trim() ? text.noMatchingDocuments : text.noSavedDocuments}</p>
+      <p class="text-xs text-slate-500">{search.trim() ? text.noMatchingDocuments : text.noSavedDocuments}</p>
     {:else}
-      <ul class="flex flex-col p-1">
+      <ul class="flex flex-col gap-1">
         {#each documents as doc (doc.id)}
           <li class="group/row flex items-center gap-1">
             <button
               type="button"
               aria-current={doc.id === currentDocId ? 'true' : undefined}
               onclick={() => onOpen(doc.id)}
-              class={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${
+              class={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none transition motion-reduce:transition-none ${
                 doc.id === currentDocId
                   ? 'bg-cyan-500/15 text-cyan-200'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
@@ -68,19 +65,6 @@
               <DocumentIcon className="h-4 w-4 shrink-0 text-slate-500" />
               <span class="truncate">{doc.name}</span>
             </button>
-            <span class="[@media(hover:hover)]:opacity-0 transition motion-reduce:transition-none group-hover/row:opacity-100 focus-within:opacity-100">
-              <Button
-                size="sm"
-                variant="ghost"
-                ariaLabel={`${text.delete} ${doc.name}`}
-                tooltip={text.delete}
-                onClick={() => onDelete(doc.id)}
-                className="text-slate-500 hover:text-rose-300 focus:text-rose-300">
-                {#snippet icon()}
-                  <DeleteIcon className="h-4 w-4" />
-                {/snippet}
-              </Button>
-            </span>
           </li>
         {/each}
       </ul>

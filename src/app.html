@@ -9,7 +9,8 @@
       // for non-default-theme users; must stay in sync with use-settings.
       try {
         var stored = JSON.parse(localStorage.getItem('tts:web-settings') || '{}').theme
-        if (stored === 'light' || stored === 'ember' || stored === 'sepia' || stored === 'nebula' || stored === 'sky') {
+        var themes = ['light', 'ember', 'sepia', 'nebula', 'sky', 'forest', 'midnight', 'mint', 'lavender']
+        if (themes.indexOf(stored) !== -1) {
           document.documentElement.dataset.theme = stored
         }
       } catch {

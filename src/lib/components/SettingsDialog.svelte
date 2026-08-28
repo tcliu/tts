@@ -1,11 +1,12 @@
 <script lang="ts">
   import BaseDialog from '$lib/components/BaseDialog.svelte'
   import Button from '$lib/components/Button.svelte'
+  import SearchInput from '$lib/components/SearchInput.svelte'
   import SelectDropdown from '$lib/components/SelectDropdown.svelte'
   import NumberInput from '$lib/components/NumberInput.svelte'
   import Tabs from '$lib/components/Tabs.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
-  import { REFERENCE_LANGUAGES, SPEED_OPTIONS, getVoiceGroups, getVoiceOptions } from '$lib/tts-reference'
+  import { REFERENCE_LANGUAGES, getVoiceGroups, getVoiceOptions } from '$lib/tts-reference'
 
   interface Props {
     locale: UiLocale
@@ -39,6 +40,24 @@
 
   const text = $derived(UI_TEXT[locale])
 
+  let voiceSearch = $state('')
+
+  const voiceQuery = $derived(voiceSearch.trim().toLowerCase())
+  const filteredLanguages = $derived(
+    voiceQuery
+      ? REFERENCE_LANGUAGES.filter(language => {
+          if (language.name.toLowerCase().includes(voiceQuery)) return true
+          if (language.code.toLowerCase().includes(voiceQuery)) return true
+          return language.voices.some(
+            voice =>
+              voice.name.toLowerCase().includes(voiceQuery) ||
+              voice.edge.toLowerCase().includes(voiceQuery) ||
+              (voice.group?.toLowerCase().includes(voiceQuery) ?? false),
+          )
+        })
+      : REFERENCE_LANGUAGES,
+  )
+
   function voiceGroups(languageCode: string) {
     return getVoiceGroups(languageCode)
   }
@@ -59,65 +78,91 @@
   }
 </script>
 
-<BaseDialog title={text.settingsTitle} maxWidth="2xl" closeLabel={text.close} onCancel={onCancel}>
+<BaseDialog title={text.settingsTitle} maxWidth="2xl" closeLabel={text.close} onCancel={onCancel} className="flex h-[min(78vh,640px)] min-h-[480px] flex-col sm:min-h-[520px]">
   <Tabs
     ariaLabel={text.settingsTitle}
     state={{}}
     tabs={[
       { label: text.voicesTab, path: 'voices', content: voicesContent },
       { label: text.speedTab, path: 'speed', content: speedContent },
-      { label: text.cacheTab, path: 'cache', content: cacheContent },
+      { label: text.synthesisTab, path: 'synthesis', content: synthesisContent },
     ]} />
 </BaseDialog>
 
 {#snippet voicesContent()}
-  <div class="rounded-xl border border-slate-800 bg-slate-950/50">
-    {#each REFERENCE_LANGUAGES as language, i}
-      {@const group = groupSelections[language.code] ?? voiceGroups(language.code)[0] ?? ''}
-      <section aria-label={language.name} class="p-3 {i > 0 ? 'border-t border-slate-800' : ''}">
-        <h3 class="mb-2.5 text-sm font-semibold text-slate-100">{language.name}</h3>
+  <div class="flex min-h-0 flex-1 flex-col gap-3">
+    <SearchInput bind:value={voiceSearch} ariaLabel={text.voiceSearch} placeholder={text.voiceSearch} wrapperClass="shrink-0" />
+    <div class="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50">
+      {#if filteredLanguages.length === 0}
+        <p class="p-3 text-sm text-slate-500">{text.noMatchingVoices}</p>
+      {:else}
+        {#each filteredLanguages as language, i}
+          {@const validGroups = voiceGroups(language.code)}
+          {@const group = validGroups.includes(groupSelections[language.code]) ? groupSelections[language.code] : validGroups[0] ?? ''}
+          <section aria-label={language.name} class="p-3 {i > 0 ? 'border-t border-slate-800' : ''}">
+            <h3 class="mb-2.5 text-sm font-semibold text-slate-100">{language.name}</h3>
 
-        <div class="flex flex-wrap gap-2.5">
-          {#if voiceGroups(language.code).length > 1}
-            <div class="flex flex-col gap-2 text-sm text-slate-300">
-              <SelectDropdown
-                ariaLabel={`${language.name} ${text.spokenLanguage}`}
-                buttonLabel={group}
-                activeValue={group}
-                options={voiceGroups(language.code).map(group => ({ value: group, label: group }))}
-                size="sm"
-                onSelect={group => onSelectGroup(language.code, group)} />
+            <div class="flex flex-wrap gap-2.5">
+              {#if validGroups.length > 1}
+                <div class="flex flex-col gap-2 text-sm text-slate-300">
+                  <SelectDropdown
+                    ariaLabel={`${language.name} ${text.spokenLanguage}`}
+                    buttonLabel={group}
+                    activeValue={group}
+                    options={validGroups.map(group => ({ value: group, label: group }))}
+                    size="sm"
+                    onSelect={group => onSelectGroup(language.code, group)} />
+                </div>
+              {/if}
+
+              <div class="flex flex-col gap-2 text-sm text-slate-300">
+                <SelectDropdown
+                  ariaLabel={`${language.name} ${text.voiceModel}`}
+                  buttonLabel={voiceLabel(voicesFor(language.code, group).find(voice => voice.edge === voiceSelections[language.code]) ?? voicesFor(language.code, group)[0])}
+                  activeValue={voiceSelections[language.code]}
+                  options={voicesFor(language.code, group).map(voice => ({ value: voice.edge, label: voiceLabel(voice) }))}
+                  size="sm"
+                  onSelect={voiceId => onSelectVoice(language.code, voiceId)} />
+              </div>
             </div>
-          {/if}
-
-          <div class="flex flex-col gap-2 text-sm text-slate-300">
-            <SelectDropdown
-              ariaLabel={`${language.name} ${text.voiceModel}`}
-              buttonLabel={voiceLabel(voicesFor(language.code, group).find(voice => voice.edge === voiceSelections[language.code]) ?? voicesFor(language.code, group)[0])}
-              activeValue={voiceSelections[language.code]}
-              options={voicesFor(language.code, group).map(voice => ({ value: voice.edge, label: voiceLabel(voice) }))}
-              size="sm"
-              onSelect={voiceId => onSelectVoice(language.code, voiceId)} />
-          </div>
-        </div>
-      </section>
-    {/each}
+          </section>
+        {/each}
+      {/if}
+    </div>
   </div>
 {/snippet}
 
   {#snippet speedContent()}
     <div class="rounded-xl border border-slate-800 bg-slate-950/50">
       <div class="grid items-center gap-2 p-3 md:grid-cols-[minmax(0,1fr)_11rem]">
-        <span class="text-sm font-medium text-slate-100">{text.defaultSpeed}</span>
-        <SelectDropdown
+        <label for="default-speed" class="text-sm font-medium text-slate-100">{text.defaultSpeed}</label>
+        <NumberInput
+          id="default-speed"
+          value={String(speed)}
+          min={0.5}
+          max={2}
+          step={0.25}
           ariaLabel={text.defaultSpeed}
-          buttonLabel={`${speed}x`}
-          activeValue={String(speed)}
-          options={SPEED_OPTIONS}
-          size="sm"
-          onSelect={value => onSelectSpeed(Number(value))} />
+          incrementLabel={text.increment}
+          decrementLabel={text.decrement}
+          oninput={event => {
+            const raw = Number((event.target as HTMLInputElement).value)
+            if (Number.isFinite(raw)) {
+              onSelectSpeed(Math.min(2, Math.max(0.5, raw)))
+            }
+          }}
+          onblur={event => {
+            const raw = Number((event.target as HTMLInputElement).value)
+            // NumberInput already clamps and snaps on blur; just propagate the committed value.
+            onSelectSpeed(Number.isFinite(raw) ? raw : 1)
+          }} />
       </div>
-      <div class="grid items-center gap-2 border-t border-slate-800 p-3 md:grid-cols-[minmax(0,1fr)_11rem]">
+    </div>
+  {/snippet}
+
+  {#snippet synthesisContent()}
+    <div class="rounded-xl border border-slate-800 bg-slate-950/50">
+      <div class="grid items-center gap-2 p-3 md:grid-cols-[minmax(0,1fr)_11rem]">
         <label for="concurrent-synthesis" class="text-sm font-medium text-slate-100">{text.synthesisConcurrency}</label>
         <NumberInput
           id="concurrent-synthesis"
@@ -136,16 +181,11 @@
           }}
           onblur={event => {
             const raw = Number((event.target as HTMLInputElement).value)
-            const next = Number.isFinite(raw) ? Math.min(8, Math.max(1, Math.round(raw))) : 1
-            onSelectConcurrent(next)
+            // NumberInput already clamps/rounds on blur; propagate committed value.
+            onSelectConcurrent(Number.isFinite(raw) ? raw : 1)
           }} />
       </div>
-    </div>
-  {/snippet}
-
-  {#snippet cacheContent()}
-    <div class="rounded-xl border border-slate-800 bg-slate-950/50">
-      <div class="grid items-center gap-2 p-3 md:grid-cols-[minmax(0,1fr)_11rem]">
+      <div class="grid items-center gap-2 border-t border-slate-800 p-3 md:grid-cols-[minmax(0,1fr)_11rem]">
         <div class="text-sm">
           <span class="font-medium text-slate-100">{text.synthesisCache}</span>
           <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
@@ -163,7 +203,7 @@
           size="sm"
           disabled={cacheStats === null || cacheStats.segments === 0}
           ariaLabel={text.clearSynthesisCache}
-          className="text-xs"
+          className="text-sm"
           onClick={onClearCache}>
           {text.clearSynthesisCache}
         </Button>

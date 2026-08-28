@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
 import { writeFile, readFile, mkdir, unlink } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { stdin, stdout } from 'node:process';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
+import { franc } from 'franc-min';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -22,7 +23,7 @@ const CACHE_DIR = path.join(TTS_DIR, 'cache');
 const CACHE_INDEX_PATH = path.join(CACHE_DIR, 'index.json');
 const CACHE_MAX = Number(process.env.TTS_CACHE_MAX) > 0 ? Number(process.env.TTS_CACHE_MAX) : 1000;
 const SELECTION_PATH = path.join(TTS_DIR, 'selection.json');
-const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
 const c = {
   reset: '\x1b[0m',
@@ -38,94 +39,8 @@ const c = {
   black: '\x1b[30m',
 };
 
-const LANGUAGES = [
-  {
-    code: 'en',
-    name: 'English',
-    voices: [
-      { name: 'Sonia', gender: 'Female', source: 'edge', edge: 'en-GB-SoniaNeural', group: 'British' },
-      { name: 'Ryan', gender: 'Male', source: 'edge', edge: 'en-GB-RyanNeural', group: 'British' },
-      { name: 'Libby', gender: 'Female', source: 'edge', edge: 'en-GB-LibbyNeural', group: 'British' },
-      { name: 'Maisie', gender: 'Female', source: 'edge', edge: 'en-GB-MaisieNeural', group: 'British' },
-      { name: 'Alfie', gender: 'Male', source: 'edge', edge: 'en-GB-AlfieNeural', group: 'British' },
-      { name: 'Aria', gender: 'Female', source: 'edge', edge: 'en-US-AriaNeural', group: 'American' },
-      { name: 'Jenny', gender: 'Female', source: 'edge', edge: 'en-US-JennyNeural', group: 'American' },
-      { name: 'Guy', gender: 'Male', source: 'edge', edge: 'en-US-GuyNeural', group: 'American' },
-      { name: 'Michelle', gender: 'Female', source: 'edge', edge: 'en-US-MichelleNeural', group: 'American' },
-      { name: 'Ana', gender: 'Female', source: 'edge', edge: 'en-US-AnaNeural', group: 'American' },
-      { name: 'Natasha', gender: 'Female', source: 'edge', edge: 'en-AU-NatashaNeural', group: 'Australian' },
-      { name: 'William', gender: 'Male', source: 'edge', edge: 'en-AU-WilliamNeural', group: 'Australian' },
-      { name: 'Clara', gender: 'Female', source: 'edge', edge: 'en-CA-ClaraNeural', group: 'Canadian' },
-      { name: 'Liam', gender: 'Male', source: 'edge', edge: 'en-CA-LiamNeural', group: 'Canadian' },
-      { name: 'Neerja', gender: 'Female', source: 'edge', edge: 'en-IN-NeerjaNeural', group: 'Indian' },
-      { name: 'Prabhat', gender: 'Male', source: 'edge', edge: 'en-IN-PrabhatNeural', group: 'Indian' },
-    ],
-  },
-  {
-    code: 'zh',
-    name: 'Chinese',
-    voices: [
-      { name: 'Xiaoxiao', gender: 'Female', source: 'edge', edge: 'zh-CN-XiaoxiaoNeural', group: 'Mandarin' },
-      { name: 'Xiaoyi', gender: 'Female', source: 'edge', edge: 'zh-CN-XiaoyiNeural', group: 'Mandarin' },
-      { name: 'Yunxi', gender: 'Male', source: 'edge', edge: 'zh-CN-YunxiNeural', group: 'Mandarin' },
-      { name: 'Yunyang', gender: 'Male', source: 'edge', edge: 'zh-CN-YunyangNeural', group: 'Mandarin' },
-      { name: 'HiuGaai', gender: 'Female', source: 'edge', edge: 'zh-HK-HiuGaaiNeural', group: 'Cantonese' },
-      { name: 'HiuMaan', gender: 'Female', source: 'edge', edge: 'zh-HK-HiuMaanNeural', group: 'Cantonese' },
-      { name: 'WanLung', gender: 'Male', source: 'edge', edge: 'zh-HK-WanLungNeural', group: 'Cantonese' },
-      { name: 'HsiaoChen', gender: 'Female', source: 'edge', edge: 'zh-TW-HsiaoChenNeural', group: 'Taiwan' },
-      { name: 'HsiaoYu', gender: 'Female', source: 'edge', edge: 'zh-TW-HsiaoYuNeural', group: 'Taiwan' },
-      { name: 'YunJhe', gender: 'Male', source: 'edge', edge: 'zh-TW-YunJheNeural', group: 'Taiwan' },
-    ],
-  },
-  {
-    code: 'ja',
-    name: 'Japanese',
-    voices: [
-      { name: 'Nanami', gender: 'Female', source: 'edge', edge: 'ja-JP-NanamiNeural' },
-      { name: 'Keita', gender: 'Male', source: 'edge', edge: 'ja-JP-KeitaNeural' },
-    ],
-  },
-  {
-    code: 'ko',
-    name: 'Korean',
-    voices: [
-      { name: 'SunHi', gender: 'Female', source: 'edge', edge: 'ko-KR-SunHiNeural' },
-      { name: 'InJoon', gender: 'Male', source: 'edge', edge: 'ko-KR-InJoonNeural' },
-    ],
-  },
-  {
-    code: 'es',
-    name: 'Spanish',
-    voices: [
-      { name: 'Elvira', gender: 'Female', source: 'edge', edge: 'es-ES-ElviraNeural', group: 'Spain' },
-      { name: 'Alvaro', gender: 'Male', source: 'edge', edge: 'es-ES-AlvaroNeural', group: 'Spain' },
-      { name: 'Dalia', gender: 'Female', source: 'edge', edge: 'es-MX-DaliaNeural', group: 'Mexico' },
-      { name: 'Jorge', gender: 'Male', source: 'edge', edge: 'es-MX-JorgeNeural', group: 'Mexico' },
-    ],
-  },
-  {
-    code: 'fr',
-    name: 'French',
-    voices: [
-      { name: 'Denise', gender: 'Female', source: 'edge', edge: 'fr-FR-DeniseNeural', group: 'France' },
-      { name: 'Henri', gender: 'Male', source: 'edge', edge: 'fr-FR-HenriNeural', group: 'France' },
-      { name: 'Vivienne', gender: 'Female', source: 'edge', edge: 'fr-FR-VivienneNeural', group: 'France' },
-      { name: 'Sylvie', gender: 'Female', source: 'edge', edge: 'fr-CA-SylvieNeural', group: 'Canada' },
-      { name: 'Jean', gender: 'Male', source: 'edge', edge: 'fr-CA-JeanNeural', group: 'Canada' },
-      { name: 'Charline', gender: 'Female', source: 'edge', edge: 'fr-BE-CharlineNeural', group: 'Belgium' },
-      { name: 'Gerard', gender: 'Male', source: 'edge', edge: 'fr-BE-GerardNeural', group: 'Belgium' },
-    ],
-  },
-  {
-    code: 'ru',
-    name: 'Russian',
-    voices: [
-      { name: 'Svetlana', gender: 'Female', source: 'edge', edge: 'ru-RU-SvetlanaNeural' },
-      { name: 'Dmitry', gender: 'Male', source: 'edge', edge: 'ru-RU-DmitryNeural' },
-      { name: 'Dariya', gender: 'Female', source: 'edge', edge: 'ru-RU-DariyaNeural' },
-    ],
-  },
-];
+const LANGUAGES = JSON.parse(readFileSync(new URL('./src/lib/reference-languages.json', import.meta.url), 'utf8'));
+
 
 const MODES = [
   { id: 'play', label: 'Play' },
@@ -158,16 +73,175 @@ const SEGMENT_CJK_RE = /[\u1100-\u11ff\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\uf
 const SINGLE_CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af\u3130-\u318f]/;
 const PUNCT_KEEP_RE = /[.!?。！？…·•\-—─]/;
 const PUNCT_ONLY_RE = /^[.!?。！？…·•\-—─]+$/;
+const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+const DEVANAGARI_RE = /[\u0900-\u097F]/;
+const BENGALI_RE = /[\u0980-\u09FF]/;
+const GUJARATI_RE = /[\u0A80-\u0AFF]/;
+const GURMUKHI_RE = /[\u0A00-\u0A7F]/;
+const TAMIL_RE = /[\u0B80-\u0BFF]/;
+const TELUGU_RE = /[\u0C00-\u0C7F]/;
+const KANNADA_RE = /[\u0C80-\u0CFF]/;
+const MALAYALAM_RE = /[\u0D00-\u0D7F]/;
+const SINHALA_RE = /[\u0D80-\u0DFF]/;
+const THAI_RE = /[\u0E00-\u0E7F]/;
+const LAO_RE = /[\u0E80-\u0EFF]/;
+const MYANMAR_RE = /[\u1000-\u109F]/;
+const GEORGIAN_RE = /[\u10A0-\u10FF]/;
+const ETHIOPIC_RE = /[\u1200-\u137F]/;
+const CANADIAN_ABORIGINAL_RE = /[\u1400-\u167F]/;
+const KHMER_RE = /[\u1780-\u17FF]/;
+const GREEK_RE = /[\u0370-\u03FF]/;
+const HEBREW_RE = /[\u0590-\u05FF]/;
+const ARMENIAN_RE = /[\u0530-\u058F]/;
 
+const FRANC_TO_LANGUAGE = {
+  eng: 'en', cmn: 'zh', yue: 'yue', jpn: 'ja', kor: 'ko', spa: 'es', fra: 'fr', rus: 'ru',
+  afr: 'af', amh: 'am', arb: 'ar', aze: 'az', bul: 'bg', ben: 'bn', bos: 'bs', cat: 'ca',
+  ces: 'cs', cym: 'cy', dan: 'da', deu: 'de', ell: 'el', est: 'et', pes: 'fa', fin: 'fi',
+  fil: 'fil', gle: 'ga', glg: 'gl', guj: 'gu', heb: 'he', hin: 'hi', hrv: 'hr', hun: 'hu',
+  ind: 'id', isl: 'is', ita: 'it', iku: 'iu', jav: 'jv', kat: 'ka', kaz: 'kk', khm: 'km',
+  kan: 'kn', lao: 'lo', lit: 'lt', lav: 'lv', mkd: 'mk', mal: 'ml', mon: 'mn', mar: 'mr',
+  msa: 'ms', mlt: 'mt', mya: 'my', nob: 'nb', nep: 'ne', nld: 'nl', pol: 'pl', pus: 'ps',
+  por: 'pt', ron: 'ro', sin: 'si', slk: 'sk', slv: 'sl', som: 'so', sqi: 'sq', srp: 'sr',
+  sun: 'su', swe: 'sv', swa: 'sw', tam: 'ta', tel: 'te', tha: 'th', tur: 'tr', ukr: 'uk',
+  urd: 'ur', uzb: 'uz', vie: 'vi', zul: 'zu',
+};
+const ENGLISH_WORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'for', 'with', 'at', 'by', 'from',
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'that', 'this', 'these', 'those', 'it', 'its',
+  'as', 'we', 'you', 'they', 'he', 'she', 'i', 'me', 'my', 'your', 'our', 'their', 'have', 'has',
+  'had', 'will', 'would', 'can', 'could', 'should', 'may', 'might', 'do', 'does', 'did', 'not',
+  'no', 'yes', 'if', 'then', 'so', 'because', 'when', 'where', 'what', 'who', 'how', 'all', 'each',
+  'every', 'some', 'any', 'most', 'more', 'much', 'many', 'one', 'two', 'first', 'good', 'time',
+  'day', 'year', 'people', 'world', 'into', 'out', 'up', 'down', 'over', 'under', 'again', 'back',
+  'just', 'like', 'know', 'think', 'see', 'come', 'take', 'make', 'go', 'get', 'new', 'now', 'here',
+  'there', 'also', 'well', 'way', 'even', 'only', 'other', 'such', 'very', 'great', 'small', 'large',
+  'said', 'hello', 'world', 'morning', 'today', 'weather', 'nice', 'love', 'programming', 'quick',
+  'brown', 'fox', 'jumps', 'lazy', 'dog', 'emergency', 'broadcast', 'system', 'second', 'segment',
+]);
+const ENGLISH_DISTINCTIVE_RE =
+  /\b(the|and|hello|world|you|that|have|with|this|from|they|what|about|which|when|make|like|time|just|know|take|people|into|year|your|good|some|could|them|see|other|than|then|now|look|only|come|over|think|also|back|after|use|how|our|work|first|well|way|even|new|want|because|any|these|give|day|most|us|are|was|were|been|has|had|will|would|should|can|good|morning|today|weather|nice|love|programming|quick|brown|fox|jumps|over|lazy|dog|emergency|broadcast|system|hello|world|second|segment|here)\b/i;
+function englishWordScore(text) {
+  const tokens = text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
+  let score = 0;
+  for (const t of tokens) if (ENGLISH_WORDS.has(t)) score += 1;
+  return score;
+}
+const FOREIGN_WORDS = {
+  de: ['hallo', 'welt', 'danke', 'bitte', 'guten', 'tag', 'wie', 'geht', 'es', 'dir', 'und', 'der', 'die', 'das', 'ein', 'eine', 'ist', 'nicht', 'ich', 'du', 'wir', 'ja', 'nein', 'gut', 'schön', 'morgen', 'abend', 'danke', 'bitte'],
+  nl: ['hallo', 'wereld', 'dank', 'alsjeblieft', 'ja', 'nee', 'goedemorgen', 'goed', 'avond', 'dit', 'een', 'van', 'het', 'niet', 'wat', 'wij', 'jullie', 'zijn', 'wereld', 'dankje'],
+  fr: ['bonjour', 'monde', 'merci', 'plait', 'plaît', 'oui', 'non', 'salut', 'comment', 'allez', 'vous', 'bien', 'au', 'revoir', 'pour', 'lui', 'les', 'enfants', 'ce', 'moment', 'calme', 'soir', 'offre', 'tous', 'la', 'opportunité', 'opportunite', 'chaque', 'matin', 'vent', 'souffle', 'doucement', 'demain', 'sera', 'autre', 'jour', 'rempli', 'nouvelles', 'possibilités', 'possibilites'],
+  es: ['hola', 'mundo', 'gracias', 'favor', 'buenos', 'dias', 'días', 'como', 'cómo', 'estas', 'estás', 'bien', 'adios', 'adiós', 'hasta', 'luego', 'si', 'sí', 'no', 'durante', 'fin', 'semana', 'muchas', 'personas', 'todos', 'compartimos', 'mismo', 'deseo', 'fundamental', 'armonía', 'armonia', 'una', 'dulce', 'melodía', 'melodia', 'músico', 'musico', 'callejero', 'ofrece', 'oportunidad', 'respirar', 'profundamente', 'recordar', 'bello', 'vida'],
+  it: ['ciao', 'mondo', 'grazie', 'prego', 'buongiorno', 'come', 'stai', 'bene', 'arrivederci', 'si', 'no', 'molte', 'persone', 'preferiscono', 'passeggiare', 'lungo', 'viali', 'serali', 'questo', 'luogo', 'incantevole', 'veramente', 'tesoro', 'inestimabile', 'chiunque', 'cerchi', 'pace'],
+  pt: ['olá', 'ola', 'mundo', 'obrigado', 'favor', 'sim', 'não', 'nao', 'bom', 'dia', 'como', 'está', 'esta', 'bem', 'adeus', 'até', 'ate', 'logo'],
+  pl: ['cześć', 'czesc', 'świat', 'swiat', 'dziękuję', 'dziekuje', 'proszę', 'prosze', 'tak', 'nie', 'witaj', 'dobry', 'dzień', 'dzien', 'jak', 'się', 'sie', 'masz'],
+  tr: ['merhaba', 'dünya', 'dunya', 'teşekkür', 'tesekkur', 'lütfen', 'lutfen', 'evet', 'hayır', 'hayir', 'günaydın', 'gunaydin', 'nasıl', 'nasil', 'sin', 'iyi'],
+  sv: ['hej', 'världen', 'varlden', 'tack', 'ja', 'nej', 'god', 'morgon', 'hur', 'mår', 'mar', 'du', 'bra'],
+  da: ['hej', 'verden', 'tak', 'ja', 'nej', 'godmorgen', 'hvordan', 'har', 'du', 'det', 'bra'],
+  nb: ['hei', 'verden', 'takk', 'ja', 'nei', 'god', 'morgen', 'hvordan', 'har', 'du', 'det', 'bra'],
+  fi: ['hei', 'maailma', 'kiitos', 'ole', 'hyvä', 'hyva', 'kyllä', 'kylla', 'ei', 'huomenta', 'miten', 'voit', 'hyvin'],
+  cs: ['ahoj', 'svět', 'svet', 'děkuji', 'dekuji', 'prosím', 'prosim', 'ano', 'ne', 'dobrý', 'dobry', 'den', 'jak', 'se', 'máš', 'mas'],
+  sk: ['ahoj', 'svet', 'ďakujem', 'dakujem', 'prosím', 'prosim', 'áno', 'ano', 'nie', 'dobrý', 'dobry', 'den', 'ako', 'sa', 'máš', 'mas'],
+  hu: ['szia', 'világ', 'vilag', 'köszönöm', 'koszonom', 'kérem', 'kerem', 'igen', 'nem', 'jó', 'jo', 'reggelt', 'hogy', 'vagy', 'jól', 'jol'],
+  ro: ['salut', 'lume', 'mulțumesc', 'multumesc', 'vă', 'va', 'rog', 'da', 'nu', 'bună', 'buna', 'ziua', 'ce', 'faci', 'bine'],
+  id: ['halo', 'dunia', 'terima', 'kasih', 'ya', 'tidak', 'selamat', 'pagi', 'apa', 'kabar', 'baik'],
+  ms: ['halo', 'dunia', 'terima', 'kasih', 'ya', 'tidak', 'selamat', 'pagi', 'apa', 'khabar', 'baik'],
+  vi: ['xin', 'chào', 'chao', 'thế', 'the', 'giới', 'gioi', 'cảm', 'cam', 'ơn', 'on', 'vâng', 'vang', 'không', 'khong', 'tôi', 'toi', 'khỏe', 'khoe', 'bạn', 'ban'],
+};
+function isProbablyEnglish(text) {
+  return ENGLISH_DISTINCTIVE_RE.test(text);
+}
+function foreignWordScore(text, lang) {
+  const words = FOREIGN_WORDS[lang];
+  if (!words) return 0;
+  const tokens = new Set(text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean));
+  let score = 0;
+  for (const w of words) if (tokens.has(w.toLowerCase())) score += 1;
+  return score;
+}
 function detectTtsLanguage(text) {
   if (/[\u3040-\u30ff]/.test(text)) return 'ja';
   if (/[嘅咗唔啲佢嗰哋畀]/.test(text)) return 'yue';
   if (HANGUL_RE.test(text)) return 'ko';
   if (/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/.test(text)) return 'zh';
-  if (/[\u0400-\u052f]/.test(text)) return 'ru';
-  if (/[ñÑ¿¡]/.test(text)) return 'es';
-  if (/[çÇœŒæÆàÀèÈêÊîÎôÔûÛùÙâÂ]/.test(text)) return 'fr';
-  return 'en';
+  if (THAI_RE.test(text)) return 'th';
+  if (LAO_RE.test(text)) return 'lo';
+  if (MYANMAR_RE.test(text)) return 'my';
+  if (KHMER_RE.test(text)) return 'km';
+  if (GEORGIAN_RE.test(text)) return 'ka';
+  if (ETHIOPIC_RE.test(text)) return 'am';
+  if (BENGALI_RE.test(text)) return 'bn';
+  if (GUJARATI_RE.test(text)) return 'gu';
+  if (TAMIL_RE.test(text)) return 'ta';
+  if (TELUGU_RE.test(text)) return 'te';
+  if (KANNADA_RE.test(text)) return 'kn';
+  if (MALAYALAM_RE.test(text)) return 'ml';
+  if (SINHALA_RE.test(text)) return 'si';
+  if (GREEK_RE.test(text)) return 'el';
+  if (HEBREW_RE.test(text)) return 'he';
+  if (CANADIAN_ABORIGINAL_RE.test(text)) return 'iu';
+  if (ARABIC_RE.test(text)) {
+    if (text.trim().length >= 15) {
+      const c = franc(text, { minLength: 3 });
+      const m = FRANC_TO_LANGUAGE[c];
+      if (m && ['ar', 'fa', 'ps', 'ur'].includes(m)) return m;
+    }
+    return 'ar';
+  }
+  if (DEVANAGARI_RE.test(text)) {
+    if (text.trim().length >= 15) {
+      const c = franc(text, { minLength: 3 });
+      const m = FRANC_TO_LANGUAGE[c];
+      if (m && ['hi', 'mr', 'ne'].includes(m)) return m;
+    }
+    return 'hi';
+  }
+  if (/[\u0400-\u052f]/.test(text)) {
+    if (text.trim().length >= 15) {
+      const c = franc(text, { minLength: 3 });
+      const m = FRANC_TO_LANGUAGE[c];
+      if (m && ['bg', 'mk', 'ru', 'sr', 'uk', 'kk'].includes(m)) return m;
+    }
+    return 'ru';
+  }
+  if (/[^\x00-\x7F]/.test(text)) {
+    let foreignBest = 0;
+    for (const lang of Object.keys(FOREIGN_WORDS)) foreignBest = Math.max(foreignBest, foreignWordScore(text, lang));
+    if (englishWordScore(text) >= foreignBest) return 'en';
+    let bestLang = null;
+    let bestScore = 0;
+    for (const lang of Object.keys(FOREIGN_WORDS)) {
+      const score = foreignWordScore(text, lang);
+      if (score > bestScore) {
+        bestScore = score;
+        bestLang = lang;
+      }
+    }
+    if (bestLang && bestScore > 0) return bestLang;
+    const c = franc(text, { minLength: 3 });
+    const m = FRANC_TO_LANGUAGE[c];
+    if (m && m !== 'en') return m;
+    return 'en';
+  }
+  if (isProbablyEnglish(text)) return 'en';
+  {
+    let bestLang = null;
+    let bestScore = 0;
+    for (const lang of Object.keys(FOREIGN_WORDS)) {
+      const score = foreignWordScore(text, lang);
+      if (score > bestScore) {
+        bestScore = score;
+        bestLang = lang;
+      }
+    }
+    if (bestLang && bestScore > 0) return bestLang;
+  }
+  if (text.trim().length < 10) return 'en';
+  const c = franc(text, { minLength: 3 });
+  const m = FRANC_TO_LANGUAGE[c];
+  if (!m || m === 'en') return 'en';
+  if (text.trim().length < 30) return 'en';
+  return m;
 }
 
 function minimumLength(lang) {
@@ -192,8 +266,12 @@ function splitTtsRuns(text) {
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (/^\s$/.test(char)) {
-      flush(i);
-      pendingWhitespace += char;
+      if (currentCjk === false) {
+        currentText += char;
+      } else {
+        flush(i);
+        pendingWhitespace += char;
+      }
       continue;
     }
     if (/\d/.test(char) && currentCjk !== null) {
@@ -395,7 +473,14 @@ function cleanParagraph(paragraph, lang) {
 }
 
 function splitTtsSegments(text, maxSegmentLength = MAX_SEGMENT_LENGTH) {
-  const runs = mergeBracketedCjkPrefixes(foldShortRuns(mergeAdjacentRuns(splitTtsRuns(text))));
+  const rawRuns = mergeBracketedCjkPrefixes(foldShortRuns(mergeAdjacentRuns(splitTtsRuns(text))));
+  const runs = rawRuns.map(run => {
+    if (run.lang === 'en' && run.text.trim().length >= 10) {
+      const refined = detectTtsLanguage(run.text);
+      if (refined !== run.lang) return { ...run, lang: refined };
+    }
+    return run;
+  });
   const segments = [];
   for (const run of runs) {
     for (const paragraph of splitParagraphRanges(run)) {
