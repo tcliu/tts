@@ -745,7 +745,7 @@
 
       <span
         role="presentation"
-        class={`rounded-md hidden ${REVEAL_CLASS.upload} ${uploadDragActive ? 'ring-2 ring-cyan-500' : ''}`}
+        class={`rounded-md hidden ${toolbarMode === 'doc' ? REVEAL_CLASS.upload.doc : REVEAL_CLASS.upload.fresh} ${uploadDragActive ? 'ring-2 ring-cyan-500' : ''}`}
         ondragover={handleUploadDragOver}
         ondragleave={handleUploadDragLeave}
         ondrop={handleUploadDrop}>

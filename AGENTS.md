@@ -77,6 +77,7 @@ Project-specific development conventions for the TTS web app.
   suppresses the snap animation when `prefers-reduced-motion: reduce` is active,
   and routes `onClose` through `dismissDrawerAndFocusTrigger` to return focus;
   disable the gesture when docked (see `references/responsive-design.md`).
+- Playback toolbar is a container-query ladder (`@container`, 9 bands `tiny→full` in `toolbar-ladder.ts`) with paired `TOOLBAR_BANDS`/`INLINE_AT_BAND`/`REVEAL_CLASS` literals; thresholds are calibrated at `--text-sm` worst-Latin (`--container-tts-*` in `src/styles.css`: `4→352`, `5→432`, `6→508`) and all three tables must change together.
 
 ## Theming
 
