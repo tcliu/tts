@@ -7,11 +7,25 @@ export interface StoredDocument {
 
 const STORAGE_KEY = 'tts:web-documents'
 
+// Short, URL-friendly document ids so deep links stay compact (`/{docId}`).
+const ID_LENGTH = 6
+const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
 function createId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(ID_LENGTH)
+    crypto.getRandomValues(bytes)
+    let id = ''
+    for (let i = 0; i < ID_LENGTH; i++) {
+      id += ID_ALPHABET[bytes[i] % ID_ALPHABET.length]
+    }
+    return id
   }
-  return `doc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  let id = ''
+  for (let i = 0; i < ID_LENGTH; i++) {
+    id += ID_ALPHABET[Math.floor(Math.random() * ID_ALPHABET.length)]
+  }
+  return id
 }
 
 function isStoredDocument(value: unknown): value is StoredDocument {
@@ -88,7 +102,11 @@ export function useDocuments() {
       saved = { ...existing, name: trimmedName, content, updatedAt }
       documents = documents.map(document => (document.id === existing.id ? saved : document))
     } else {
-      saved = { id: createId(), name: trimmedName, content, updatedAt }
+      let id = createId()
+      while (documents.some(document => document.id === id)) {
+        id = createId()
+      }
+      saved = { id, name: trimmedName, content, updatedAt }
       documents = [...documents, saved]
     }
     writeStoredDocuments(documents)

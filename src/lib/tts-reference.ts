@@ -158,9 +158,9 @@ const FRANC_TO_LANGUAGE: Record<string, string> = {
   urd: 'ur', uzb: 'uz', vie: 'vi', zul: 'zu',
 }
 const ENGLISH_WORDS = new Set([
-  'the', 'a', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'for', 'with', 'at', 'by', 'from',
+  'the', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'for', 'with', 'at', 'by', 'from',
   'is', 'are', 'was', 'were', 'be', 'been', 'being', 'that', 'this', 'these', 'those', 'it', 'its',
-  'as', 'we', 'you', 'they', 'he', 'she', 'i', 'me', 'my', 'your', 'our', 'their', 'have', 'has',
+  'as', 'we', 'you', 'they', 'he', 'she', 'me', 'my', 'your', 'our', 'their', 'have', 'has',
   'had', 'will', 'would', 'can', 'could', 'should', 'may', 'might', 'do', 'does', 'did', 'not',
   'no', 'yes', 'if', 'then', 'so', 'because', 'when', 'where', 'what', 'who', 'how', 'all', 'each',
   'every', 'some', 'any', 'most', 'more', 'much', 'many', 'one', 'two', 'first', 'good', 'time',
@@ -184,7 +184,7 @@ const FOREIGN_WORDS: Record<string, string[]> = {
   fr: ['bonjour', 'monde', 'merci', 'plait', 'plaît', 'oui', 'non', 'salut', 'comment', 'allez', 'vous', 'bien', 'au', 'revoir', 'pour', 'lui', 'les', 'enfants', 'ce', 'moment', 'calme', 'soir', 'offre', 'tous', 'la', 'opportunité', 'opportunite', 'chaque', 'matin', 'vent', 'souffle', 'doucement', 'demain', 'sera', 'autre', 'jour', 'rempli', 'nouvelles', 'possibilités', 'possibilites'],
   es: ['hola', 'mundo', 'gracias', 'favor', 'buenos', 'dias', 'días', 'como', 'cómo', 'estas', 'estás', 'bien', 'adios', 'adiós', 'hasta', 'luego', 'si', 'sí', 'no', 'durante', 'fin', 'semana', 'muchas', 'personas', 'todos', 'compartimos', 'mismo', 'deseo', 'fundamental', 'armonía', 'armonia', 'una', 'dulce', 'melodía', 'melodia', 'músico', 'musico', 'callejero', 'ofrece', 'oportunidad', 'respirar', 'profundamente', 'recordar', 'bello', 'vida'],
   it: ['ciao', 'mondo', 'grazie', 'prego', 'buongiorno', 'come', 'stai', 'bene', 'arrivederci', 'si', 'no', 'molte', 'persone', 'preferiscono', 'passeggiare', 'lungo', 'viali', 'serali', 'questo', 'luogo', 'incantevole', 'veramente', 'tesoro', 'inestimabile', 'chiunque', 'cerchi', 'pace'],
-  pt: ['olá', 'ola', 'mundo', 'obrigado', 'favor', 'sim', 'não', 'nao', 'bom', 'dia', 'como', 'está', 'esta', 'bem', 'adeus', 'até', 'ate', 'logo'],
+  pt: ['olá', 'ola', 'mundo', 'obrigado', 'favor', 'sim', 'não', 'nao', 'bom', 'dia', 'como', 'está', 'esta', 'bem', 'adeus', 'até', 'ate', 'logo', 'vida', 'lindo', 'fala', 'português', 'bonito'],
   pl: ['cześć', 'czesc', 'świat', 'swiat', 'dziękuję', 'dziekuje', 'proszę', 'prosze', 'tak', 'nie', 'witaj', 'dobry', 'dzień', 'dzien', 'jak', 'się', 'sie', 'masz'],
   tr: ['merhaba', 'dünya', 'dunya', 'teşekkür', 'tesekkur', 'lütfen', 'lutfen', 'evet', 'hayır', 'hayir', 'günaydın', 'gunaydin', 'nasıl', 'nasil', 'sin', 'iyi'],
   sv: ['hej', 'världen', 'varlden', 'tack', 'ja', 'nej', 'god', 'morgon', 'hur', 'mår', 'mar', 'du', 'bra'],
@@ -192,12 +192,39 @@ const FOREIGN_WORDS: Record<string, string[]> = {
   nb: ['hei', 'verden', 'takk', 'ja', 'nei', 'god', 'morgen', 'hvordan', 'har', 'du', 'det', 'bra'],
   fi: ['hei', 'maailma', 'kiitos', 'ole', 'hyvä', 'hyva', 'kyllä', 'kylla', 'ei', 'huomenta', 'miten', 'voit', 'hyvin'],
   cs: ['ahoj', 'svět', 'svet', 'děkuji', 'dekuji', 'prosím', 'prosim', 'ano', 'ne', 'dobrý', 'dobry', 'den', 'jak', 'se', 'máš', 'mas'],
-  sk: ['ahoj', 'svet', 'ďakujem', 'dakujem', 'prosím', 'prosim', 'áno', 'ano', 'nie', 'dobrý', 'dobry', 'den', 'ako', 'sa', 'máš', 'mas'],
+  sk: ['ahoj', 'svet', 'ďakujem', 'dakujem', 'prosím', 'prosim', 'áno', 'ano', 'nie', 'dobrý', 'dobry', 'den', 'ako', 'sa', 'máš', 'mas', 'všetkých', 'krásny', 'krásna'],
   hu: ['szia', 'világ', 'vilag', 'köszönöm', 'koszonom', 'kérem', 'kerem', 'igen', 'nem', 'jó', 'jo', 'reggelt', 'hogy', 'vagy', 'jól', 'jol'],
   ro: ['salut', 'lume', 'mulțumesc', 'multumesc', 'vă', 'va', 'rog', 'da', 'nu', 'bună', 'buna', 'ziua', 'ce', 'faci', 'bine'],
   id: ['halo', 'dunia', 'terima', 'kasih', 'ya', 'tidak', 'selamat', 'pagi', 'apa', 'kabar', 'baik'],
   ms: ['halo', 'dunia', 'terima', 'kasih', 'ya', 'tidak', 'selamat', 'pagi', 'apa', 'khabar', 'baik'],
   vi: ['xin', 'chào', 'chao', 'thế', 'the', 'giới', 'gioi', 'cảm', 'cam', 'ơn', 'on', 'vâng', 'vang', 'không', 'khong', 'tôi', 'toi', 'khỏe', 'khoe', 'bạn', 'ban'],
+  af: ['lekker', 'baie', 'nie', 'ek', 'jy', 'vandag', 'gaan', 'gedoen', 'dankie', 'afrikaans', 'hoe'],
+  az: ['və', 'necə', 'sən', 'mən', 'deyil', 'yox', 'salam', 'dünya', 'həyat', 'gözəl', 'insan'],
+  bs: ['šta', 'svijet', 'prijatelj', 'dobro', 'dobar', 'jutro', 'gdje', 'nek', 'zdravo'],
+  ca: ['món', 'avui', 'bonica', 'estàs', 'país', 'terra', 'llengua', 'som', 'fem', 'són', 'hola'],
+  cy: ['helo', 'byd', 'yma', 'mae', 'nhw', 'pob', 'dyn', 'cymru', 'dydd', 'eich', 'defnyddio', 'gallu'],
+  et: ['kuidas', 'täna', 'hommik', 'ilus', 'maailm', 'ole', 'ja', 'ei', 'kas', 'nad', 'on'],
+  fil: ['kumusta', 'magandang', 'umaga', 'ako', 'ikaw', 'siya', 'kami', 'kayo', 'sila', 'tayo', 'ang', 'ng'],
+  ga: ['dia', 'duit', 'domhan', 'maidin', 'mhaith', 'gaeilge', 'slán', 'tá', 'mé', 'bhfuil', 'ár', 'bhur', 'le', 'ag'],
+  gl: ['fermosa', 'hoxe', 'compostela', 'nosa', 'fala', 'terra', 'bonita', 'está', 'ola', 'mundo'],
+  hr: ['što', 'lijep', 'dobar', 'svijet', 'prijatelj', 'jutro', 'gdje', 'nek', 'zdravo'],
+  is: ['heimur', 'góðan', 'daginn', 'allir', 'ég', 'þú', 'hann', 'við', 'þið', 'eru', 'ekki', 'hvað', 'hver', 'frábær', 'vel', 'og'],
+  jv: ['donya', 'lan', 'urip', 'apik', 'kula', 'sampeyan', 'sliramu', 'inggih', 'punika', 'matur', 'nggeh'],
+  lt: ['sveikas', 'pasauli', 'ryto', 'metas', 'labas', 'rytas', 'kaip', 'jūs', 'yra', 'aš', 'tu', 'mes'],
+  lv: ['sveiks', 'pasaule', 'rītu', 'visiem', 'labu', 'labdien', 'rīts', 'kā', 'jūs', 'mēs', 'viņš'],
+  mt: ['dinja', 'ħajja', 'sabiħa', 'kulħadd', 'lil', 'jien', 'int', 'intom', 'huma', 'iva', 'kif', 'fejn', 'sbieħ', 'tajba'],
+  sl: ['zdravo', 'lep', 'lepa', 'dober', 'jutro', 'vsi', 'kako', 'so', 'za', 'vse'],
+  sq: ['përshëndetje', 'botë', 'dhe', 'jetë', 'bukur', 'unë', 'janë', 'mirë', 'ditë'],
+  su: ['jeung', 'kahirupan', 'éndah', 'abdi', 'anjeun', 'urang', 'hidep', 'sami', 'kumaha', 'sadayana'],
+  sw: ['hujambo', 'maisha', 'mazuri', 'sana', 'habari', 'mzuri', 'safi', 'nzuri', 'jambo', 'karibu', 'asante'],
+  uz: ['salom', 'dunyo', 'va', 'hayot', 'juda', 'chiroyli', 'qanday', 'yaxshi'],
+  ne: ['नेपाल', 'काठमाडौं', 'हाम्रो', 'तपाईं', 'माया'],
+  sr: ['zdravo', 'svijet', 'prijatelj', 'dobro', 'jutro', 'gdje', 'nek', 'šta'],
+  mk: ['zdravo', 'svet', 'prijatel', 'dobar', 'den', 'dobro', 'jutro', 'što'],
+  bg: ['zdrasti', 'svyat', 'priyatel', 'dobre', 'den', 'utro', 'kak'],
+  uk: ['pryvit', 'svit', 'druh', 'dobry', 'den', 'ranok', 'yak'],
+  kk: ['salem', 'älem', 'dos', 'jāqsy', 'kün', 'tań'],
+  mn: ['sain', 'baina', 'delkhi', 'mongol', 'öröö'],
 }
 function isProbablyEnglish(text: string): boolean {
   return ENGLISH_DISTINCTIVE_RE.test(text)
@@ -229,6 +256,25 @@ function bestForeignLanguage(text: string): { lang: string | null; score: number
   }
   return { lang: bestLang, score: bestScore }
 }
+function classifyCyrillic(text: string): string {
+  if (/[ђћ]/.test(text)) return 'sr'
+  if (/[ќѓ]/.test(text)) return 'mk'
+  if (/[іїєґ]/.test(text)) return 'uk'
+  if (/[әғқңөұһ]/.test(text)) return 'kk'
+  if (/[ү]/.test(text)) return 'mn'
+  if (/[ъѝ]/.test(text)) return 'bg'
+  if (/[ыэё]/.test(text)) return 'ru'
+  const c = franc(text, { minLength: 3 })
+  const m = FRANC_TO_LANGUAGE[c]
+  if (m && ['bg', 'mk', 'ru', 'sr', 'uk', 'kk', 'mn'].includes(m)) return m
+  return 'ru'
+}
+function classifyArabic(text: string): string {
+  if (/[ٹڈڑۓ]/.test(text)) return 'ur'
+  if (/[ښځټڅې]/.test(text)) return 'ps'
+  if (/[گچژپ]/.test(text)) return 'fa'
+  return 'ar'
+}
 function detectTtsLanguage(text: string) {
   if (/[\u3040-\u30ff]/.test(text)) return 'ja'
   if (/[嘅咗唔啲佢嗰哋畀]/.test(text)) return 'yue'
@@ -250,15 +296,9 @@ function detectTtsLanguage(text: string) {
   if (GREEK_RE.test(text)) return 'el'
   if (HEBREW_RE.test(text)) return 'he'
   if (CANADIAN_ABORIGINAL_RE.test(text)) return 'iu'
-  if (ARABIC_RE.test(text)) {
-    if (text.trim().length >= 15) {
-      const c = franc(text, { minLength: 3 })
-      const m = FRANC_TO_LANGUAGE[c]
-      if (m && ['ar', 'fa', 'ps', 'ur'].includes(m)) return m
-    }
-    return 'ar'
-  }
+  if (ARABIC_RE.test(text)) return classifyArabic(text)
   if (DEVANAGARI_RE.test(text)) {
+    if (/[ळ]/.test(text)) return 'mr'
     if (text.trim().length >= 15) {
       const c = franc(text, { minLength: 3 })
       const m = FRANC_TO_LANGUAGE[c]
@@ -266,17 +306,10 @@ function detectTtsLanguage(text: string) {
     }
     return 'hi'
   }
-  if (/[\u0400-\u052f]/.test(text)) {
-    if (text.trim().length >= 15) {
-      const c = franc(text, { minLength: 3 })
-      const m = FRANC_TO_LANGUAGE[c]
-      if (m && ['bg', 'mk', 'ru', 'sr', 'uk', 'kk'].includes(m)) return m
-    }
-    return 'ru'
-  }
+  if (/[\u0400-\u052f]/.test(text)) return classifyCyrillic(text)
   if (/[^\x00-\x7F]/.test(text)) {
     const { lang: bestLang, score: bestScore } = bestForeignLanguage(text)
-    if (englishWordScore(text) >= bestScore) return 'en'
+    if (englishWordScore(text) > bestScore) return 'en'
     if (bestLang && bestScore > 0) return bestLang
     const c = franc(text, { minLength: 3 })
     const m = FRANC_TO_LANGUAGE[c]

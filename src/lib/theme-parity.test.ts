@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 const settingsSource = readFileSync('src/lib/use-settings.svelte.ts', 'utf-8')
 const appHtml = readFileSync('src/app.html', 'utf-8')
 const styles = readFileSync('src/styles.css', 'utf-8')
-const pageSource = readFileSync('src/routes/+page.svelte', 'utf-8')
+const pageSource = readFileSync('src/routes/[[docId]]/+page.svelte', 'utf-8')
 
 function uiThemeUnion(): string[] {
   const marker = 'export type UiTheme = '

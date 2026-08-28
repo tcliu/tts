@@ -7,11 +7,14 @@
   --text-lg: 1.125rem; /* 18px */
 
   /* Playback-toolbar reveal rungs, calibrated to measured button widths
-     (labels at --text-sm, worst-case Latin metrics) at the toolbar's container
-     width (viewport minus the 12px main padding each side). Do not reuse the
-     shared xs/2xl names here: they also feed width utilities such as max-w-xs. */
+      (labels at --text-sm, worst-case Latin metrics) at the toolbar's container
+      width (viewport minus the 12px main padding each side). Do not reuse the
+      shared xs/2xl names here: they also feed width utilities such as max-w-xs. */
   --container-tts-mini: 7rem; /* 112px: below this the overflow menu is the only control (Play collapses in) */
   --container-tts-narrow: 12.5rem; /* 200px: Play + Save + overflow menu */
+  --container-tts-info: 22rem; /* 352px: Play + Reset + Save + Info + menu fits at 400px viewport (376px container) with ~34px slack, no size/gap shrink */
+  --container-tts-copy: 27rem; /* 432px: 5 buttons + menu fits at 457px viewport (433px container) with ~9px slack */
+  --container-tts-six: 31.75rem; /* 508px: 6 buttons + menu fits at 535px viewport (511px container) with ~4px slack */
   --container-tts-full: 44rem; /* 704px: full saved-doc row without menu */
 
   /* Ink used on vivid accent fills (primary/danger buttons). Deliberately not

@@ -17,7 +17,7 @@ export type ToolbarMode = 'doc' | 'fresh'
 
 export interface ToolbarBand {
   /** Ordered from narrowest to widest; `inline` grows monotonically. */
-  name: 'tiny' | 'mini' | 'compact' | 'narrow' | 'small' | 'mid' | 'wide' | 'full'
+  name: 'tiny' | 'mini' | 'compact' | 'tight' | 'narrow' | 'small' | 'mid' | 'wide' | 'full'
   /** Full literal visibility classes for this band's overflow menu trigger. */
   menuClass: string
 }
@@ -34,10 +34,11 @@ export interface ToolbarBand {
 export const TOOLBAR_BANDS: readonly ToolbarBand[] = [
   { name: 'tiny', menuClass: 'inline-flex @tts-mini:hidden' },
   { name: 'mini', menuClass: 'hidden @tts-mini:inline-flex @tts-narrow:hidden' },
-  { name: 'compact', menuClass: 'hidden @tts-narrow:inline-flex @sm:hidden' },
-  { name: 'narrow', menuClass: 'hidden @sm:inline-flex @md:hidden' },
-  { name: 'small', menuClass: 'hidden @md:inline-flex @xl:hidden' },
-  { name: 'mid', menuClass: 'hidden @xl:inline-flex @tts-full:hidden' },
+  { name: 'compact', menuClass: 'hidden @tts-narrow:inline-flex @2xs:hidden' },
+  { name: 'tight', menuClass: 'hidden @2xs:inline-flex @tts-info:hidden' },
+  { name: 'narrow', menuClass: 'hidden @tts-info:inline-flex @tts-copy:hidden' },
+  { name: 'small', menuClass: 'hidden @tts-copy:inline-flex @tts-six:hidden' },
+  { name: 'mid', menuClass: 'hidden @tts-six:inline-flex @tts-full:hidden' },
   { name: 'wide', menuClass: '' },
   { name: 'full', menuClass: '' },
 ]
@@ -48,20 +49,22 @@ const INLINE_AT_BAND: Record<ToolbarMode, Record<ToolbarBand['name'], PanelActio
     tiny: [],
     mini: ['play'],
     compact: ['save'],
-    narrow: ['reset'],
+    tight: ['reset'],
+    narrow: ['info'],
     small: ['copy'],
     mid: ['delete'],
-    wide: ['info', 'clone', 'upload'],
+    wide: ['clone', 'upload'],
     full: [],
   },
   fresh: {
     tiny: [],
     mini: ['play'],
     compact: ['save'],
-    narrow: ['reset'],
+    tight: ['reset'],
+    narrow: ['info'],
     small: ['copy'],
-    mid: ['info'],
-    wide: ['upload'],
+    mid: ['upload'],
+    wide: [],
     full: [],
   },
 }
@@ -89,11 +92,11 @@ export function menuFor(band: ToolbarBand['name'], mode: ToolbarMode): PanelActi
  */
 export const REVEAL_CLASS = {
   play: 'hidden @tts-mini:inline-flex',
-  reset: 'hidden @sm:inline-flex',
+  reset: 'hidden @2xs:inline-flex',
   save: 'hidden @tts-narrow:inline-flex',
-  copy: 'hidden @md:inline-flex',
-  delete: 'hidden @xl:inline-flex',
-  info: { doc: 'hidden @tts-full:inline-flex', fresh: 'hidden @xl:inline-flex' },
+  copy: 'hidden @tts-copy:inline-flex',
+  delete: 'hidden @tts-six:inline-flex',
+  info: { doc: 'hidden @tts-info:inline-flex', fresh: 'hidden @tts-info:inline-flex' },
   clone: 'hidden @tts-full:inline-flex',
-  upload: 'hidden @tts-full:inline-flex',
+  upload: { doc: 'hidden @tts-full:inline-flex', fresh: 'hidden @tts-six:inline-flex' },
 } as const

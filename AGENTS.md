@@ -46,6 +46,7 @@ Project-specific development conventions for the TTS web app.
   accessible names for icon-only buttons.
 - Playback state must drive editor selection so the current spoken segment is
   visibly selected while audio is active.
+- Document navigation is reflected in the URL as `{base}/{docId}` and history-backed so Back/Forward moves between documents.
 - All user-facing strings must go through `UI_TEXT` (keyed by `UiLocale`); add
   each new string to every locale (`en`, `zh-TW`, `zh-CN`).
 - The app shell fills the dynamic viewport with `h-dvh` over the
@@ -77,6 +78,7 @@ Project-specific development conventions for the TTS web app.
   suppresses the snap animation when `prefers-reduced-motion: reduce` is active,
   and routes `onClose` through `dismissDrawerAndFocusTrigger` to return focus;
   disable the gesture when docked (see `references/responsive-design.md`).
+- Playback toolbar is a container-query ladder (`@container`, 9 bands `tiny→full` in `toolbar-ladder.ts`) with paired `TOOLBAR_BANDS`/`INLINE_AT_BAND`/`REVEAL_CLASS` literals; thresholds are calibrated at `--text-sm` worst-Latin (`--container-tts-*` in `src/styles.css`: `4→352`, `5→432`, `6→508`) and all three tables must change together.
 
 ## Theming
 
