@@ -102,7 +102,7 @@
       tabindex="-1"
       onkeydown={handleKeydown}
       use:positionPanel={() => ({ getTrigger: () => buttonRef, getOpen: () => open, align: 'right', autoPlace: true })}
-      class="fixed left-0 top-0 z-50 max-h-[min(65vh,22rem)] w-52 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-800 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur">
+      class="fixed left-0 top-0 z-40 max-h-[min(65vh,22rem)] w-52 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-800 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur">
       {#each options as option, i}
         {@const OptionIcon = option.icon}
         <button

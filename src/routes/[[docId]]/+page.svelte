@@ -899,7 +899,7 @@
                           role="listbox"
                           aria-label={text.voiceModel}
                           use:positionPanel={() => ({ getTrigger: () => voiceChipButtonRef, getOpen: () => voiceChipOpen, align: 'left', autoPlace: true })}
-                          class="fixed left-0 top-0 z-50 max-h-[min(50vh,20rem)] w-64 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur">
+                          class="fixed left-0 top-0 z-40 max-h-[min(50vh,20rem)] w-64 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur">
                           {#each voiceChipOptions as voice}
                             <button
                               type="button"

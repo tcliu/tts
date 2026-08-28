@@ -355,6 +355,6 @@ button:disabled {
 }
 
 .st-tooltip {
-  @apply pointer-events-none fixed z-[60] whitespace-nowrap rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200 shadow-lg transition-opacity duration-150 motion-reduce:transition-none;
+  @apply pointer-events-none fixed z-40 whitespace-nowrap rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200 shadow-lg transition-opacity duration-150 motion-reduce:transition-none;
   opacity: 0;
 }

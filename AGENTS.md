@@ -29,7 +29,10 @@ Project-specific development conventions for the TTS web app.
   `node scripts/create-worktree.mjs <branch>` from the default worktree; it
   copies the gitignored local dev files (`.env`, `.env.local`, `.env.dev`) and
   sets `DEV_TAG=<branch>` in the new worktree's `.env.dev` so the bottom-left
-  worktree-tag block identifies the branch.
+  worktree-tag block identifies the branch. Z ladder: sticky content `z-10`,
+  drawer `z-20`, overlays (dialog scrim, menus, dropdown panels, tooltip)
+  `z-40`, dev tag `z-50` — keep overlays at or below `z-40` so the tag is never
+  covered by a tooltip or modal scrim.
 - Server-side events log through `src/lib/server/logging` following
   `references/logging.md`: every state-changing action emits a structured
   `ip=<ip> action=<action> ...` line carrying key identifying info, and async

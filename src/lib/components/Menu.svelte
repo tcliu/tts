@@ -198,7 +198,7 @@
       aria-label={ariaLabel}
       onkeydown={handlePanelKeydown}
       use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, align, autoPlace })}
-      class={`fixed left-0 top-0 z-50 will-change-transform overflow-hidden rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur ${panelClass}`}>
+      class={`fixed left-0 top-0 z-40 will-change-transform overflow-hidden rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur ${panelClass}`}>
       {#each items as itemValue, index (itemKey(itemValue))}
         {@const state = { index, active: index === activeIndex, disabled: isDisabled(itemValue) }}
         <button
