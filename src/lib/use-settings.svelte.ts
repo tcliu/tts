@@ -1,4 +1,4 @@
-import { SPEEDS, defaultGroupByLanguage, defaultVoiceByLanguage, voiceForSelection } from './tts-reference'
+import { REFERENCE_LANGUAGES, SPEEDS, defaultGroupByLanguage, defaultVoiceByLanguage, voiceForSelection } from './tts-reference'
 import { UI_TEXT, type UiLocale } from './ui-text'
 
 const STORAGE_KEY = 'tts:web-settings'
@@ -162,6 +162,11 @@ export function useSettings(): SettingsHandle {
   }
 
   function selectVoice(languageCode: string, voiceId: string) {
+    const language = REFERENCE_LANGUAGES.find(item => item.code === languageCode)
+    const voice = language?.voices.find(item => item.edge === voiceId)
+    if (voice?.group) {
+      groupSelections = { ...groupSelections, [languageCode]: voice.group }
+    }
     voiceSelections = { ...voiceSelections, [languageCode]: voiceId }
   }
 

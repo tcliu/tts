@@ -70,6 +70,9 @@ export interface PlaybackHandle {
   readonly positionVoiceName: string
   readonly positionVoiceGender: string
   readonly positionVoiceLocale: string
+  readonly positionSegmentLang: string
+  readonly positionLanguageCode: string
+  readonly positionSegmentText: string
   readonly currentSynthesisRate: number
   readonly playbackElapsed: number
   readonly playbackDuration: number
@@ -97,6 +100,7 @@ export interface PlaybackHandle {
   setMetadataAvailability: (value: boolean) => void
   clearSegments: () => void
   resetSession: () => void
+  resynthesizeSegment: (index: number, voiceEdge: string) => Promise<void>
 }
 
 export interface PlaybackDeps {
@@ -171,6 +175,15 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
     const voice = segment ? deps.settings.resolveVoiceForSegment(segment.lang) : undefined
     return voice ? voice.edge.split('-').slice(0, 2).join('-') : ''
+  })
+  const positionSegmentLang = $derived.by(() => {
+    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
+    return segment?.lang ?? ''
+  })
+  const positionLanguageCode = $derived(positionSegmentLang === 'yue' ? 'zh' : positionSegmentLang)
+  const positionSegmentText = $derived.by(() => {
+    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
+    return segment?.text ?? ''
   })
 
   $effect(() => {
@@ -1157,6 +1170,34 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     statusMessage = UI_TEXT[next].ready
   }
 
+  async function resynthesizeSegment(index: number, voiceEdge: string): Promise<void> {
+    if (index < 0 || index >= sessionSegments.length) return
+    const segment = sessionSegments[index]
+    if (!segment) return
+    const rate = deps.settings.speed
+    const docId = deps.getCacheScopeId()
+    const synth = await getCachedSynthesis(segment.text, voiceEdge, rate, undefined, docId)
+    const abort = new AbortController()
+    const duration = await readAudioDuration(synth.blob, abort.signal)
+    const baseOffset = sessionOffset + segment.indexStart
+    const meta = buildSegmentMeta(
+      index,
+      segment,
+      {
+        boundaries: synth.boundaries,
+        wordBoundaries: synth.wordBoundaries,
+        duration,
+        spokenStart: synth.spokenStart,
+        spokenEnd: synth.spokenEnd,
+      },
+      baseOffset,
+    )
+    recordSegment(index, meta)
+    if (meta.boundaries.length > 0 || (meta.wordBoundaries?.length ?? 0) > 0) {
+      metadataAvailable = true
+    }
+  }
+
   return {
     get isPlaying() {
       return isPlaying
@@ -1196,6 +1237,15 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     },
     get positionVoiceLocale() {
       return positionVoiceLocale
+    },
+    get positionSegmentLang() {
+      return positionSegmentLang
+    },
+    get positionLanguageCode() {
+      return positionLanguageCode
+    },
+    get positionSegmentText() {
+      return positionSegmentText
     },
     get currentSynthesisRate() {
       return currentSynthesisRate
@@ -1237,5 +1287,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     setSegmentDuration,
     clearSegments,
     resetSession,
+    resynthesizeSegment,
   }
 }
