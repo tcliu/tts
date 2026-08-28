@@ -2,6 +2,8 @@ import type { SettingsHandle } from './use-settings.svelte'
 import type { DocumentsHandle } from './use-documents.svelte'
 import { UI_TEXT } from './ui-text'
 import { readTextFile } from './upload-text'
+import { browser } from '$app/environment'
+import { parseDocId, pushDocHistory, replaceDocHistory } from './document-history'
 
 export type DiscardKind = 'new' | 'open' | 'delete' | 'clone' | 'upload'
 
@@ -97,7 +99,37 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
 
   function requestOpenDocument(id: string) {
     if (gateNavigation('open', id, null, isDirty)) return
+    openDocument(id)
+  }
+
+  // Shared "navigate to a document" step used by both the drawer request path
+  // and the discard-confirmed executor so neither forgets the history push.
+  function openDocument(id: string) {
     loadDocument(id)
+    pushDocHistory(id)
+  }
+
+  // Loads a document into the editor without touching history or the drawer;
+  // shared by both user-initiated and history-driven navigation.
+  function applyDocState(docId: string | null) {
+    deps.resetPlaybackSession()
+    resetDraftCacheId()
+    if (docId) {
+      const target = documents.findById(docId)
+      if (!target) {
+        settings.content = ''
+        currentDocId = null
+        baselineContent = ''
+        return
+      }
+      settings.content = target.content
+      currentDocId = target.id
+      baselineContent = target.content
+    } else {
+      settings.content = ''
+      currentDocId = null
+      baselineContent = ''
+    }
   }
 
   function loadDocument(id: string) {
@@ -105,13 +137,37 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     if (!target) {
       return
     }
-    deps.resetPlaybackSession()
-    resetDraftCacheId()
-    settings.content = target.content
-    currentDocId = target.id
-    baselineContent = target.content
+    applyDocState(id)
     deps.closeDrawer()
     deps.focusEditor()
+  }
+
+  // Syncs the editor to the document referenced by the current URL: used on
+  // initial load (deep link / reload) and on every `popstate` (Back/Forward),
+  // so it must not push a new history entry. Unsaved-changes and playback
+  // guards apply; when gated, the URL is reverted so the pending entry still
+  // points at the current document until the user confirms.
+  function handleHistoryNavigation() {
+    if (!browser) {
+      return
+    }
+    const targetId = parseDocId()
+    if (targetId === currentDocId) {
+      return
+    }
+    const kind: DiscardKind = targetId ? 'open' : 'new'
+    if (gateNavigation(kind, targetId, null, isDirty)) {
+      replaceDocHistory(currentDocId)
+      return
+    }
+    if (targetId) {
+      const target = documents.findById(targetId)
+      if (target) {
+        applyDocState(targetId)
+        return
+      }
+    }
+    applyDocState(null)
   }
 
   function handleRenameDocument(name: string): boolean {
@@ -137,6 +193,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     resetDraftCacheId()
     baselineContent = settings.content
     deps.focusEditor()
+    pushDocHistory(null)
   }
 
   function requestDeleteDocument(id: string) {
@@ -168,6 +225,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     if (documents.remove(id) && id === currentDocId) {
       currentDocId = null
       resetDraftCacheId()
+      pushDocHistory(null)
     }
   }
 
@@ -182,13 +240,10 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function createNewDocument() {
-    deps.resetPlaybackSession()
-    settings.content = ''
-    currentDocId = null
-    resetDraftCacheId()
-    baselineContent = ''
+    applyDocState(null)
     deps.closeDrawer()
     deps.focusEditor()
+    pushDocHistory(null)
   }
 
   function resetEditor() {
@@ -315,6 +370,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     baselineContent = saved.content
     saveDialogOpen = false
     overwriteConfirmOpen = false
+    pushDocHistory(saved.id)
   }
 
   function clearPendingState() {
@@ -325,7 +381,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
 
   function executeDirectNavigation(kind: DiscardKind, id: string | null, file: File | null) {
     if (kind === 'open') {
-      if (id) loadDocument(id)
+      if (id) openDocument(id)
     } else if (kind === 'delete') {
       if (id) {
         deleteTargetId = id
@@ -454,6 +510,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     requestOpenDocument,
     requestDeleteDocument,
     requestNewDocument,
+    handleHistoryNavigation,
     confirmDiscard: handleConfirmDiscard,
     cancelDiscard: handleCancelDiscard,
     confirmDelete: handleConfirmDelete,
