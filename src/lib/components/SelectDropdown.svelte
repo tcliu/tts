@@ -4,26 +4,24 @@
   import { positionPanel } from '$lib/position-panel.svelte'
   import { TEXT_SIZE, type TextSize } from '$lib/text-size'
   import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
+  import type { DropdownPanelProps } from '$lib/dropdown-chrome'
 
   interface Option {
     value: string
     label: string
   }
 
-  interface Props {
+  interface Props extends DropdownPanelProps {
     buttonLabel: string
     options: Option[]
     activeValue?: string
     ariaLabel?: string
-    align?: 'left' | 'right'
-    autoPlace?: boolean
     filterable?: boolean
     size?: TextSize
     onSelect: (value: string) => void
     buttonClass?: string
     controlClass?: string
     optionClass?: string
-    panelClass?: string
   }
 
   let {

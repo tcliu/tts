@@ -12,18 +12,16 @@
   import { positionPanel } from '$lib/position-panel.svelte'
   import { clickOutside } from '$lib/actions/click-outside'
   import { tick } from 'svelte'
+  import type { DropdownPanelProps } from '$lib/dropdown-chrome'
 
-  interface Props {
+  interface Props extends DropdownPanelProps {
     items: T[]
     itemKey: (item: T) => string
     onSelect: (index: number) => void
     icon: Snippet
     item: Snippet<[T, MenuItemState]>
     ariaLabel: string
-    align?: 'left' | 'right'
-    autoPlace?: boolean
     triggerClass?: string
-    panelClass?: string
     itemClass?: (item: T, state: MenuItemState) => string
     itemRole?: 'menuitem' | 'menuitemradio'
     itemChecked?: (item: T) => boolean

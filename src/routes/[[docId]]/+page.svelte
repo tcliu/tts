@@ -38,8 +38,7 @@
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
   import { REFERENCE_LANGUAGES, splitTtsSegments } from '$lib/tts-reference'
   import { synthesisCacheKey } from '$lib/tts-cache-key'
-  import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
-  import { positionPanel } from '$lib/position-panel.svelte'
+  import ChipDropdown from '$lib/components/ChipDropdown.svelte'
   import {
     clearSynthesisCache,
     clearDocumentSynthesisCache,
@@ -54,7 +53,6 @@
   import { useDocuments } from '$lib/use-documents.svelte'
   import { useDocumentEditor } from '$lib/use-document-editor.svelte'
   import { useDocumentsDrawer } from '$lib/use-documents-drawer.svelte'
-  import { clickOutside } from '$lib/actions/click-outside'
 
   const settings = useSettings()
   const documents = useDocuments()
@@ -82,7 +80,6 @@
     settings,
     getEditor: () => editorRef,
     getCacheScopeId: () => editor.cacheScopeId,
-    segmentLabel: lang => segmentLanguageName(settings.locale, lang),
     prepareForPlayback: () => hooks.prepareForPlayback(),
   })
   const metadata = useMetadata({
@@ -192,11 +189,6 @@
 
   let editorRef = $state<CodeEditorHandle | null>(null)
 
-  let voiceChipOpen = $state(false)
-  let voiceChipButtonRef = $state<HTMLButtonElement | null>(null)
-  let voiceChipPanelRef = $state<HTMLDivElement | null>(null)
-  let voiceChipContainerRef = $state<HTMLDivElement | null>(null)
-
   const text = $derived(UI_TEXT[settings.locale])
 
   const themeLabels = $derived<Record<UiTheme, string>>({
@@ -216,16 +208,32 @@
     THEME_MENU_OPTIONS.map(option => ({ value: option.value, label: themeLabels[option.value], icon: THEME_ICONS[option.value] })),
   )
 
+  // Written-only: spoken variants collapse (yue/Cantonese -> zh/Chinese,
+  // en-GB/en-US -> en/English). Voice models for each spoken variant stay
+  // as groups under the written language (e.g. zh groups Mandarin/Cantonese/Taiwanese).
+  const chipLangOptions = $derived(
+    REFERENCE_LANGUAGES.map(lang => ({
+      value: lang.code,
+      label: `${segmentLanguageName(settings.locale, lang.code)} · ${lang.code}`,
+    })),
+  )
+
+  const writtenLabel = $derived.by(() => {
+    const code = playback.positionLanguageCode
+    return code ? segmentLanguageName(settings.locale, code) : ''
+  })
+
   const voiceChipOptions = $derived.by(() => {
     const code = playback.positionLanguageCode
     if (!code) return []
     const lang = REFERENCE_LANGUAGES.find(item => item.code === code)
     if (!lang) return []
-    if (playback.positionSegmentLang === 'yue') {
-      return lang.voices.filter(voice => voice.group === 'Cantonese')
-    }
     return lang.voices
   })
+
+  const chipVoiceOptions = $derived(
+    voiceChipOptions.map(voice => ({ value: voice.edge, label: chipVoiceLabel(voice) })),
+  )
 
   const activeChipVoiceEdge = $derived.by(() => {
     const lang = playback.positionSegmentLang
@@ -239,13 +247,14 @@
     return voice.group ? `${base} · ${voice.group}` : base
   }
 
-  function toggleVoiceChip() {
-    if (playback.isPlaying || voiceChipOptions.length === 0) return
-    voiceChipOpen = !voiceChipOpen
-  }
-
-  function closeVoiceChip() {
-    voiceChipOpen = false
+  async function handleLangChipSelect(code: string) {
+    const idx = playback.positionSegmentIndex
+    if (idx < 0) return
+    try {
+      await playback.overrideSegmentLanguage(idx, code)
+    } catch (error) {
+      console.error(error)
+    }
   }
 
   async function handleVoiceChipSelect(edge: string) {
@@ -253,26 +262,12 @@
     const langCode = playback.positionLanguageCode
     if (idx < 0 || !langCode) return
     settings.selectVoice(langCode, edge)
-    voiceChipOpen = false
     try {
       await playback.resynthesizeSegment(idx, edge)
     } catch (error) {
       console.error(error)
     }
   }
-
-  $effect(() => {
-    if (!voiceChipOpen) return
-    function handleEsc(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        closeVoiceChip()
-        voiceChipButtonRef?.focus()
-      }
-    }
-    window.addEventListener('keydown', handleEsc, true)
-    return () => window.removeEventListener('keydown', handleEsc, true)
-  })
 
   const statusMessage = $derived(
     editor.uploadNotice === 'uploaded'
@@ -867,9 +862,17 @@
               {/if}
               {#if playback.synthesizedCount > 0 && playback.positionSegmentIndex >= 0}
                 <div class="flex min-w-0 flex-wrap items-center gap-2">
-                  <span class="inline-flex max-w-full items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-200">
-                    <span class="truncate">{playback.positionSegmentLabel}</span>
-                  </span>
+                  <ChipDropdown
+                    label={writtenLabel}
+                    options={chipLangOptions}
+                    activeValue={playback.positionLanguageCode}
+                    ariaLabel={text.segmentLanguage}
+                    variant="sky"
+                    filterable
+                    filterPlaceholder={text.languageSearch}
+                    emptyText={text.noMatchingLanguages}
+                    disabled={playback.isPlaying}
+                    onSelect={(v) => void handleLangChipSelect(v)} />
                   {#if playback.positionVoiceName}
                     <span class="inline-flex max-w-full items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-200">
                       <span class="truncate">{playback.positionVoiceLocale}</span>
@@ -877,45 +880,17 @@
                     <span class="inline-flex max-w-full items-center rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-0.5 text-xs font-medium text-fuchsia-200">
                       <span class="truncate">{playback.positionVoiceGender}</span>
                     </span>
-                    <div
-                      bind:this={voiceChipContainerRef}
-                      class="relative inline-flex"
-                      use:clickOutside={{ enabled: voiceChipOpen, handler: closeVoiceChip, include: [voiceChipPanelRef] }}>
-                      <button
-                        bind:this={voiceChipButtonRef}
-                        type="button"
-                        aria-label={text.voiceModel}
-                        aria-haspopup="listbox"
-                        aria-expanded={voiceChipOpen}
-                        disabled={playback.isPlaying || voiceChipOptions.length === 0}
-                        onclick={toggleVoiceChip}
-                        class="inline-flex max-w-full items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-200 outline-none transition hover:border-violet-400 hover:text-violet-100 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-50">
-                        <span class="truncate">{playback.positionVoiceName}</span>
-                        <ChevronDownIcon className="h-3 w-3 shrink-0 opacity-70" />
-                      </button>
-                      {#if voiceChipOpen}
-                        <div
-                          bind:this={voiceChipPanelRef}
-                          role="listbox"
-                          aria-label={text.voiceModel}
-                          use:positionPanel={() => ({ getTrigger: () => voiceChipButtonRef, getOpen: () => voiceChipOpen, align: 'left', autoPlace: true })}
-                          class="fixed left-0 top-0 z-40 max-h-[min(50vh,20rem)] w-64 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur">
-                          {#each voiceChipOptions as voice}
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected={voice.edge === activeChipVoiceEdge}
-                              onclick={() => void handleVoiceChipSelect(voice.edge)}
-                              class={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs outline-none transition ${voice.edge === activeChipVoiceEdge ? 'bg-violet-500/20 text-violet-200' : 'text-slate-300 hover:bg-slate-800 hover:text-violet-200'}`}>
-                              <span class="min-w-0 truncate">{chipVoiceLabel(voice)}</span>
-                              {#if voice.edge === activeChipVoiceEdge}
-                                <CheckIcon className="h-3 w-3 shrink-0 text-violet-300" />
-                              {/if}
-                            </button>
-                          {/each}
-                        </div>
-                      {/if}
-                    </div>
+                    <ChipDropdown
+                      label={playback.positionVoiceName}
+                      options={chipVoiceOptions}
+                      activeValue={activeChipVoiceEdge}
+                      ariaLabel={text.voiceModel}
+                      variant="violet"
+                      filterable
+                      filterPlaceholder={text.voiceSearch}
+                      emptyText={text.noMatchingVoices}
+                      disabled={playback.isPlaying || voiceChipOptions.length === 0}
+                      onSelect={(v) => void handleVoiceChipSelect(v)} />
                   {/if}
                   {#if playback.totalSegments > 0}
                     <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-200">

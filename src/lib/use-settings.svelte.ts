@@ -1,4 +1,4 @@
-import { REFERENCE_LANGUAGES, SPEEDS, defaultGroupByLanguage, defaultVoiceByLanguage, voiceForSelection } from './tts-reference'
+import { REFERENCE_LANGUAGES, SPEEDS, defaultGroupByLanguage, defaultVoiceByLanguage, SPOKEN_GROUP, toWrittenLang, voiceForSelection } from './tts-reference'
 import { UI_TEXT, type UiLocale } from './ui-text'
 
 const STORAGE_KEY = 'tts:web-settings'
@@ -148,8 +148,8 @@ export function useSettings(): SettingsHandle {
   }
 
   function resolveVoiceForSegment(segmentLang: string) {
-    const languageCode = segmentLang === 'yue' ? 'zh' : segmentLang
-    const group = segmentLang === 'yue' ? 'Cantonese' : groupSelections[languageCode] ?? ''
+    const languageCode = toWrittenLang(segmentLang)
+    const group = SPOKEN_GROUP[segmentLang] ?? groupSelections[languageCode] ?? ''
     return voiceForSelection(languageCode, voiceSelections[languageCode], group)
   }
 

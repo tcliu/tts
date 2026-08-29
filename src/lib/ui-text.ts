@@ -106,6 +106,9 @@ export interface UiText {
   resetPlaybackCache: string
   voiceSearch: string
   noMatchingVoices: string
+  languageSearch: string
+  noMatchingLanguages: string
+  segmentLanguage: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [
@@ -225,6 +228,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     resetPlaybackCache: 'Reset playback, segment info, and cached audio',
     voiceSearch: 'Search languages or voices',
     noMatchingVoices: 'No matching voices.',
+    languageSearch: 'Search languages',
+    noMatchingLanguages: 'No matching languages.',
+    segmentLanguage: 'Segment language',
   },
   'zh-TW': {
     language: '語言',
@@ -326,6 +332,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     resetPlaybackCache: '重設播放、段落資訊與已快取音訊',
     voiceSearch: '搜尋語言或語音',
     noMatchingVoices: '沒有符合的語音。',
+    languageSearch: '搜尋語言',
+    noMatchingLanguages: '沒有符合的語言。',
+    segmentLanguage: '段落語言',
   },
   'zh-CN': {
     language: '语言',
@@ -427,5 +436,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     resetPlaybackCache: '重置播放、段落信息与已缓存音频',
     voiceSearch: '搜索语言或语音',
     noMatchingVoices: '没有匹配的语音。',
+    languageSearch: '搜索语言',
+    noMatchingLanguages: '没有匹配的语言。',
+    segmentLanguage: '段落语言',
   },
 }

@@ -89,7 +89,6 @@ function createDeps(content = 'Hello world. Second segment here.', editor?: Code
     settings: createSettings(content),
     getEditor: editor ? () => editor : createEditor,
     getCacheScopeId: () => 'doc-a',
-    segmentLabel: () => 'English',
     prepareForPlayback: () => {},
   }
 }
@@ -817,7 +816,7 @@ describe('usePlayback stop', () => {
 
     // Before any playback the position sits at the first segment.
     expect(playback.positionSegmentIndex).toBe(0)
-    expect(playback.positionSegmentLabel).toBe('English')
+    expect(playback.positionSegmentLang).toBe('en')
     expect(playback.positionVoiceName).toBe('Aria')
 
     playback.seekTo(2.5)
@@ -825,7 +824,7 @@ describe('usePlayback stop', () => {
 
     // 2.5s lands inside the second segment (first spans 0-1.5s).
     expect(playback.positionSegmentIndex).toBe(1)
-    expect(playback.positionSegmentLabel).toBe('English')
+    expect(playback.positionSegmentLang).toBe('en')
     expect(playback.positionVoiceName).toBe('Aria')
 
     dispose()
@@ -893,6 +892,119 @@ describe('usePlayback stop', () => {
     await finished
 
     vi.mocked(getCachedSynthesis).mockReset()
+    dispose()
+  })
+})
+
+describe('usePlayback segment language override', () => {
+  beforeEach(() => {
+    AudioStub.instances.length = 0
+    vi.stubGlobal('Audio', AudioStub)
+    URL.createObjectURL = vi.fn(() => `blob:test-${Math.random()}`)
+    URL.revokeObjectURL = vi.fn()
+  })
+
+  function createSpyDeps() {
+    const resolveVoiceForSegment = vi.fn((segmentLang: string) => {
+      if (segmentLang === 'ja') return { edge: 'ja-JP-NanamiNeural', name: 'Nanami', gender: 'Female' }
+      if (segmentLang === 'yue') return { edge: 'zh-HK-HiuMaanNeural', name: 'HiuMaan', gender: 'Female' }
+      return { edge: 'en-US-AriaNeural', name: 'Aria', gender: 'Female' }
+    })
+    const selectVoice = vi.fn()
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const deps: PlaybackDeps = {
+      settings: {
+        locale: 'en',
+        speed: 1,
+        synthesisConcurrency: 2,
+        canPlay: true,
+        content,
+        resolveVoiceForSegment,
+        selectVoice,
+      } as unknown as SettingsHandle,
+      getEditor: createEditor,
+      getCacheScopeId: () => 'doc-a',
+      prepareForPlayback: () => {},
+    }
+    return { deps, content, resolveVoiceForSegment, selectVoice }
+  }
+
+  it('resynthesizes with the resolved voice and applies the override to the position', async () => {
+    const { deps, content, resolveVoiceForSegment, selectVoice } = createSpyDeps()
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments(content)
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    await playback.overrideSegmentLanguage(0, 'ja')
+    flushSync()
+
+    expect(resolveVoiceForSegment).toHaveBeenCalledWith('ja')
+    expect(selectVoice).not.toHaveBeenCalled()
+    expect(getCachedSynthesis).toHaveBeenCalledWith(segments[0].text, 'ja-JP-NanamiNeural', 1, undefined, 'doc-a')
+    expect(playback.positionSegmentLang).toBe('ja')
+    dispose()
+  })
+
+  it('maps spoken overrides onto the written language without touching global voice selection', async () => {
+    const { deps, content, selectVoice } = createSpyDeps()
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments(content)
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    await playback.overrideSegmentLanguage(0, 'yue')
+    flushSync()
+
+    expect(selectVoice).not.toHaveBeenCalled()
+    expect(playback.positionSegmentLang).toBe('yue')
+    expect(playback.positionLanguageCode).toBe('zh')
+    dispose()
+  })
+
+  it('leaves the segment untouched when no voice resolves for the language', async () => {
+    const { deps, content, resolveVoiceForSegment } = createSpyDeps()
+    resolveVoiceForSegment.mockImplementation((segmentLang: string) =>
+      segmentLang === 'ko'
+        ? (undefined as unknown as { edge: string; name: string; gender: string })
+        : { edge: 'en-US-AriaNeural', name: 'Aria', gender: 'Female' },
+    )
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments(content)
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    await playback.overrideSegmentLanguage(0, 'ko')
+    flushSync()
+
+    expect(resolveVoiceForSegment).toHaveBeenCalledWith('ko')
+    expect(playback.positionSegmentLang).toBe('en')
+    expect(getCachedSynthesis).not.toHaveBeenCalledWith(segments[0].text, undefined, 1, undefined, 'doc-a')
+    dispose()
+  })
+
+  it('keeps overrides when re-priming the same split and clears them on a new split or reset', async () => {
+    const { deps, content } = createSpyDeps()
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments(content)
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+    await playback.overrideSegmentLanguage(0, 'ja')
+    flushSync()
+    expect(playback.positionSegmentLang).toBe('ja')
+
+    // Re-priming the same array keeps index-keyed overrides.
+    playback.primeSession(segments, 0)
+    expect(playback.positionSegmentLang).toBe('ja')
+
+    // A new split invalidates the overrides.
+    playback.primeSession(splitTtsSegments(content), 0)
+    flushSync()
+    expect(playback.positionSegmentLang).toBe('en')
+
+    playback.resetSession()
+    flushSync()
+    expect(playback.positionSegmentLang).toBe('')
     dispose()
   })
 })
