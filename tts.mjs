@@ -164,12 +164,14 @@ const FOREIGN_WORDS = {
 function isProbablyEnglish(text) {
   return ENGLISH_DISTINCTIVE_RE.test(text);
 }
-function foreignWordScore(text, lang) {
+function foreignWordScore(text, lang, minTokenLength = 3) {
   const words = FOREIGN_WORDS[lang];
   if (!words) return 0;
   const tokens = new Set(text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean));
   let score = 0;
-  for (const w of words) if (tokens.has(w.toLowerCase())) score += 1;
+  for (const w of words) {
+    if (w.length >= minTokenLength && tokens.has(w.toLowerCase())) score += 1;
+  }
   return score;
 }
 function detectTtsLanguage(text) {
@@ -210,33 +212,36 @@ function detectTtsLanguage(text) {
     ) {
       return 'en';
     }
-    let foreignBest = 0;
-    for (const lang of Object.keys(FOREIGN_WORDS)) foreignBest = Math.max(foreignBest, foreignWordScore(text, lang));
-    if (englishWordScore(text) >= foreignBest) return 'en';
+    const englishScore = englishWordScore(text);
     let bestLang = null;
     let bestScore = 0;
     for (const lang of Object.keys(FOREIGN_WORDS)) {
-      const score = foreignWordScore(text, lang);
+      const score = foreignWordScore(text, lang, 3);
       if (score > bestScore) {
         bestScore = score;
         bestLang = lang;
       }
     }
-    if (bestLang && bestScore > 0) return bestLang;
+    if (englishScore > bestScore) return 'en';
+    if (bestLang && bestScore > englishScore) return bestLang;
     return 'en';
   }
   if (isProbablyEnglish(text)) return 'en';
   {
+    // Ignore 1-2 letter foreign tokens for ASCII text. They are too ambiguous
+    // across Latin-script languages (e.g. French "le") and otherwise hijack
+    // English-heavy runs and word-level highlight ranges.
+    const englishScore = englishWordScore(text);
     let bestLang = null;
     let bestScore = 0;
     for (const lang of Object.keys(FOREIGN_WORDS)) {
-      const score = foreignWordScore(text, lang);
+      const score = foreignWordScore(text, lang, 3);
       if (score > bestScore) {
         bestScore = score;
         bestLang = lang;
       }
     }
-    if (bestLang && bestScore > 0) return bestLang;
+    if (bestLang && bestScore > englishScore) return bestLang;
   }
   return 'en';
 }
@@ -298,7 +303,43 @@ function splitTtsRuns(text) {
     runs[runs.length - 1].text += pendingWhitespace;
     runs[runs.length - 1].end = text.length;
   }
-  return runs;
+  return reattachBracketEdges(runs);
+}
+
+function reattachBracketEdges(runs) {
+  if (runs.length < 2) return runs;
+  const OPEN_SUFFIX_RE = /[【「『（〈《]+$/;
+  const CLOSE_PREFIX_RE = /^[】」』）〉》]+[、]?/;
+  const out = [];
+  for (let i = 0; i < runs.length; i++) {
+    let run = runs[i];
+    if (out.length > 0) {
+      const prev = out[out.length - 1];
+      const openMatch = prev.text.match(OPEN_SUFFIX_RE);
+      if (openMatch) {
+        const suffix = openMatch[0];
+        const cut = suffix.length;
+        prev.text = prev.text.slice(0, -cut);
+        prev.end -= cut;
+        run = { ...run, text: suffix + run.text, start: run.start - cut };
+        if (prev.text.length === 0) out.pop();
+      }
+    }
+    if (out.length > 0) {
+      const closeMatch = run.text.match(CLOSE_PREFIX_RE);
+      if (closeMatch) {
+        const prefix = closeMatch[0];
+        const cut = prefix.length;
+        const prev = out[out.length - 1];
+        prev.text += prefix;
+        prev.end += cut;
+        run = { ...run, text: run.text.slice(cut), start: run.start + cut };
+        if (run.text.length === 0) continue;
+      }
+    }
+    out.push(run);
+  }
+  return out;
 }
 
 function mergeAdjacentRuns(runs) {

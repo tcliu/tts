@@ -40,6 +40,56 @@ describe('splitTtsSegments', () => {
       { text: '這擁抱極美好 愛有千斤重', lang: 'zh', indexStart: 0, indexEnd: 11 },
     ])
   })
+
+  it('keeps an english-heavy ascii run out of ga when it only contains short ambiguous foreign words', () => {
+    expect(
+      splitTtsSegments(
+        '美顔で playing games while their parents enjoy peaceful conversations. Un grand silence enveloppe le jardin quand',
+      ).map(segment => ({ text: segment.text, lang: segment.lang })),
+    ).toEqual([
+      { text: '美顔で', lang: 'ja' },
+      {
+        text: 'playing games while their parents enjoy peaceful conversations. Un grand silence enveloppe le jardin quand',
+        lang: 'en',
+      },
+    ])
+  })
+
+  it('reattaches a leading bracket from a CJK run to the wrapped Latin run', () => {
+    expect(splitTtsSegments('或是他們兄弟音質真有點像、《We Don\'t Wanna Make It Without You》與《祝你愉快》現在聽').map(s => ({ text: s.text, lang: s.lang }))).toEqual([
+      { text: '或是他們兄弟音質真有點像、', lang: 'zh' },
+      { text: '《We Don\'t Wanna Make It Without You》', lang: 'en' },
+      { text: '與《祝你愉快》現在聽', lang: 'zh' },
+    ])
+  })
+
+  it('keeps CJK-wrapped brackets inside the CJK run', () => {
+    expect(splitTtsSegments('中文《中文》中文').map(s => ({ text: s.text, lang: s.lang }))).toEqual([
+      { text: '中文《中文》中文', lang: 'zh' },
+    ])
+  })
+
+  it('reattaches a closing bracket and its trailing ideographic comma to the previous Latin run', () => {
+    expect(splitTtsSegments('專輯《Sound》、《驚喜》').map(s => ({ text: s.text, lang: s.lang }))).toEqual([
+      { text: '專輯', lang: 'zh' },
+      { text: '《Sound》、', lang: 'en' },
+      { text: '《驚喜》', lang: 'zh' },
+    ])
+  })
+
+  it('does not move a standalone ideographic comma that is not preceded by a bracket', () => {
+    expect(splitTtsSegments('專輯、英文').map(s => ({ text: s.text, lang: s.lang }))).toEqual([
+      { text: '專輯、英文', lang: 'zh' },
+    ])
+  })
+
+  it('preserves the start/end offset invariant for reattached brackets', () => {
+    const text = '專輯《Sound》、《驚喜》等等帶來不少音樂的改變,'
+    for (const segment of splitTtsSegments(text)) {
+      expect(text.slice(segment.indexStart, segment.indexEnd + 1)).toBe(segment.text)
+      expect(segment.text.trim()).toBe(segment.text)
+    }
+  })
 })
 
 describe('splitHighlightRanges', () => {
@@ -94,6 +144,15 @@ describe('splitHighlightRanges', () => {
   it('merges a trailing bracket-only range into the preceding range', () => {
     expect(splitHighlightRanges('分流做好。 」')).toEqual([{ start: 0, end: 7, lang: 'zh' }])
   })
+
+  it('keeps short ambiguous ascii words like French le out of ga highlight ranges', () => {
+    const text = '美顔で le jardin'
+    expect(splitHighlightRanges(text).map(range => ({ text: text.slice(range.start, range.end), lang: range.lang }))).toEqual([
+      { text: '美顔で ', lang: 'ja' },
+      { text: 'le ', lang: 'en' },
+      { text: 'jardin', lang: 'en' },
+    ])
+  })
 })
 
 describe('detectTtsLanguage via segments', () => {
@@ -108,6 +167,12 @@ describe('detectTtsLanguage via segments', () => {
     // The shortcut must only fire when the non-ASCII chars are CJK punctuation;
     // "café" keeps reaching the foreign scorer (franc → vi), not 'en'.
     expect(splitTtsSegments('café')).toEqual([{ text: 'café', lang: 'vi', indexStart: 0, indexEnd: 3 }])
+  })
+
+  it('resolves an english/foreign token tie through franc instead of guessing the foreign language', () => {
+    // "the" (english) and "bonjour" (french) tie at score 1; with the aligned
+    // tie-break the run falls through to franc (eng) rather than becoming fr.
+    expect(splitTtsSegments('the bonjour')).toEqual([{ text: 'the bonjour', lang: 'en', indexStart: 0, indexEnd: 10 }])
   })
 })
 
