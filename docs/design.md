@@ -51,6 +51,17 @@
   editing the content hides them until the cache refreshes after a short pause.
 - Dragging the seek slider previews the position; releasing starts or resumes
   playback there.
+- The language and voice chips are dropdowns. Picking a value overrides the
+  position segment's language, respectively the voice for its language, for the
+  active session only; the persisted default voice settings stay untouched.
+  The language chip requires paused playback; the voice chip also works during
+  playback.
+- Changing the voice model during playback stops at the current word,
+  resynthesizes the current segment with the new voice, and resumes from the
+  same word once synthesis is ready; the status line reports the switch while
+  synthesizing and Play is inert until the resume starts. A Stop during the
+  switch leaves playback stopped instead of resuming. When the stop lands at
+  the spoken end of the segment, playback finishes instead of resuming.
 
 ## Upload
 
