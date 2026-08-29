@@ -337,6 +337,7 @@
   {
     "code": "zh",
     "name": "Chinese",
+    "aliases": ["yue"],
     "voices": [
       {
         "name": "Xiaoxiao",

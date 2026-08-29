@@ -2,6 +2,7 @@ import {
   activeHighlightRange,
   splitHighlightRanges,
   splitTtsSegments,
+  toWrittenLang,
   type HighlightRange,
   type TtsBoundary,
 } from './tts-reference'
@@ -66,7 +67,6 @@ export interface PlaybackHandle {
   readonly synthesizedCount: number
   readonly playedDuration: number
   readonly positionSegmentIndex: number
-  readonly positionSegmentLabel: string
   readonly positionVoiceName: string
   readonly positionVoiceGender: string
   readonly positionVoiceLocale: string
@@ -101,13 +101,13 @@ export interface PlaybackHandle {
   clearSegments: () => void
   resetSession: () => void
   resynthesizeSegment: (index: number, voiceEdge: string) => Promise<void>
+  overrideSegmentLanguage: (index: number, lang: string) => Promise<void>
 }
 
 export interface PlaybackDeps {
   settings: SettingsHandle
   getEditor: () => CodeEditorHandle | null
   getCacheScopeId: () => string
-  segmentLabel: (lang: string) => string
   prepareForPlayback: () => void
 }
 
@@ -146,6 +146,24 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let resumeSegmentIndex = 0
   let resumeSegmentTime = 0
 
+  // Per-segment language overrides keyed by session index so a mis-detected
+  // segment can be corrected for the active session without mutating the
+  // heuristic output. Cleared when the session is reset or re-primed.
+  let segmentLangOverrides = $state<Map<number, string>>(new Map())
+
+  function effectiveSegmentLang(index: number): string {
+    if (index < 0 || index >= sessionSegments.length) return ''
+    return segmentLangOverrides.get(index) ?? sessionSegments[index]?.lang ?? ''
+  }
+
+  // Plain Map (not $state) — only read imperatively in launch/resynthesize/
+  // playback loop. Generations are monotonic and intentionally never cleared;
+  // stale tasks from prior runs are already guarded by `controller.cancelled`.
+  // Bumped when a segment is re-synthesized outside the playback pipeline so
+  // a queued task launched earlier can neither record stale meta nor play
+  // stale audio.
+  let taskGeneration = new Map<number, number>()
+
   const totalElapsed = $derived(playedDuration + playbackElapsed)
   const totalDuration = $derived.by(() => {
     let total = 0
@@ -159,28 +177,18 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   // voice stay meaningful before, during, and after playback.
   const positionLocation = $derived(locatePlaybackPosition(totalElapsed))
   const positionSegmentIndex = $derived(positionLocation ? positionLocation.index : -1)
-  const positionSegmentLabel = $derived.by(() => {
-    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
-    return segment ? deps.segmentLabel(segment.lang) : ''
-  })
-  const positionVoiceName = $derived.by(() => {
-    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
-    return segment ? (deps.settings.resolveVoiceForSegment(segment.lang)?.name ?? '') : ''
-  })
-  const positionVoiceGender = $derived.by(() => {
-    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
-    return segment ? (deps.settings.resolveVoiceForSegment(segment.lang)?.gender ?? '') : ''
-  })
+  const positionSegmentLang = $derived.by(() => effectiveSegmentLang(positionSegmentIndex))
+  const positionVoiceName = $derived.by(() =>
+    positionSegmentLang ? (deps.settings.resolveVoiceForSegment(positionSegmentLang)?.name ?? '') : '',
+  )
+  const positionVoiceGender = $derived.by(() =>
+    positionSegmentLang ? (deps.settings.resolveVoiceForSegment(positionSegmentLang)?.gender ?? '') : '',
+  )
   const positionVoiceLocale = $derived.by(() => {
-    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
-    const voice = segment ? deps.settings.resolveVoiceForSegment(segment.lang) : undefined
+    const voice = positionSegmentLang ? deps.settings.resolveVoiceForSegment(positionSegmentLang) : undefined
     return voice ? voice.edge.split('-').slice(0, 2).join('-') : ''
   })
-  const positionSegmentLang = $derived.by(() => {
-    const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
-    return segment?.lang ?? ''
-  })
-  const positionLanguageCode = $derived(positionSegmentLang === 'yue' ? 'zh' : positionSegmentLang)
+  const positionLanguageCode = $derived(toWrittenLang(positionSegmentLang))
   const positionSegmentText = $derived.by(() => {
     const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
     return segment?.text ?? ''
@@ -739,6 +747,8 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           duration: number
           spokenStart?: number
           spokenEnd?: number
+          generation: number
+          effectiveLang: string
         }>
       >()
       let active = 0
@@ -774,14 +784,18 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         const existing = tasks.get(index)
         if (existing) return existing
         const segment = segments[index]
-        const voice = deps.settings.resolveVoiceForSegment(segment.lang)
-        const rate = deps.settings.speed
+        const generationAtQueue = taskGeneration.get(index) ?? 0
         const task = (async () => {
           await acquire()
+          // Re-read after queue wait; an override may have landed while queued.
+          const effectiveLang = effectiveSegmentLang(index)
+          const voice = deps.settings.resolveVoiceForSegment(effectiveLang)
+          const rate = deps.settings.speed
+          const generation = taskGeneration.get(index) ?? generationAtQueue
           try {
             if (!voice?.edge) {
               throw new LocalizedPlaybackError(
-                `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, segment.lang)})`,
+                `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, effectiveLang)})`,
               )
             }
             const synth = await getCachedSynthesis(
@@ -801,6 +815,8 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
               duration,
               spokenStart: synth.spokenStart,
               spokenEnd: synth.spokenEnd,
+              generation,
+              effectiveLang,
             }
           } finally {
             release()
@@ -808,14 +824,18 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         })()
         task.then((res) => {
           if (controller.cancelled) return
+          // A re-synthesis outside the pipeline superseded this task; the
+          // fresh meta is already recorded, so skip the stale result.
+          if ((taskGeneration.get(index) ?? 0) !== res.generation) return
           const existingMeta = segmentMetaMap[index]
           // Merge with the existing meta only when it describes this exact
           // text; a mismatch means it was recorded under an older split and
           // its boundaries, duration, and spoken range would be wrong here.
           const compatible = existingMeta?.text === segment.text
+          const effective = { ...segment, lang: res.effectiveLang }
           const base = buildSegmentMeta(
             index,
-            segment,
+            effective,
             {
               boundaries: res.boundaries,
               wordBoundaries: res.wordBoundaries,
@@ -858,7 +878,14 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         playbackDuration = 0
         const ranges = splitHighlightRanges(segment.text)
         const absoluteBase = playbackOffset + segment.indexStart
-        const result = await launch(index)
+        let result = await launch(index)
+        // A queued task can be superseded by a language or voice override made
+        // while playback is paused; rebuild it so the segment plays audio that
+        // matches its current language and voice.
+        while (!controller.cancelled && result.generation !== (taskGeneration.get(index) ?? 0)) {
+          tasks.delete(index)
+          result = await launch(index)
+        }
         if (controller.cancelled) return
         currentSynthesisRate = result.rate
         metadataAvailable = result.boundaries.length > 0 || result.wordBoundaries.length > 0
@@ -1015,6 +1042,11 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     offset: number,
     selectedRange: { from: number; to: number } | null = null,
   ) {
+    // A new split invalidates index-keyed language overrides from the prior
+    // session; keep them only when the reference array is the same object.
+    if (segments !== sessionSegments) {
+      segmentLangOverrides = new Map()
+    }
     sessionSegments = segments
     sessionOffset = offset
     sessionSelectedRange = selectedRange
@@ -1128,6 +1160,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     playbackDuration = 0
     currentSynthesisRate = deps.settings.speed
     metadataAvailable = false
+    // A re-split renumbers every segment; any per-segment language override
+    // keyed by the old index would now address the wrong text.
+    segmentLangOverrides = new Map()
     // Invalidate any pending debounced seek that was queued before the reset.
     pendingSelectionGeneration += 1
     if (pendingSelectionSeekTimer) {
@@ -1148,6 +1183,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     resumeSegmentIndex = 0
     resumeSegmentTime = 0
     playbackEnded = false
+    segmentLangOverrides = new Map()
     clearSegments()
     initStatus()
   }
@@ -1174,6 +1210,10 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (index < 0 || index >= sessionSegments.length) return
     const segment = sessionSegments[index]
     if (!segment) return
+    // Invalidate any queued task for this index so its result can neither
+    // record nor play stale audio over the re-synthesized segment.
+    taskGeneration.set(index, (taskGeneration.get(index) ?? 0) + 1)
+    const effective = { ...segment, lang: effectiveSegmentLang(index) }
     const rate = deps.settings.speed
     const docId = deps.getCacheScopeId()
     const synth = await getCachedSynthesis(segment.text, voiceEdge, rate, undefined, docId)
@@ -1182,7 +1222,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     const baseOffset = sessionOffset + segment.indexStart
     const meta = buildSegmentMeta(
       index,
-      segment,
+      effective,
       {
         boundaries: synth.boundaries,
         wordBoundaries: synth.wordBoundaries,
@@ -1196,6 +1236,22 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (meta.boundaries.length > 0 || (meta.wordBoundaries?.length ?? 0) > 0) {
       metadataAvailable = true
     }
+  }
+
+  async function overrideSegmentLanguage(index: number, lang: string): Promise<void> {
+    if (index < 0 || index >= sessionSegments.length) return
+    // Resolve the voice for the requested language before recording the
+    // override; resolveVoiceForSegment maps spoken codes (yue) onto the
+    // written language and falls back to defaults. A language without a
+    // configured voice leaves the segment untouched instead of failing later
+    // during playback.
+    const effectiveVoice = deps.settings.resolveVoiceForSegment(lang)
+    const edge = effectiveVoice?.edge
+    if (!edge) return
+    const next = new Map(segmentLangOverrides)
+    next.set(index, lang)
+    segmentLangOverrides = next
+    await resynthesizeSegment(index, edge)
   }
 
   return {
@@ -1225,9 +1281,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     },
     get positionSegmentIndex() {
       return positionSegmentIndex
-    },
-    get positionSegmentLabel() {
-      return positionSegmentLabel
     },
     get positionVoiceName() {
       return positionVoiceName
@@ -1288,5 +1341,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     clearSegments,
     resetSession,
     resynthesizeSegment,
+    overrideSegmentLanguage,
   }
 }

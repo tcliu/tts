@@ -13,6 +13,7 @@ export interface TtsLanguage {
   code: string
   name: string
   voices: TtsVoice[]
+  aliases?: string[]
 }
 
 export interface TtsSegment {
@@ -156,6 +157,26 @@ const FRANC_TO_LANGUAGE: Record<string, string> = {
   por: 'pt', ron: 'ro', sin: 'si', slk: 'sk', slv: 'sl', som: 'so', sqi: 'sq', srp: 'sr',
   sun: 'su', swe: 'sv', swa: 'sw', tam: 'ta', tel: 'te', tha: 'th', tur: 'tr', ukr: 'uk',
   urd: 'ur', uzb: 'uz', vie: 'vi', zul: 'zu',
+}
+
+// Spoken variants collapse to their written language so the language chip and
+// voice list stay written-only. Cantonese (yue) is a spoken variant of Chinese
+// (zh); British/American English etc. are already written `en` from detection.
+// The mapping is driven by each language's `aliases` in reference-languages.json,
+// so adding a dialect (e.g. nan/Hokkien under zh) collapses with a JSON-only
+// change; a fixed voice group additionally needs an entry in SPOKEN_GROUP below.
+const SPOKEN_TO_WRITTEN: Record<string, string> = Object.fromEntries(
+  REFERENCE_LANGUAGES.flatMap(lang => (lang.aliases ?? []).map(alias => [alias, lang.code])),
+)
+export function toWrittenLang(code: string): string {
+  return SPOKEN_TO_WRITTEN[code] ?? code
+}
+
+// Some spoken variants have a fixed voice group (e.g. yue is always the
+// Cantonese group of zh). Keep this alongside SPOKEN_TO_WRITTEN so the
+// group mapping is also data-adjacent rather than scattered ternaries.
+export const SPOKEN_GROUP: Record<string, string> = {
+  yue: 'Cantonese',
 }
 const ENGLISH_WORDS = new Set([
   'the', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'for', 'with', 'at', 'by', 'from',

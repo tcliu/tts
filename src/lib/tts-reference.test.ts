@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { activeHighlightRange, parseEdgeMetadata, splitHighlightRanges, splitTtsSegments } from './tts-reference'
+import { activeHighlightRange, parseEdgeMetadata, splitHighlightRanges, splitTtsSegments, toWrittenLang } from './tts-reference'
+
+describe('toWrittenLang', () => {
+  it('collapses spoken aliases onto their written language', () => {
+    expect(toWrittenLang('yue')).toBe('zh')
+  })
+
+  it('passes written language codes through unchanged', () => {
+    expect(toWrittenLang('en')).toBe('en')
+    expect(toWrittenLang('ja')).toBe('ja')
+    expect(toWrittenLang('cmn')).toBe('cmn')
+    expect(toWrittenLang('')).toBe('')
+  })
+})
 
 describe('splitTtsSegments', () => {
   it('splits mixed english and chinese text into separate language segments', () => {
