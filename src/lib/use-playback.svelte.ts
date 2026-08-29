@@ -1,6 +1,7 @@
 import {
   activeHighlightRange,
   REFERENCE_LANGUAGES,
+  SPEEDS,
   splitHighlightRanges,
   splitTtsSegments,
   toWrittenLang,
@@ -50,6 +51,7 @@ export interface SegmentMeta {
   duration?: number
   spokenStart?: number
   spokenEnd?: number
+  rate?: number
 }
 
 interface PlaybackController {
@@ -85,6 +87,8 @@ export interface PlaybackHandle {
   readonly voiceSwitching: boolean
   readonly segments: Record<number, SegmentMeta>
   readonly sessionSource: string
+  readonly playbackSpeed: number
+  readonly effectiveSpeed: number
   initStatus: () => void
   onLocaleChanged: (locale: UiLocale) => void
   startPlayback: () => Promise<void>
@@ -107,6 +111,7 @@ export interface PlaybackHandle {
   overrideSegmentLanguage: (index: number, lang: string) => Promise<void>
   overrideSegmentVoice: (index: number, voiceEdge: string) => Promise<void>
   effectiveVoiceEdge: (segmentLang: string) => string
+  setPlaybackSpeed: (speed: number) => void
 }
 
 export interface PlaybackDeps {
@@ -162,6 +167,12 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   // is never touched. Cleared when the session is reset or re-primed.
   let sessionVoiceSelections = $state<Map<string, string>>(new Map())
 
+  // Per-session playback speed override. The chip defaults to
+  // `settings.speed` but adjusting it must not mutate the persisted default.
+  let sessionSpeed = $state<number | null>(null)
+  const effectiveSpeed = $derived(sessionSpeed ?? deps.settings.speed)
+  const playbackSpeed = $derived(effectiveSpeed)
+
   // True while a mid-playback voice switch has paused playback and is still
   // synthesizing the current segment for the new voice. Gates Play so a
   // second playback loop cannot race the pending resume.
@@ -195,13 +206,31 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   // stale audio.
   let taskGeneration = new Map<number, number>()
 
-  const totalElapsed = $derived(playedDuration + playbackElapsed)
   const totalDuration = $derived.by(() => {
     let total = 0
     for (let i = 0; i < sessionSegments.length; i += 1) {
-      total += segmentDurationAt(i)
+      total += scaledDurationAt(i)
     }
     return total
+  })
+
+  const totalElapsed = $derived.by(() => {
+    if (sessionSegments.length === 0) return 0
+    // Scaled elapsed = scaled completed + scaled current, using real wall time
+    const curIdx = currentSegmentIndex > 0 ? currentSegmentIndex - 1 : resumeSegmentIndex
+    // When not yet started, currentSegmentIndex===0 and resume at 0, no elapsed
+    if (curIdx < 0) return 0
+    // If playback has ended, show full duration
+    if (playbackEnded) return totalDuration
+    let scaled = 0
+    for (let i = 0; i < curIdx; i += 1) {
+      scaled += scaledDurationAt(i)
+    }
+    scaled += scaledAtForMedia(curIdx, playbackElapsed)
+    // Clamp to duration
+    if (scaled > totalDuration) return totalDuration
+    if (scaled < 0) return 0
+    return scaled
   })
 
   // Status-strip facts for the segment at the slider position, so lang and
@@ -249,7 +278,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
 
   $effect(() => {
     if (isPlaying && currentAudio) {
-      currentAudio.playbackRate = deps.settings.speed / currentSynthesisRate
+      const idx = currentSegmentIndex - 1
+      const segRate = segmentMetaMap[idx]?.rate ?? effectiveSpeed
+      currentAudio.playbackRate = effectiveSpeed / segRate
     }
   })
 
@@ -331,6 +362,29 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     return meta.duration ?? 0
   }
 
+  function scaledDurationAt(index: number): number {
+    const base = segmentDurationAt(index)
+    if (base === 0) return 0
+    const meta = segmentMetaMap[index]
+    const rate = meta?.rate ?? effectiveSpeed
+    const speed = effectiveSpeed || 1
+    return (base * rate) / speed
+  }
+
+  function scaledAtForMedia(index: number, mediaAt: number): number {
+    const meta = segmentMetaMap[index]
+    const rate = meta?.rate ?? effectiveSpeed
+    const speed = effectiveSpeed || 1
+    return (mediaAt * rate) / speed
+  }
+
+  function mediaAtForScaled(index: number, scaledAt: number): number {
+    const meta = segmentMetaMap[index]
+    const rate = meta?.rate ?? effectiveSpeed
+    const speed = effectiveSpeed || 1
+    return (scaledAt * speed) / rate
+  }
+
   function rememberResumePosition() {
     resumeSegmentIndex = Math.max(0, currentSegmentIndex - 1)
     const audioAt = currentAudio
@@ -355,6 +409,20 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     return suppressSelectionCounter > 0 || applyingResumeSelection
   }
 
+  // Run an editor mutation as our own positioning echo so the resulting
+  // selection event is ignored by syncSelectionStart (prevents a seek from
+  // snapping back to the last word or rebuilding the session).
+  function applyOwnSelection(fn: () => void): void {
+    applyingResumeSelection = true
+    suppressSelectionCounter += 1
+    try {
+      withSuppressedSelection(fn)
+    } finally {
+      applyingResumeSelection = false
+      suppressSelectionCounter -= 1
+    }
+  }
+
   function updateSelectionForPosition(index: number, at: number): { from: number; to: number } | null {
     const meta = segmentMetaMap[index]
     const segment = sessionSegments[index]
@@ -370,7 +438,11 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (!meta || meta.ranges.length === 0 || boundaries.length === 0) {
       return setWholeSegmentSelection()
     }
-    const activeBoundary = activeBoundaryAt(boundaries, at)
+    // Word boundaries begin at spokenStart (> 0), so a position at the very
+    // start of the segment sits before the first boundary. Clamp to the first
+    // word there instead of falling through to the whole-sentence range, which
+    // would flash the entire sentence before narrowing to per-word on playback.
+    const activeBoundary = at < (boundaries[0]?.at ?? 0) ? boundaries[0] : activeBoundaryAt(boundaries, at)
     if (activeBoundary?.text) {
       const wordStart = activeBoundary.offset
       const wordEnd = wordStart + activeBoundary.text.length
@@ -406,21 +478,15 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     playedDuration = accumulated
     playbackElapsed = clampedAt
     playbackDuration = segmentDuration
-    if (applySelection) {
-      // The selection echo of our own positioning must not re-enter
-      // syncSelectionStart, or a seek to the end snaps back to the last word.
-      // Record the painted range as the resume selection so the very next
-      // Play recognizes the seek-scrolled state instead of rebuilding the
-      // session (which drops the dragged position and warmed metadata).
-      applyingResumeSelection = true
-      suppressSelectionCounter += 1
-      try {
-        sessionResumeSelection = updateSelectionForPosition(clampedIndex, clampedAt) ?? sessionResumeSelection
-      } finally {
-        applyingResumeSelection = false
-        suppressSelectionCounter -= 1
-      }
-    }
+    if (!applySelection) return
+    // The selection echo of our own positioning must not re-enter
+    // syncSelectionStart, or a seek to the end snaps back to the last word.
+    // Record the painted range as the resume selection so the very next
+    // Play recognizes the seek-scrolled state instead of rebuilding the
+    // session (which drops the dragged position and warmed metadata).
+    applyOwnSelection(() => {
+      sessionResumeSelection = updateSelectionForPosition(clampedIndex, clampedAt) ?? sessionResumeSelection
+    })
   }
 
   function locateCaretBoundaryAtOrBefore(
@@ -445,7 +511,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     const meta = segmentMetaMap[index]
     const segment = sessionSegments[index]
     if (!meta || !segment) return 0
-    const active = activeBoundaryAt(highlightBoundaries(meta, []), at)
+    const boundaries = highlightBoundaries(meta, [])
+    const active =
+      boundaries.length > 0 && at < (boundaries[0]?.at ?? 0) ? boundaries[0] : activeBoundaryAt(boundaries, at)
     if (active?.text) {
       return active.offset
     }
@@ -638,14 +706,15 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     return matchesOriginal || matchesResume
   }
 
-  function locatePlaybackPosition(elapsed: number): { index: number; startAt: number } | null {
+  function locatePlaybackPosition(scaledElapsed: number): { index: number; startAt: number } | null {
     if (sessionSegments.length === 0) return null
-    const clampedElapsed = Math.max(0, Math.min(elapsed, totalDuration || elapsed))
+    const clampedScaled = Math.max(0, Math.min(scaledElapsed, totalDuration || scaledElapsed))
     let total = 0
     for (let index = 0; index < sessionSegments.length; index += 1) {
-      const duration = segmentDurationAt(index)
-      if (index === sessionSegments.length - 1 || clampedElapsed <= total + duration) {
-        return { index, startAt: Math.max(0, clampedElapsed - total) }
+      const duration = scaledDurationAt(index)
+      if (index === sessionSegments.length - 1 || clampedScaled <= total + duration) {
+        const scaledAt = Math.max(0, clampedScaled - total)
+        return { index, startAt: mediaAtForScaled(index, scaledAt) }
       }
       total += duration
     }
@@ -867,7 +936,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           // Re-read after queue wait; an override may have landed while queued.
           const effectiveLang = effectiveSegmentLang(index)
           const voice = resolveEffectiveVoice(effectiveLang)
-          const rate = deps.settings.speed
+          const rate = effectiveSpeed
           const generation = taskGeneration.get(index) ?? generationAtQueue
           try {
             if (!voice?.edge) {
@@ -919,6 +988,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
               duration: res.duration,
               spokenStart: res.spokenStart,
               spokenEnd: res.spokenEnd,
+              rate: res.rate,
             },
             playbackOffset + segment.indexStart,
           )
@@ -1095,7 +1165,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       if (!voice?.edge) {
         continue
       }
-      const cached = peekCachedSynthesis(segment.text, voice.edge, deps.settings.speed)
+      const cached = peekCachedSynthesis(segment.text, voice.edge, effectiveSpeed)
       if (!cached) {
         continue
       }
@@ -1109,6 +1179,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
             wordBoundaries: cached.wordBoundaries,
             spokenStart: cached.spokenStart,
             spokenEnd: cached.spokenEnd,
+            rate: effectiveSpeed,
           },
           segment.indexStart,
         ),
@@ -1122,11 +1193,12 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     offset: number,
     selectedRange: { from: number; to: number } | null = null,
   ) {
-    // A new split invalidates index-keyed language overrides from the prior
-    // session; keep them only when the reference array is the same object.
+    // A new split invalidates index-keyed overrides from the prior session;
+    // keep them only when the reference array is the same object.
     if (segments !== sessionSegments) {
       segmentLangOverrides = new Map()
       sessionVoiceSelections = new Map()
+      sessionSpeed = null
     }
     sessionSegments = segments
     sessionOffset = offset
@@ -1220,6 +1292,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       duration?: number
       spokenStart?: number
       spokenEnd?: number
+      rate?: number
     },
     baseOffset: number,
   ): SegmentMeta {
@@ -1234,6 +1307,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       duration: fields.duration,
       spokenStart: fields.spokenStart,
       spokenEnd: fields.spokenEnd,
+      rate: fields.rate ?? effectiveSpeed,
     }
   }
 
@@ -1261,7 +1335,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     measuredTotal = 0
     playbackElapsed = 0
     playbackDuration = 0
-    currentSynthesisRate = deps.settings.speed
+    currentSynthesisRate = effectiveSpeed
     metadataAvailable = false
     // A re-split renumbers every segment; any per-segment language override
     // keyed by the old index would now address the wrong text.
@@ -1289,6 +1363,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     playbackEnded = false
     segmentLangOverrides = new Map()
     sessionVoiceSelections = new Map()
+    sessionSpeed = null
     clearSegments()
     initStatus()
   }
@@ -1323,7 +1398,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     // record nor play stale audio over the re-synthesized segment.
     taskGeneration.set(index, (taskGeneration.get(index) ?? 0) + 1)
     const effective = { ...segment, lang: effectiveSegmentLang(index) }
-    const rate = deps.settings.speed
+    const rate = effectiveSpeed
     const docId = deps.getCacheScopeId()
     const synth = await getCachedSynthesis(segment.text, voiceEdge, rate, undefined, docId)
     const abort = new AbortController()
@@ -1338,6 +1413,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         duration,
         spokenStart: synth.spokenStart,
         spokenEnd: synth.spokenEnd,
+        rate,
       },
       baseOffset,
     )
@@ -1372,6 +1448,17 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     const next = new Map(sessionVoiceSelections)
     next.set(languageCode, voiceEdge)
     sessionVoiceSelections = next
+  }
+
+  function setPlaybackSpeed(speed: number) {
+    if (!SPEEDS.includes(speed as (typeof SPEEDS)[number])) return
+    // Keep session override separate from persisted default: selecting the
+    // default clears the override so future default changes are followed.
+    if (speed === deps.settings.speed) {
+      sessionSpeed = null
+    } else {
+      sessionSpeed = speed
+    }
   }
 
   async function overrideSegmentVoice(index: number, voiceEdge: string): Promise<void> {
@@ -1474,6 +1561,12 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     get sessionSource() {
       return sessionSourceContent
     },
+    get playbackSpeed() {
+      return playbackSpeed
+    },
+    get effectiveSpeed() {
+      return effectiveSpeed
+    },
     get isPlaybackEnded() {
       return playbackEnded
     },
@@ -1557,5 +1650,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     overrideSegmentLanguage,
     overrideSegmentVoice,
     effectiveVoiceEdge: (segmentLang: string) => resolveEffectiveVoice(segmentLang)?.edge ?? '',
+    setPlaybackSpeed,
   }
 }

@@ -36,7 +36,7 @@
   import UploadIcon from '$lib/icons/UploadIcon.svelte'
 
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
-  import { REFERENCE_LANGUAGES, splitTtsSegments } from '$lib/tts-reference'
+  import { REFERENCE_LANGUAGES, SPEED_OPTIONS, splitTtsSegments } from '$lib/tts-reference'
   import { synthesisCacheKey } from '$lib/tts-cache-key'
   import ChipDropdown from '$lib/components/ChipDropdown.svelte'
   import {
@@ -134,11 +134,11 @@
   }
 
   // Cache keys for every segment of the current document that has a voice;
-  // only these can exist in the per-document client cache.
-  function documentSynthesisCacheKeys(): string[] {
+  // only these can exist in the per-document client cache. Use the session
+  // playback rate so chip-switched speeds are evicted instead of orphaned.
+  function documentSynthesisCacheKeys(rate = playback.effectiveSpeed): string[] {
     const content = settings.content
     if (!content.trim()) return []
-    const rate = settings.speed
     return splitTtsSegments(content).flatMap(segment => {
       const voice = settings.resolveVoiceForSegment(segment.lang)
       return voice?.edge ? [synthesisCacheKey(segment.text, voice.edge, rate)] : []
@@ -146,8 +146,14 @@
   }
 
   function resetPlaybackAndCache() {
+    const effective = playback.effectiveSpeed
+    const fallback = settings.speed
+    const keys =
+      effective !== fallback
+        ? [...documentSynthesisCacheKeys(effective), ...documentSynthesisCacheKeys(fallback)]
+        : documentSynthesisCacheKeys(effective)
     playback.resetSession()
-    void clearDocumentSynthesisCache(editor.cacheScopeId, documentSynthesisCacheKeys())
+    void clearDocumentSynthesisCache(editor.cacheScopeId, keys)
   }
 
   const THEME_MENU_OPTIONS: { value: UiTheme }[] = [
@@ -267,6 +273,14 @@
     } catch (error) {
       console.error(error)
     }
+  }
+
+  const speedChipOptions = $derived(SPEED_OPTIONS)
+
+  function handleSpeedChipSelect(value: string) {
+    const next = Number(value)
+    if (!Number.isFinite(next)) return
+    playback.setPlaybackSpeed(next)
   }
 
   const statusMessage = $derived(
@@ -892,6 +906,13 @@
                       disabled={voiceChipOptions.length === 0}
                       onSelect={(v) => void handleVoiceChipSelect(v)} />
                   {/if}
+                  <ChipDropdown
+                    label={`${playback.playbackSpeed}x`}
+                    options={speedChipOptions}
+                    activeValue={String(playback.playbackSpeed)}
+                    ariaLabel={text.playbackSpeed}
+                    variant="amber"
+                    onSelect={(v) => handleSpeedChipSelect(v)} />
                   {#if metadata.totalSentences > 0}
                     <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-200">
                       {`${metadata.positionSentenceIndex + 1}/${metadata.totalSentences}`}

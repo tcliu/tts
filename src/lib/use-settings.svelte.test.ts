@@ -43,7 +43,7 @@ describe('useSettings persistence', () => {
   it('rejects out-of-range speed and concurrency values when hydrating', async () => {
     localStorage.setItem(
       'tts:web-settings',
-      JSON.stringify({ speed: 3, synthesisConcurrency: 99, locale: 'zh-CN' }),
+      JSON.stringify({ speed: 5, synthesisConcurrency: 99, locale: 'zh-CN' }),
     )
 
     const { settings, dispose } = createSettingsHost()

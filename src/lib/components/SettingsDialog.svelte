@@ -6,7 +6,7 @@
   import NumberInput from '$lib/components/NumberInput.svelte'
   import Tabs from '$lib/components/Tabs.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
-  import { REFERENCE_LANGUAGES, getVoiceGroups, getVoiceOptions } from '$lib/tts-reference'
+  import { REFERENCE_LANGUAGES, SPEEDS, SPEED_STEP, getVoiceGroups, getVoiceOptions } from '$lib/tts-reference'
 
   interface Props {
     locale: UiLocale
@@ -76,6 +76,9 @@
   function voiceLabel(voice: { name: string; gender: 'Female' | 'Male' }): string {
     return `${voice.name} · ${voice.gender}`
   }
+
+  const MIN_SPEED = SPEEDS[0]
+  const MAX_SPEED = SPEEDS[SPEEDS.length - 1]
 </script>
 
 <BaseDialog title={text.settingsTitle} maxWidth="2xl" closeLabel={text.close} onCancel={onCancel} className="flex h-[min(78vh,640px)] min-h-[480px] flex-col sm:min-h-[520px]">
@@ -133,16 +136,16 @@
         <NumberInput
           id="default-speed"
           value={String(speed)}
-          min={0.5}
-          max={2}
-          step={0.25}
+          min={MIN_SPEED}
+          max={MAX_SPEED}
+          step={SPEED_STEP}
           ariaLabel={text.defaultSpeed}
           incrementLabel={text.increment}
           decrementLabel={text.decrement}
           oninput={event => {
             const raw = Number((event.target as HTMLInputElement).value)
             if (Number.isFinite(raw)) {
-              onSelectSpeed(Math.min(2, Math.max(0.5, raw)))
+              onSelectSpeed(Math.min(MAX_SPEED, Math.max(MIN_SPEED, raw)))
             }
           }}
           onblur={event => {

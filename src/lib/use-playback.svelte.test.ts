@@ -1273,3 +1273,60 @@ describe('usePlayback voice override during playback', () => {
     dispose()
   })
 })
+
+describe('usePlayback playback speed session', () => {
+  beforeEach(() => {
+    AudioStub.instances.length = 0
+    vi.stubGlobal('Audio', AudioStub)
+    URL.createObjectURL = vi.fn(() => `blob:test-${Math.random()}`)
+    URL.revokeObjectURL = vi.fn()
+  })
+
+  it('defaults playbackSpeed to the persisted default speed', () => {
+    const { playback, dispose } = createPlayback()
+    expect(playback.playbackSpeed).toBe(1)
+    expect(playback.effectiveSpeed).toBe(1)
+    dispose()
+  })
+
+  it('adjusting the speed chip overrides the session without mutating the default', () => {
+    const deps = createDeps()
+    const { playback, dispose } = createPlaybackHost(deps)
+    const defaultSpeed = deps.settings.speed
+    expect(defaultSpeed).toBe(1)
+
+    playback.setPlaybackSpeed(3)
+    // Override applies to the session and the audio rate divisor.
+    expect(playback.playbackSpeed).toBe(3)
+    expect(playback.effectiveSpeed).toBe(3)
+    // The persisted default setting is untouched.
+    expect(deps.settings.speed).toBe(defaultSpeed)
+
+    // Selecting the default clears the override so future default changes win.
+    playback.setPlaybackSpeed(defaultSpeed)
+    expect(playback.effectiveSpeed).toBe(defaultSpeed)
+    expect(playback.playbackSpeed).toBe(defaultSpeed)
+    dispose()
+  })
+
+  it('ignores out-of-range speeds outside SPEEDS', () => {
+    const deps = createDeps()
+    const { playback, dispose } = createPlaybackHost(deps)
+    playback.setPlaybackSpeed(9)
+    expect(playback.effectiveSpeed).toBe(deps.settings.speed)
+    dispose()
+  })
+
+  it('clears the per-session speed when the session is re-primed with new segments', () => {
+    const deps = createDeps('First paragraph here.\n\nSecond paragraph here.')
+    const { playback, dispose } = createPlaybackHost(deps)
+    playback.setPlaybackSpeed(2)
+    expect(playback.effectiveSpeed).toBe(2)
+
+    // Re-prime with a different segment array; the override must not leak.
+    const nextSegments = splitTtsSegments('First paragraph here.\n\nSecond paragraph here.\n\nExtra paragraph.')
+    playback.primeSession(nextSegments, 0)
+    expect(playback.effectiveSpeed).toBe(deps.settings.speed)
+    dispose()
+  })
+})
