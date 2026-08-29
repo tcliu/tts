@@ -238,7 +238,7 @@
   const activeChipVoiceEdge = $derived.by(() => {
     const lang = playback.positionSegmentLang
     if (!lang) return ''
-    return settings.resolveVoiceForSegment(lang)?.edge ?? ''
+    return playback.effectiveVoiceEdge(lang)
   })
 
   function chipVoiceLabel(voice: { name: string; gender: string; edge: string; group?: string }): string {
@@ -259,11 +259,11 @@
 
   async function handleVoiceChipSelect(edge: string) {
     const idx = playback.positionSegmentIndex
-    const langCode = playback.positionLanguageCode
-    if (idx < 0 || !langCode) return
-    settings.selectVoice(langCode, edge)
+    if (idx < 0) return
+    // Switching the voice model during playback only overrides the active
+    // session; the persisted default voice setting is left untouched.
     try {
-      await playback.resynthesizeSegment(idx, edge)
+      await playback.overrideSegmentVoice(idx, edge)
     } catch (error) {
       console.error(error)
     }

@@ -1,10 +1,12 @@
 import {
   activeHighlightRange,
+  REFERENCE_LANGUAGES,
   splitHighlightRanges,
   splitTtsSegments,
   toWrittenLang,
   type HighlightRange,
   type TtsBoundary,
+  type TtsVoice,
 } from './tts-reference'
 import {
   getCachedSynthesis,
@@ -102,6 +104,8 @@ export interface PlaybackHandle {
   resetSession: () => void
   resynthesizeSegment: (index: number, voiceEdge: string) => Promise<void>
   overrideSegmentLanguage: (index: number, lang: string) => Promise<void>
+  overrideSegmentVoice: (index: number, voiceEdge: string) => Promise<void>
+  effectiveVoiceEdge: (segmentLang: string) => string
 }
 
 export interface PlaybackDeps {
@@ -151,9 +155,27 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   // heuristic output. Cleared when the session is reset or re-primed.
   let segmentLangOverrides = $state<Map<number, string>>(new Map())
 
+  // Per-language voice overrides for the active session. Changing the voice
+  // model from the playback voice chip records the choice here so the rest of
+  // the session plays with it, but the user's persisted default voice setting
+  // is never touched. Cleared when the session is reset or re-primed.
+  let sessionVoiceSelections = $state<Map<string, string>>(new Map())
+
   function effectiveSegmentLang(index: number): string {
     if (index < 0 || index >= sessionSegments.length) return ''
     return segmentLangOverrides.get(index) ?? sessionSegments[index]?.lang ?? ''
+  }
+
+  function resolveEffectiveVoice(segmentLang: string): TtsVoice | undefined {
+    const languageCode = toWrittenLang(segmentLang)
+    const overrideEdge = sessionVoiceSelections.get(languageCode)
+    if (overrideEdge) {
+      const voice = REFERENCE_LANGUAGES.find(item => item.code === languageCode)?.voices.find(
+        item => item.edge === overrideEdge,
+      )
+      if (voice) return voice
+    }
+    return deps.settings.resolveVoiceForSegment(segmentLang)
   }
 
   // Plain Map (not $state) — only read imperatively in launch/resynthesize/
@@ -179,13 +201,13 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   const positionSegmentIndex = $derived(positionLocation ? positionLocation.index : -1)
   const positionSegmentLang = $derived.by(() => effectiveSegmentLang(positionSegmentIndex))
   const positionVoiceName = $derived.by(() =>
-    positionSegmentLang ? (deps.settings.resolveVoiceForSegment(positionSegmentLang)?.name ?? '') : '',
+    positionSegmentLang ? (resolveEffectiveVoice(positionSegmentLang)?.name ?? '') : '',
   )
   const positionVoiceGender = $derived.by(() =>
-    positionSegmentLang ? (deps.settings.resolveVoiceForSegment(positionSegmentLang)?.gender ?? '') : '',
+    positionSegmentLang ? (resolveEffectiveVoice(positionSegmentLang)?.gender ?? '') : '',
   )
   const positionVoiceLocale = $derived.by(() => {
-    const voice = positionSegmentLang ? deps.settings.resolveVoiceForSegment(positionSegmentLang) : undefined
+    const voice = positionSegmentLang ? resolveEffectiveVoice(positionSegmentLang) : undefined
     return voice ? voice.edge.split('-').slice(0, 2).join('-') : ''
   })
   const positionLanguageCode = $derived(toWrittenLang(positionSegmentLang))
@@ -789,7 +811,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           await acquire()
           // Re-read after queue wait; an override may have landed while queued.
           const effectiveLang = effectiveSegmentLang(index)
-          const voice = deps.settings.resolveVoiceForSegment(effectiveLang)
+          const voice = resolveEffectiveVoice(effectiveLang)
           const rate = deps.settings.speed
           const generation = taskGeneration.get(index) ?? generationAtQueue
           try {
@@ -1046,6 +1068,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     // session; keep them only when the reference array is the same object.
     if (segments !== sessionSegments) {
       segmentLangOverrides = new Map()
+      sessionVoiceSelections = new Map()
     }
     sessionSegments = segments
     sessionOffset = offset
@@ -1176,6 +1199,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     // A re-split renumbers every segment; any per-segment language override
     // keyed by the old index would now address the wrong text.
     segmentLangOverrides = new Map()
+    sessionVoiceSelections = new Map()
     // Invalidate any pending debounced seek that was queued before the reset.
     pendingSelectionGeneration += 1
     if (pendingSelectionSeekTimer) {
@@ -1197,6 +1221,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     resumeSegmentTime = 0
     playbackEnded = false
     segmentLangOverrides = new Map()
+    sessionVoiceSelections = new Map()
     clearSegments()
     initStatus()
   }
@@ -1265,6 +1290,18 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     next.set(index, lang)
     segmentLangOverrides = next
     await resynthesizeSegment(index, edge)
+  }
+
+  async function overrideSegmentVoice(index: number, voiceEdge: string): Promise<void> {
+    if (index < 0 || index >= sessionSegments.length) return
+    // Record the choice as a session-only voice override for the segment's
+    // language so the remaining playback uses it too; the user's persisted
+    // default voice setting is left untouched.
+    const languageCode = toWrittenLang(effectiveSegmentLang(index))
+    const next = new Map(sessionVoiceSelections)
+    next.set(languageCode, voiceEdge)
+    sessionVoiceSelections = next
+    await resynthesizeSegment(index, voiceEdge)
   }
 
   return {
@@ -1355,5 +1392,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     resetSession,
     resynthesizeSegment,
     overrideSegmentLanguage,
+    overrideSegmentVoice,
+    effectiveVoiceEdge: (segmentLang: string) => resolveEffectiveVoice(segmentLang)?.edge ?? '',
   }
 }
