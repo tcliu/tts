@@ -198,11 +198,11 @@
                         <table class="w-full border-collapse text-xs">
                           <thead class="sticky top-0 z-10 bg-slate-900">
                             <tr class="text-left text-slate-400">
+                              <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableWord}</th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
-                              <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
                             </tr>
                           </thead>
                           <tbody>
@@ -220,10 +220,6 @@
                                   }
                                 }}
                                 class="cursor-pointer border-t border-slate-800/60 align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset {word.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
-                                <td class="px-2 py-1 font-mono whitespace-nowrap">{wIdx + 1}</td>
-                                <td class="px-2 py-1 font-mono whitespace-nowrap">{word.at.toFixed(2)}s</td>
-                                <td class="px-2 py-1 font-mono whitespace-nowrap">{word.offset}</td>
-                                <td class="px-2 py-1">{word.text}</td>
                                 <td class="px-1 py-1">
                                   <button
                                     type="button"
@@ -237,6 +233,10 @@
                                     <SpeakerIcon className="h-3 w-3" />
                                   </button>
                                 </td>
+                                <td class="px-2 py-1 font-mono whitespace-nowrap">{wIdx + 1}</td>
+                                <td class="px-2 py-1 font-mono whitespace-nowrap">{word.at.toFixed(2)}s</td>
+                                <td class="px-2 py-1 font-mono whitespace-nowrap">{word.offset}</td>
+                                <td class="px-2 py-1">{word.text}</td>
                               </tr>
                             {/each}
                           </tbody>

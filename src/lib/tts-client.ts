@@ -145,7 +145,8 @@ export function peekCachedSynthesis(
   voiceId: string,
   rate: number,
 ): SynthesizedSegment | null {
-  const cacheKey = synthesisCacheKey(textToSpeak, voiceId, rate)
+  const trimmed = textToSpeak.trim()
+  const cacheKey = synthesisCacheKey(trimmed, voiceId, rate)
   const cached = synthesisCache.get(cacheKey)
   // Same blob guard as getCachedSynthesis so warm-up never trusts an entry
   // that cannot play.
@@ -159,7 +160,8 @@ export async function getCachedSynthesis(
   signal?: AbortSignal,
   docId?: string,
 ): Promise<SynthesizedSegment> {
-  const cacheKey = synthesisCacheKey(textToSpeak, voiceId, rate)
+  const trimmed = textToSpeak.trim()
+  const cacheKey = synthesisCacheKey(trimmed, voiceId, rate)
   const cached = synthesisCache.get(cacheKey)
   if (cached?.blob) return cached
 
@@ -167,7 +169,7 @@ export async function getCachedSynthesis(
   // hydration lands, failed hydration, or mid-session LRU eviction.
   const local = await getPersistedSegment(cacheKey)
   if (local) {
-    const result = await requestSynthesis({ textToSpeak, voiceId, rate, signal, etag: local.etag })
+    const result = await requestSynthesis({ textToSpeak: trimmed, voiceId, rate, signal, etag: local.etag })
     if (!result.notModified) {
       cacheSynthesis(cacheKey, result.segment, { docId })
       return result.segment
@@ -178,7 +180,7 @@ export async function getCachedSynthesis(
     return local
   }
 
-  const result = await requestSynthesis({ textToSpeak, voiceId, rate, signal })
+  const result = await requestSynthesis({ textToSpeak: trimmed, voiceId, rate, signal })
   if (result.notModified) {
     // A 304 requires an If-None-Match, which we only send when we already have
     // a local copy; reaching here without one is an inconsistent server reply.

@@ -1249,12 +1249,156 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     setResumePosition(position.index, position.startAt)
   }
 
+  async function playIsolatedFragment(
+    segmentIndex: number,
+    charOffset: number,
+    meta: SegmentMeta,
+    segment: ReturnType<typeof splitTtsSegments>[number],
+  ): Promise<boolean> {
+    // Try to isolate the exact sentence or word slice for single-playback.
+    // Returns true when an isolated fragment was played, false to fall back
+    // to the full segment chain.
+    const absoluteBase = sessionOffset + segment.indexStart
+    let isolatedText: string | null = null
+    let selFrom = -1
+    let selTo = -1
+
+    const wordBoundary = meta.wordBoundaries?.find(b => meta.baseOffset + b.offset === charOffset)
+    if (wordBoundary) {
+      const raw = wordBoundary.text ?? ''
+      if (raw.trim()) {
+        isolatedText = raw
+        const trimmed = trimWhitespaceRange(segment.text, wordBoundary.offset, wordBoundary.offset + raw.length)
+        selFrom = absoluteBase + trimmed.start
+        selTo = absoluteBase + trimmed.end
+      }
+    } else {
+      const boundary = meta.boundaries.find(b => meta.baseOffset + b.offset === charOffset)
+      if (boundary) {
+        const range =
+          meta.ranges.find(r => boundary.offset >= r.start && boundary.offset < r.end) ?? meta.ranges[meta.ranges.length - 1]
+        const raw = boundary.text ?? (range ? segment.text.slice(range.start, range.end) : '')
+        if (raw.trim()) {
+          isolatedText = raw
+          const start = boundary.offset
+          const end = start + raw.length
+          const trimmed = trimWhitespaceRange(segment.text, start, end)
+          selFrom = absoluteBase + trimmed.start
+          selTo = absoluteBase + trimmed.end
+        }
+      } else {
+        const range = meta.ranges.find(r => meta.baseOffset + r.start === charOffset)
+        if (range) {
+          const raw = segment.text.slice(range.start, range.end)
+          const trimmedRaw = raw.trim() !== '' ? raw.trim() : raw
+          if (trimmedRaw) {
+            isolatedText = trimmedRaw
+            const trimmed = trimWhitespaceRange(segment.text, range.start, range.end)
+            selFrom = absoluteBase + trimmed.start
+            selTo = absoluteBase + trimmed.end
+          }
+        }
+      }
+    }
+
+    if (!isolatedText) return false
+
+    const lang = effectiveSegmentLang(segmentIndex)
+    const voice = resolveEffectiveVoice(lang)
+    if (!voice?.edge) {
+      throw new LocalizedPlaybackError(
+        `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, lang)})`,
+      )
+    }
+
+    const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
+    currentController = controller
+    isPlaying = true
+    playbackEnded = false
+    lastStatusReason = 'ready'
+    currentSegmentIndex = segmentIndex + 1
+    totalSegments = sessionSegments.length
+    playbackElapsed = 0
+    playbackDuration = 0
+
+    // Highlight the isolated slice in the editor as our own echo.
+    if (selFrom >= 0 && selTo >= 0 && selFrom !== selTo) {
+      applyOwnSelection(() => {
+        withSuppressedSelection(() => deps.getEditor()?.setSelection(selFrom, selTo))
+      })
+    }
+
+    try {
+      const docId = deps.getCacheScopeId()
+      const synth = await getCachedSynthesis(isolatedText, voice.edge, effectiveSpeed, controller.abort.signal, docId)
+      if (controller.cancelled) return true
+      const duration = await readAudioDuration(synth.blob, controller.abort.signal)
+      if (controller.cancelled) return true
+      currentSynthesisRate = effectiveSpeed
+      metadataAvailable = (synth.boundaries.length > 0 || (synth.wordBoundaries?.length ?? 0) > 0)
+      playbackDuration = duration
+      // Play the isolated fragment only; do not continue to subsequent sentences.
+      const spokenStart = synth.spokenStart ?? 0
+      const spokenEnd = synth.spokenEnd
+      await playAudioBlob(
+        controller,
+        synth.blob,
+        undefined,
+        d => {
+          playbackDuration = d
+        },
+        0,
+        spokenStart,
+        spokenEnd,
+      )
+      if (controller.cancelled) return true
+      currentController = null
+      isPlaying = false
+      lastStatusReason = 'finished'
+      statusMessage = UI_TEXT[deps.settings.locale].playbackFinished
+      playbackElapsed = 0
+      // Restore the original selection echo so a subsequent Play from the
+      // editor still recognises the isolated position.
+      applyOwnSelection(() => {
+        if (selFrom >= 0 && selTo >= 0) {
+          withSuppressedSelection(() => deps.getEditor()?.setSelection(selFrom, selTo))
+          sessionResumeSelection = { from: selFrom, to: selTo }
+        }
+      })
+      return true
+    } catch (error) {
+      if (controller.cancelled) return true
+      currentController = null
+      isPlaying = false
+      lastStatusReason = 'error'
+      metadataAvailable = false
+      console.error(error)
+      statusMessage =
+        error instanceof LocalizedPlaybackError ? error.message : UI_TEXT[deps.settings.locale].playbackFailed
+      return true
+    }
+  }
+
   async function playFromSegment(index: number, charOffset?: number) {
     // Inert while a voice switch owns playback: starting a session here would
     // race the switch's pending resume for the same segment.
     if (voiceSwitching) return
     if (sessionSegments.length === 0) {
       return
+    }
+    // When the Info panel triggers a word or sentence row (charOffset
+    // provided), play only that single fragment and do not continue to the
+    // next sentence or word.
+    if (charOffset != null) {
+      const meta = segmentMetaMap[index]
+      const segment = sessionSegments[index]
+      if (meta && segment) {
+        playbackEnded = false
+        stopPlayback()
+        const handled = await playIsolatedFragment(index, charOffset, meta, segment)
+        if (handled) return
+        // Fall through to the full-chain path if no isolated slice was found.
+      }
     }
     playbackEnded = false
     stopPlayback()
