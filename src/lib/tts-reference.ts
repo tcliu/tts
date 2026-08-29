@@ -251,26 +251,22 @@ const FOREIGN_WORDS: Record<string, string[]> = {
 function isProbablyEnglish(text: string): boolean {
   return ENGLISH_DISTINCTIVE_RE.test(text)
 }
-function containsForeignWords(text: string, lang: string): boolean {
-  const words = FOREIGN_WORDS[lang]
-  if (!words) return false
-  const lower = text.toLowerCase()
-  return words.some(w => lower.includes(w.toLowerCase()))
-}
-function foreignWordScore(text: string, lang: string): number {
+function foreignWordScore(text: string, lang: string, minTokenLength = 3): number {
   const words = FOREIGN_WORDS[lang]
   if (!words) return 0
   const tokens = new Set(text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean))
   let score = 0
-  for (const w of words) if (tokens.has(w.toLowerCase())) score += 1
+  for (const w of words) {
+    if (w.length >= minTokenLength && tokens.has(w.toLowerCase())) score += 1
+  }
   return score
 }
 
-function bestForeignLanguage(text: string): { lang: string | null; score: number } {
+function bestForeignLanguage(text: string, minTokenLength = 3): { lang: string | null; score: number } {
   let bestLang: string | null = null
   let bestScore = 0
   for (const lang of Object.keys(FOREIGN_WORDS)) {
-    const score = foreignWordScore(text, lang)
+    const score = foreignWordScore(text, lang, minTokenLength)
     if (score > bestScore) {
       bestScore = score
       bestLang = lang
@@ -343,9 +339,11 @@ function detectTtsLanguage(text: string) {
     ) {
       return 'en'
     }
-    const { lang: bestLang, score: bestScore } = bestForeignLanguage(text)
-    if (englishWordScore(text) > bestScore) return 'en'
-    if (bestLang && bestScore > 0) return bestLang
+    const englishScore = englishWordScore(text)
+    // also ignore 1-2 letter tokens here so short Latin words can't hijack accented runs
+    const { lang: bestLang, score: bestScore } = bestForeignLanguage(text, 3)
+    if (englishScore > bestScore) return 'en'
+    if (bestLang && bestScore > englishScore) return bestLang
     const c = franc(text, { minLength: 3 })
     const m = FRANC_TO_LANGUAGE[c]
     if (m && m !== 'en') return m
@@ -353,8 +351,12 @@ function detectTtsLanguage(text: string) {
   }
   if (isProbablyEnglish(text)) return 'en'
   {
-    const { lang: bestLang, score: bestScore } = bestForeignLanguage(text)
-    if (bestLang && bestScore > 0) return bestLang
+    // Ignore 1-2 letter foreign tokens for ASCII text. They are too ambiguous
+    // across Latin-script languages (e.g. French "le") and otherwise hijack
+    // English-heavy runs and word-level highlight ranges.
+    const englishScore = englishWordScore(text)
+    const { lang: bestLang, score: bestScore } = bestForeignLanguage(text, 3)
+    if (bestLang && bestScore > englishScore) return bestLang
   }
   if (text.trim().length < 10) return 'en'
   const c = franc(text, { minLength: 3 })
@@ -425,7 +427,45 @@ function splitTtsRuns(text: string) {
     runs[runs.length - 1].text += pendingWhitespace
     runs[runs.length - 1].end = text.length
   }
-  return runs
+  return reattachBracketEdges(runs)
+}
+
+function reattachBracketEdges(
+  runs: { text: string; lang: string; start: number; end: number }[],
+): { text: string; lang: string; start: number; end: number }[] {
+  if (runs.length < 2) return runs
+  const OPEN_SUFFIX_RE = /[【「『（〈《]+$/
+  const CLOSE_PREFIX_RE = /^[】」』）〉》]+[、]?/
+  const out: { text: string; lang: string; start: number; end: number }[] = []
+  for (let i = 0; i < runs.length; i += 1) {
+    let run = runs[i]
+    if (out.length > 0) {
+      const prev = out[out.length - 1]
+      const openMatch = prev.text.match(OPEN_SUFFIX_RE)
+      if (openMatch) {
+        const suffix = openMatch[0]
+        const cut = suffix.length
+        prev.text = prev.text.slice(0, -cut)
+        prev.end -= cut
+        run = { ...run, text: suffix + run.text, start: run.start - cut }
+        if (prev.text.length === 0) out.pop()
+      }
+    }
+    if (out.length > 0) {
+      const closeMatch = run.text.match(CLOSE_PREFIX_RE)
+      if (closeMatch) {
+        const prefix = closeMatch[0]
+        const cut = prefix.length
+        const prev = out[out.length - 1]
+        prev.text += prefix
+        prev.end += cut
+        run = { ...run, text: run.text.slice(cut), start: run.start + cut }
+        if (run.text.length === 0) continue
+      }
+    }
+    out.push(run)
+  }
+  return out
 }
 
 function mergeAdjacentRuns(runs: { text: string; lang: string; start: number; end: number }[]) {
