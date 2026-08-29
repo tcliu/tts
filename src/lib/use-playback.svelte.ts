@@ -1262,18 +1262,23 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (charOffset != null) {
       const meta = segmentMetaMap[index]
       if (meta) {
-        const boundary = meta.boundaries.find(b => meta.baseOffset + b.offset === charOffset)
-        if (boundary) {
-          startAt = boundary.at
+        const wordBoundary = meta.wordBoundaries?.find(b => meta.baseOffset + b.offset === charOffset)
+        if (wordBoundary) {
+          startAt = wordBoundary.at
         } else {
-          // Fallback: synthetic sentence rows (CJK space/comma split) have no
-          // matching SentenceBoundary — locate the highlight range instead and
-          // interpolate timing by character offset.
-          const range = meta.ranges.find(r => meta.baseOffset + r.start === charOffset)
-          if (range) {
-            const segDuration = segmentDurationAt(index)
-            if (segDuration > 0) {
-              startAt = (range.start / Math.max(1, meta.text.length)) * segDuration
+          const boundary = meta.boundaries.find(b => meta.baseOffset + b.offset === charOffset)
+          if (boundary) {
+            startAt = boundary.at
+          } else {
+            // Fallback: synthetic sentence rows (CJK space/comma split) have no
+            // matching SentenceBoundary — locate the highlight range instead and
+            // interpolate timing by character offset.
+            const range = meta.ranges.find(r => meta.baseOffset + r.start === charOffset)
+            if (range) {
+              const segDuration = segmentDurationAt(index)
+              if (segDuration > 0) {
+                startAt = (range.start / Math.max(1, meta.text.length)) * segDuration
+              }
             }
           }
         }

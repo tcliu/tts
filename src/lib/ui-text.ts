@@ -110,6 +110,13 @@ export interface UiText {
   languageSearch: string
   noMatchingLanguages: string
   segmentLanguage: string
+  expandSentence: string
+  collapseSentence: string
+  playWord: string
+  noWords: string
+  tableExpand: string
+  tablePlay: string
+  tableWord: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [
@@ -233,6 +240,13 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     languageSearch: 'Search languages',
     noMatchingLanguages: 'No matching languages.',
     segmentLanguage: 'Segment language',
+    expandSentence: 'Expand words',
+    collapseSentence: 'Collapse words',
+    playWord: 'Play word',
+    noWords: 'No word timing.',
+    tableExpand: '',
+    tablePlay: '',
+    tableWord: 'Word',
   },
   'zh-TW': {
     language: '語言',
@@ -338,6 +352,13 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     languageSearch: '搜尋語言',
     noMatchingLanguages: '沒有符合的語言。',
     segmentLanguage: '段落語言',
+    expandSentence: '展開詞彙',
+    collapseSentence: '收合詞彙',
+    playWord: '播放詞彙',
+    noWords: '沒有詞彙時間資訊。',
+    tableExpand: '',
+    tablePlay: '',
+    tableWord: '詞',
   },
   'zh-CN': {
     language: '语言',
@@ -443,5 +464,12 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     languageSearch: '搜索语言',
     noMatchingLanguages: '没有匹配的语言。',
     segmentLanguage: '段落语言',
+    expandSentence: '展开词汇',
+    collapseSentence: '收起词汇',
+    playWord: '播放词汇',
+    noWords: '没有词汇时间信息。',
+    tableExpand: '',
+    tablePlay: '',
+    tableWord: '词汇',
   },
 }

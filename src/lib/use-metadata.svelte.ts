@@ -8,6 +8,19 @@ function syntheticRangeAt(range: { start: number }, textLength: number, segDurat
   return segDuration > 0 ? (range.start / Math.max(1, textLength)) * segDuration : 0
 }
 
+export interface MetadataWord {
+  segmentIndex: number
+  sentenceIndex: number
+  wordIndex: number
+  at: number
+  offset: number
+  offsetInSegment: number
+  atInSegment: number
+  text: string
+  duration?: number
+  active: boolean
+}
+
 export interface MetadataRow {
   segmentIndex: number
   sentenceIndex: number
@@ -17,6 +30,8 @@ export interface MetadataRow {
   text: string
   boundaryIndex: number
   active: boolean
+  words: MetadataWord[]
+  hasWords: boolean
 }
 
 interface MetadataDeps {
@@ -88,17 +103,31 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     return idx
   })
 
+  const activeWordBoundary = $derived.by(() => {
+    if (activeSeg < 0) return null
+    const meta = playback.segments[activeSeg]
+    if (!meta?.wordBoundaries || meta.wordBoundaries.length === 0) return null
+    let active: (typeof meta.wordBoundaries)[number] | null = null
+    for (const wb of meta.wordBoundaries) {
+      if (wb.at <= playback.playbackElapsed) active = wb
+      else break
+    }
+    return active
+  })
+
   // Heavy build (segmentation, range matching, sort) depends only on the
   // segment metadata and search query, so it is memoized and re-runs only
   // when those change, not on every playback tick.
   const sortedRows = $derived.by(() => {
     const result: MetadataRow[] = []
     const segmentMetaMap = playback.segments
+    const cumulativeBySegment = new Map<number, number>()
     let cumulative = 0
     const indices = Object.keys(segmentMetaMap).map(Number).sort((a, b) => a - b)
     for (const i of indices) {
       const meta = segmentMetaMap[i]
       if (!meta) continue
+      cumulativeBySegment.set(meta.index, cumulative)
       const segDuration = segmentDuration(meta)
       if (meta.boundaries.length === 0) {
         // A segment without sentence boundaries must still appear in document
@@ -112,6 +141,8 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
           text: meta.text,
           boundaryIndex: 0,
           active: false,
+          words: [],
+          hasWords: false,
         })
       } else if (shouldFallbackToRanges(meta)) {
         // Edge under-split (e.g. CJK space/comma separated sentences) — use
@@ -130,6 +161,8 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
             text,
             boundaryIndex,
             active: false,
+            words: [],
+            hasWords: false,
           })
         })
       } else {
@@ -147,6 +180,8 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
             text,
             boundaryIndex,
             active: false,
+            words: [],
+            hasWords: false,
           })
         })
       }
@@ -155,6 +190,42 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     result.sort((a, b) => a.segmentIndex - b.segmentIndex || a.at - b.at)
     for (let i = 0; i < result.length; i += 1) {
       result[i].sentenceIndex = i
+    }
+    // Attach word breakdown per sentence row, grouped by segment.
+    const grouped = new Map<number, MetadataRow[]>()
+    for (const row of result) {
+      const list = grouped.get(row.segmentIndex) ?? []
+      list.push(row)
+      grouped.set(row.segmentIndex, list)
+    }
+    for (const [segmentIndex, rows] of grouped) {
+      const meta = segmentMetaMap[segmentIndex]
+      if (!meta?.wordBoundaries || meta.wordBoundaries.length === 0) continue
+      const sortedWords = [...meta.wordBoundaries].sort((a, b) => a.at - b.at)
+      const cumulativeStart = cumulativeBySegment.get(segmentIndex) ?? 0
+      for (let idx = 0; idx < rows.length; idx += 1) {
+        const row = rows[idx]
+        const sentenceStartRel = row.offset - meta.baseOffset
+        const next = rows[idx + 1]
+        const sentenceEndRel = next ? next.offset - meta.baseOffset : meta.text.length
+        const filtered = sortedWords.filter(
+          wb => wb.offset >= sentenceStartRel && wb.offset < sentenceEndRel,
+        )
+        const words: MetadataWord[] = filtered.map((wb, wordIdx) => ({
+          segmentIndex: meta.index,
+          sentenceIndex: row.sentenceIndex,
+          wordIndex: wordIdx,
+          at: cumulativeStart + wb.at,
+          atInSegment: wb.at,
+          offset: meta.baseOffset + wb.offset,
+          offsetInSegment: wb.offset,
+          text: wb.text ?? '',
+          duration: wb.duration,
+          active: false,
+        }))
+        row.words = words
+        row.hasWords = words.length > 0
+      }
     }
     return result
   })
@@ -167,18 +238,24 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
         row =>
           row.text.toLowerCase().includes(query) ||
           String(row.offset).includes(query) ||
-          row.lang.toLowerCase().includes(query),
+          row.lang.toLowerCase().includes(query) ||
+          row.words.some(word => word.text.toLowerCase().includes(query) || String(word.offset).includes(query)),
       )
     }
     return rows
   })
 
-  const rows = $derived(
-    baseRows.map(row => ({
+  const rows = $derived.by(() => {
+    const activeWord = activeWordBoundary
+    return baseRows.map(row => ({
       ...row,
       active: row.segmentIndex === activeSeg && row.boundaryIndex === activeBoundaryIndex,
-    })),
-  )
+      words: row.words.map(word => ({
+        ...word,
+        active: !!activeWord && row.segmentIndex === activeSeg && word.offsetInSegment === activeWord.offset,
+      })),
+    }))
+  })
 
   const totalSentences = $derived(sortedRows.length)
 
