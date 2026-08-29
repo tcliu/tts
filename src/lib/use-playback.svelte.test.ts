@@ -15,6 +15,7 @@ import {
   usePlayback,
   type CodeEditorHandle,
   type PlaybackDeps,
+  type PlaybackHandle,
   type SegmentMeta,
 } from './use-playback.svelte'
 import type { SettingsHandle } from './use-settings.svelte'
@@ -1005,6 +1006,237 @@ describe('usePlayback segment language override', () => {
     playback.resetSession()
     flushSync()
     expect(playback.positionSegmentLang).toBe('')
+    dispose()
+  })
+})
+
+describe('usePlayback voice override during playback', () => {
+  beforeEach(() => {
+    AudioStub.instances.length = 0
+    vi.stubGlobal('Audio', AudioStub)
+    URL.createObjectURL = vi.fn(() => `blob:test-${Math.random()}`)
+    URL.revokeObjectURL = vi.fn()
+  })
+
+  const DEFAULT_VOICE = 'en-US-AriaNeural'
+  const OVERRIDE_VOICE = 'en-US-GuyNeural'
+
+  // The override voice times the same words differently: 'paragraph' starts
+  // at 0.7s instead of 0.5s and the spoken range runs to 2s instead of 1.5s.
+  const OVERRIDE_BOUNDARIES: TtsBoundary[] = [
+    { offset: 0, at: 0, text: 'First' },
+    { offset: 6, at: 0.7, text: 'paragraph' },
+    { offset: 16, at: 1.5, text: 'here.' },
+  ]
+
+  let releaseOverrideSynthesis: (() => void) | null = null
+
+  function mockSynthesisPerVoice({ holdOverride = false }: { holdOverride?: boolean } = {}) {
+    releaseOverrideSynthesis = null
+    vi.mocked(getCachedSynthesis).mockImplementation(async (_text: string, voiceId: string) => {
+      if (voiceId === OVERRIDE_VOICE && holdOverride) {
+        await new Promise<void>(resolve => {
+          releaseOverrideSynthesis = resolve
+        })
+      }
+      return {
+        blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+        boundaries: [],
+        wordBoundaries: voiceId === OVERRIDE_VOICE ? OVERRIDE_BOUNDARIES : FIRST_SEGMENT_BOUNDARIES,
+        spokenStart: 0,
+        spokenEnd: voiceId === OVERRIDE_VOICE ? 2 : 1.5,
+      }
+    })
+    vi.mocked(getCachedSynthesis).mockClear()
+  }
+
+  function createSpyDeps(content = 'First paragraph here.\n\nSecond paragraph here.') {
+    const deps: PlaybackDeps = {
+      settings: {
+        locale: 'en',
+        speed: 1,
+        synthesisConcurrency: 2,
+        canPlay: true,
+        content,
+        resolveVoiceForSegment: () => ({ edge: DEFAULT_VOICE, name: 'Aria', gender: 'Female' }),
+      } as unknown as SettingsHandle,
+      getEditor: createEditor,
+      getCacheScopeId: () => 'doc-a',
+      prepareForPlayback: () => {},
+    }
+    return { deps, content }
+  }
+
+  // Only playback-audio stubs ever play; duration-reading stubs stay paused.
+  function playingAudio(): AudioStub[] {
+    return AudioStub.instances.filter(item => !item.paused)
+  }
+
+  async function startPlaybackAndGetAudio(playback: PlaybackHandle) {
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playingAudio().length).toBeGreaterThan(0))
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    return { finished, audio: playingAudio()[playingAudio().length - 1] }
+  }
+
+  it('pauses, resynthesizes with the new voice, and resumes from the same word', async () => {
+    mockSynthesisPerVoice()
+    const { deps, content } = createSpyDeps()
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments(content)
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    const { finished, audio } = await startPlaybackAndGetAudio(playback)
+    audio.currentTime = 0.6
+
+    await playback.overrideSegmentVoice(0, OVERRIDE_VOICE)
+
+    expect(getCachedSynthesis).toHaveBeenCalledWith(segments[0].text, OVERRIDE_VOICE, 1, undefined, 'doc-a')
+    expect(playback.effectiveVoiceEdge('en')).toBe(OVERRIDE_VOICE)
+    // 'paragraph' (offset 6) starts at 0.7s in the override voice's timing.
+    await vi.waitFor(() => expect(playback.playbackElapsed).toBeCloseTo(0.7, 5))
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    // The rest of the session synthesizes with the override voice too.
+    await vi.waitFor(() =>
+      expect(getCachedSynthesis).toHaveBeenCalledWith(
+        segments[1].text,
+        OVERRIDE_VOICE,
+        1,
+        expect.any(AbortSignal),
+        'doc-a',
+      ),
+    )
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
+  it('finishes instead of resuming when the stop lands at the spoken end', async () => {
+    mockSynthesisPerVoice()
+    const { deps, content } = createSpyDeps('First paragraph here.')
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments(content)
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    const { finished, audio } = await startPlaybackAndGetAudio(playback)
+    audio.currentTime = 1.5
+
+    await playback.overrideSegmentVoice(0, OVERRIDE_VOICE)
+
+    expect(playback.isPlaybackEnded).toBe(true)
+    expect(playback.isPlaying).toBe(false)
+    expect(getCachedSynthesis).not.toHaveBeenCalledWith(segments[0].text, OVERRIDE_VOICE, 1, undefined, 'doc-a')
+    expect(playback.effectiveVoiceEdge('en')).toBe(OVERRIDE_VOICE)
+
+    await finished
+    dispose()
+  })
+
+  it('ignores a pick of the already-active voice during playback', async () => {
+    mockSynthesisPerVoice()
+    const { deps } = createSpyDeps('First paragraph here.')
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments('First paragraph here.')
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    const { finished, audio } = await startPlaybackAndGetAudio(playback)
+    const audioCount = AudioStub.instances.length
+
+    await playback.overrideSegmentVoice(0, DEFAULT_VOICE)
+
+    await Promise.resolve()
+    expect(AudioStub.instances.length).toBe(audioCount)
+    expect(playingAudio()).toEqual([audio])
+    expect(playback.isPlaying).toBe(true)
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
+  it('remaps the paused resume time onto the new voice timing', async () => {
+    mockSynthesisPerVoice()
+    const { deps, content } = createSpyDeps('First paragraph here.')
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments(content)
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    playback.seekTo(0.6)
+    flushSync()
+    expect(playback.playbackElapsed).toBeCloseTo(0.6, 5)
+
+    await playback.overrideSegmentVoice(0, OVERRIDE_VOICE)
+
+    // 'paragraph' starts at 0.7s in the override voice's timing.
+    expect(playback.playbackElapsed).toBeCloseTo(0.7, 5)
+
+    // The next Play resumes at the remapped word position.
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    await vi.waitFor(() => expect(playback.playbackElapsed).toBeCloseTo(0.7, 5))
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
+  it('gates Play and abandons the resume when stopped while switching', async () => {
+    mockSynthesisPerVoice({ holdOverride: true })
+    const { deps } = createSpyDeps('First paragraph here.')
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments('First paragraph here.')
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    const { audio } = await startPlaybackAndGetAudio(playback)
+    audio.currentTime = 0.6
+
+    const switched = playback.overrideSegmentVoice(0, OVERRIDE_VOICE)
+    await vi.waitFor(() => expect(playback.voiceSwitching).toBe(true))
+    expect(playback.isPlaying).toBe(false)
+
+    // Play during the switch's synthesis must not start a second session.
+    await playback.startPlayback()
+    expect(playback.isPlaying).toBe(false)
+
+    // Seek and row-play are inert during the switch's synthesis too; the
+    // pending resume must not be clobbered or raced.
+    const elapsedDuringSwitch = playback.playbackElapsed
+    await playback.seekTo(0.2)
+    await playback.playFromSegment(0)
+    expect(playback.playbackElapsed).toBe(elapsedDuringSwitch)
+    expect(playback.isPlaying).toBe(false)
+
+    // Stop during the switch abandons the pending resume entirely.
+    playback.stopPlayback()
+    flushSync()
+    releaseOverrideSynthesis?.()
+    await switched
+    await Promise.resolve()
+    expect(playback.voiceSwitching).toBe(false)
+    expect(playback.isPlaying).toBe(false)
+    expect(playingAudio()).toEqual([])
+    expect(playback.effectiveVoiceEdge('en')).toBe(OVERRIDE_VOICE)
+    dispose()
+  })
+
+  it('surfaces a failed paused voice change and keeps the previous voice', async () => {
+    mockSynthesisPerVoice()
+    const { deps } = createSpyDeps('First paragraph here.')
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments('First paragraph here.')
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0]))
+
+    vi.mocked(getCachedSynthesis).mockRejectedValueOnce(new Error('synthesis down'))
+    await playback.overrideSegmentVoice(0, OVERRIDE_VOICE)
+
+    expect(playback.statusMessage).toBe('Playback failed.')
+    expect(playback.effectiveVoiceEdge('en')).toBe(DEFAULT_VOICE)
     dispose()
   })
 })

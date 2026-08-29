@@ -707,7 +707,7 @@
           accent="cyan"
           size="sm"
           ariaPressed={playback.isPlaying}
-          disabled={playback.isPlaying ? false : !settings.canPlay}
+          disabled={playback.voiceSwitching || (playback.isPlaying ? false : !settings.canPlay)}
           ariaLabel={playback.isPlaying ? text.stop : text.playback}
           onClick={playback.isPlaying ? playback.stopPlayback : playback.startPlayback}
           className="px-2.5 py-1.5 text-sm">
@@ -889,7 +889,7 @@
                       filterable
                       filterPlaceholder={text.voiceSearch}
                       emptyText={text.noMatchingVoices}
-                      disabled={playback.isPlaying || voiceChipOptions.length === 0}
+                      disabled={voiceChipOptions.length === 0}
                       onSelect={(v) => void handleVoiceChipSelect(v)} />
                   {/if}
                   {#if metadata.totalSentences > 0}

@@ -82,6 +82,7 @@ export interface PlaybackHandle {
   readonly totalDuration: number
   readonly statusMessage: string
   readonly metadataAvailable: boolean
+  readonly voiceSwitching: boolean
   readonly segments: Record<number, SegmentMeta>
   readonly sessionSource: string
   initStatus: () => void
@@ -127,7 +128,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let playbackDuration = $state(0)
   let statusMessage = $state(UI_TEXT[deps.settings.locale].ready)
 
-  let lastStatusReason = $state<'ready' | 'stopped' | 'finished' | 'error'>('ready')
+  let lastStatusReason = $state<'ready' | 'stopped' | 'switching' | 'finished' | 'error'>('ready')
   let playbackEnded = $state(false)
   let currentController: PlaybackController | null = null
   let currentAudio = $state<HTMLAudioElement | null>(null)
@@ -160,6 +161,14 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   // the session plays with it, but the user's persisted default voice setting
   // is never touched. Cleared when the session is reset or re-primed.
   let sessionVoiceSelections = $state<Map<string, string>>(new Map())
+
+  // True while a mid-playback voice switch has paused playback and is still
+  // synthesizing the current segment for the new voice. Gates Play so a
+  // second playback loop cannot race the pending resume.
+  let voiceSwitching = $state(false)
+  // Bumped by every stop/session invalidation; a pending switch resume whose
+  // generation no longer matches is abandoned.
+  let voiceSwitchGeneration = 0
 
   function effectiveSegmentLang(index: number): string {
     if (index < 0 || index >= sessionSegments.length) return ''
@@ -225,6 +234,10 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       statusMessage = strings.playbackStopped
       return
     }
+    if (lastStatusReason === 'switching') {
+      statusMessage = strings.voiceSwitching
+      return
+    }
     if (lastStatusReason === 'finished') {
       statusMessage = strings.playbackFinished
       return
@@ -261,6 +274,10 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   function stopPlayback() {
+    // Invalidate a pending voice-switch resume: a Stop (or any path that
+    // tears playback down) during the switch's synthesis must leave playback
+    // stopped instead of restarting it.
+    voiceSwitchGeneration += 1
     if (pendingSelectionSeekTimer) {
       clearTimeout(pendingSelectionSeekTimer)
       pendingSelectionSeekTimer = null
@@ -418,6 +435,44 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       else break
     }
     return candidate ?? 0
+  }
+
+  // Maps a spoken position inside a segment to a segment-relative character
+  // offset so it can be re-anchored onto another voice's word boundaries:
+  // voices time the same text differently, so a raw elapsed time cannot
+  // survive a voice change.
+  function charOffsetAtPosition(index: number, at: number): number {
+    const meta = segmentMetaMap[index]
+    const segment = sessionSegments[index]
+    if (!meta || !segment) return 0
+    const active = activeBoundaryAt(highlightBoundaries(meta, []), at)
+    if (active?.text) {
+      return active.offset
+    }
+    const duration = segmentDurationAt(index)
+    if (duration > 0) {
+      return Math.min(segment.text.length, Math.round((at / duration) * segment.text.length))
+    }
+    return 0
+  }
+
+  // Inverse of charOffsetAtPosition: anchors a segment-relative character
+  // offset onto the segment's current boundaries, snapping to the word start
+  // at or before the offset (ratio interpolation without boundaries).
+  function resumeTimeForCharOffset(index: number, charOffset: number): number {
+    const meta = segmentMetaMap[index]
+    const segment = sessionSegments[index]
+    if (!meta || !segment) return 0
+    const boundaries = highlightBoundaries(meta, [])
+    if (boundaries.length > 0) {
+      const absoluteBase = sessionOffset + segment.indexStart
+      return locateCaretBoundaryAtOrBefore(boundaries, absoluteBase, absoluteBase + charOffset)
+    }
+    const duration = segmentDurationAt(index)
+    if (duration > 0) {
+      return (charOffset / Math.max(1, segment.text.length)) * duration
+    }
+    return 0
   }
 
   async function seekToSelectionRange(range: { from: number; to: number }) {
@@ -902,8 +957,8 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         const absoluteBase = playbackOffset + segment.indexStart
         let result = await launch(index)
         // A queued task can be superseded by a language or voice override made
-        // while playback is paused; rebuild it so the segment plays audio that
-        // matches its current language and voice.
+        // while playback is paused or switching; rebuild it so the segment
+        // plays audio that matches its current language and voice.
         while (!controller.cancelled && result.generation !== (taskGeneration.get(index) ?? 0)) {
           tasks.delete(index)
           result = await launch(index)
@@ -1082,7 +1137,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
 
   async function startPlayback() {
     const editor = deps.getEditor()
-    if (!deps.settings.canPlay || !editor || isPlaying) {
+    if (!deps.settings.canPlay || !editor || isPlaying || voiceSwitching) {
       return
     }
     const content = deps.settings.content
@@ -1105,6 +1160,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   async function seekTo(elapsed: number) {
+    // Inert while a voice switch owns playback: a paused seek here would be
+    // clobbered by the switch's pending resume.
+    if (voiceSwitching) return
     const position = locatePlaybackPosition(elapsed)
     if (!position) return
     if (isPlaying) {
@@ -1117,6 +1175,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   async function playFromSegment(index: number, charOffset?: number) {
+    // Inert while a voice switch owns playback: starting a session here would
+    // race the switch's pending resume for the same segment.
+    if (voiceSwitching) return
     if (sessionSegments.length === 0) {
       return
     }
@@ -1186,6 +1247,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   function clearSegments() {
+    // A cleared metadata map invalidates any pending voice-switch resume that
+    // still expects to re-anchor onto the old segment timings.
+    voiceSwitchGeneration += 1
     segmentMetaMap = {}
     synthesizedCount = 0
     currentSegmentIndex = 0
@@ -1234,6 +1298,10 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   function onLocaleChanged(next: UiLocale) {
     if (lastStatusReason === 'stopped') {
       statusMessage = UI_TEXT[next].playbackStopped
+      return
+    }
+    if (lastStatusReason === 'switching') {
+      statusMessage = UI_TEXT[next].voiceSwitching
       return
     }
     if (lastStatusReason === 'finished') {
@@ -1292,16 +1360,105 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     await resynthesizeSegment(index, edge)
   }
 
-  async function overrideSegmentVoice(index: number, voiceEdge: string): Promise<void> {
-    if (index < 0 || index >= sessionSegments.length) return
-    // Record the choice as a session-only voice override for the segment's
-    // language so the remaining playback uses it too; the user's persisted
-    // default voice setting is left untouched.
-    const languageCode = toWrittenLang(effectiveSegmentLang(index))
+  // Serialized voice switches: a pick landing while an earlier switch is
+  // still synthesizing queues behind it, and the resumed playback resolves
+  // the segment's voice through the latest recorded override.
+  let voiceSwitchChain: Promise<void> = Promise.resolve()
+
+  function recordSessionVoiceOverride(languageCode: string, voiceEdge: string) {
     const next = new Map(sessionVoiceSelections)
     next.set(languageCode, voiceEdge)
     sessionVoiceSelections = next
-    await resynthesizeSegment(index, voiceEdge)
+  }
+
+  async function overrideSegmentVoice(index: number, voiceEdge: string): Promise<void> {
+    if (index < 0 || index >= sessionSegments.length) return
+    // Picking the voice that already applies is a no-op: re-running the
+    // switch would needlessly restart the playing audio.
+    if (resolveEffectiveVoice(effectiveSegmentLang(index))?.edge === voiceEdge) return
+    const run = voiceSwitchChain.then(() => applyVoiceOverride(index, voiceEdge))
+    voiceSwitchChain = run.catch(() => {})
+    await run
+  }
+
+  async function applyVoiceOverride(index: number, voiceEdge: string): Promise<void> {
+    if (index < 0 || index >= sessionSegments.length) return
+    if (isPlaying) {
+      await switchVoiceDuringPlayback(Math.max(0, currentSegmentIndex - 1), voiceEdge)
+      return
+    }
+    // Paused: remap the stored resume time onto the new voice's timing when
+    // the changed segment is the resume target, so the next Play starts at
+    // the same word instead of at a stale old-voice time.
+    const remapResume = index === resumeSegmentIndex && resumeSegmentTime > 0
+    const resumeCharOffset = remapResume ? charOffsetAtPosition(index, resumeSegmentTime) : null
+    try {
+      await resynthesizeSegment(index, voiceEdge)
+    } catch (error) {
+      console.error(error)
+      lastStatusReason = 'error'
+      metadataAvailable = false
+      statusMessage = UI_TEXT[deps.settings.locale].playbackFailed
+      return
+    }
+    // Record the override only after synthesis succeeded so a failed switch
+    // leaves the session resolving the previous voice.
+    recordSessionVoiceOverride(toWrittenLang(effectiveSegmentLang(index)), voiceEdge)
+    if (resumeCharOffset != null) {
+      const remapped = resumeTimeForCharOffset(index, resumeCharOffset)
+      resumeSegmentTime = remapped
+      playbackElapsed = remapped
+    }
+  }
+
+  async function switchVoiceDuringPlayback(playIndex: number, voiceEdge: string) {
+    // Pause at the current word, resynthesize the segment for the new voice,
+    // then resume from the same word once synthesis is ready. The word
+    // travels as a character offset because voices time the same text
+    // differently; the old voice's elapsed time is meaningless to it.
+    voiceSwitching = true
+    let generation = -1
+    try {
+      const segment = sessionSegments[playIndex]
+      if (!segment) return
+      const languageCode = toWrittenLang(effectiveSegmentLang(playIndex))
+      const audio = currentAudio
+      const at = audio
+        ? Math.max(0, audio.currentTime - (segmentMetaMap[playIndex]?.spokenStart ?? 0))
+        : playbackElapsed
+      const charOffset = charOffsetAtPosition(playIndex, at)
+      stopPlayback()
+      recordSessionVoiceOverride(languageCode, voiceEdge)
+      if (playbackEnded) {
+        // The stop landed at (or past) the spoken end: the segment finished,
+        // so there is nothing to resume and the override applies from the
+        // next Play.
+        return
+      }
+      lastStatusReason = 'switching'
+      statusMessage = UI_TEXT[deps.settings.locale].voiceSwitching
+      generation = ++voiceSwitchGeneration
+      await resynthesizeSegment(playIndex, voiceEdge)
+      if (generation !== voiceSwitchGeneration) {
+        // A Stop, reset, or session invalidation landed while synthesizing:
+        // leave playback where that path left it.
+        return
+      }
+      const targetAt = resumeTimeForCharOffset(playIndex, charOffset)
+      setResumePosition(playIndex, targetAt, true)
+      // Fire-and-forget: the switch is applied once playback has restarted;
+      // runPlayback settles itself on finish, cancellation, or error.
+      void runPlayback(sessionSegments, sessionOffset, playIndex, targetAt)
+    } catch (error) {
+      console.error(error)
+      if (generation === voiceSwitchGeneration) {
+        lastStatusReason = 'error'
+        metadataAvailable = false
+        statusMessage = UI_TEXT[deps.settings.locale].playbackFailed
+      }
+    } finally {
+      voiceSwitching = false
+    }
   }
 
   return {
@@ -1370,6 +1527,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     },
     get metadataAvailable() {
       return metadataAvailable
+    },
+    get voiceSwitching() {
+      return voiceSwitching
     },
     setMetadataAvailability(value: boolean) {
       metadataAvailable = value

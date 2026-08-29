@@ -68,6 +68,17 @@ coherent system instead of a new parallel one.
 - A metadata pipeline records per-sentence boundaries for the session. Editing
   the content invalidates it and re-synthesizes segments in a bounded,
   cancellable background pass to refresh boundaries.
+- The session keeps two override maps: per-segment language overrides and
+  per-language voice overrides. Both live only in the active session (cleared
+  when the session is re-primed or reset), never touch the persisted settings,
+  and the pipeline resolves each segment's voice at launch time through them.
+- Changing the voice model during playback pauses at the current word: the
+  spoken position maps to a character offset through the old voice's word
+  boundaries (duration-ratio interpolation when boundaries are missing), the
+  segment resynthesizes with the new voice, and playback resumes from the same
+  word mapped onto the new voice's boundaries. A stop landing at the spoken end
+  finishes playback instead of resuming; a paused voice change remaps the
+  stored resume time the same way so the next Play starts at the same word.
 
 ## Documents model
 
