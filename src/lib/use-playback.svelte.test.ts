@@ -1239,4 +1239,37 @@ describe('usePlayback voice override during playback', () => {
     expect(playback.effectiveVoiceEdge('en')).toBe(DEFAULT_VOICE)
     dispose()
   })
+
+  it('takes the re-synthesized duration when merging into same-text boundary-less meta', async () => {
+    // A boundary-less segment synthesized ahead (same text, stale duration)
+    // must not keep its old voice timing when the pipeline re-synthesizes it:
+    // the fresh duration drives totalDuration and the row time.
+    vi.mocked(getCachedSynthesis).mockImplementation(async () => ({
+      blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+      boundaries: [],
+      wordBoundaries: [],
+      spokenStart: undefined,
+      spokenEnd: undefined,
+    }))
+    const { deps, content } = createSpyDeps('First paragraph here.\n\nSecond paragraph here.')
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments(content)
+    playback.primeSession(segments, 0)
+    playback.recordSegment(1, createSegmentMeta(1, segments[1], {
+      boundaries: [],
+      wordBoundaries: [],
+      spokenStart: undefined,
+      spokenEnd: undefined,
+      duration: 3,
+    }))
+
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.segments[1]?.duration).toBe(5))
+    // Segment 0 is freshly synthesized (duration 5 from the stub), segment 1
+    // must reflect the re-synthesized duration, not the stale 3.
+    expect(playback.totalDuration).toBeCloseTo(10, 5)
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
 })
