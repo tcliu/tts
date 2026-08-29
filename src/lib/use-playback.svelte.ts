@@ -925,13 +925,16 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           if (!compatible) {
             recordSegment(index, base)
           } else {
+            // Fresh synthesis wins: the base already reflects the segment's
+            // current language/voice, so a boundary-less re-synthesis must
+            // not resurrect the previous voice's timing.
             recordSegment(index, {
               ...existingMeta,
               ...base,
               boundaries: base.boundaries.length > 0 ? base.boundaries : existingMeta.boundaries,
               wordBoundaries:
                 (base.wordBoundaries?.length ?? 0) > 0 ? base.wordBoundaries : (existingMeta.wordBoundaries ?? []),
-              duration: existingMeta.duration ?? base.duration,
+              duration: base.duration ?? existingMeta.duration,
               spokenStart: base.spokenStart ?? existingMeta.spokenStart,
               spokenEnd: base.spokenEnd ?? existingMeta.spokenEnd,
             })
