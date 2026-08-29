@@ -34,6 +34,12 @@ describe('splitTtsSegments', () => {
       { text: '你好', lang: 'zh', indexStart: 13, indexEnd: 14 },
     ])
   })
+
+  it('keeps single newlines inside a chinese segment as sentence-separating spaces', () => {
+    expect(splitTtsSegments('這擁抱極美好\n愛有千斤重')).toEqual([
+      { text: '這擁抱極美好 愛有千斤重', lang: 'zh', indexStart: 0, indexEnd: 11 },
+    ])
+  })
 })
 
 describe('splitHighlightRanges', () => {
@@ -61,6 +67,47 @@ describe('splitHighlightRanges', () => {
       { start: 0, end: 13, lang: 'zh' },
       { start: 13, end: 25, lang: 'zh' },
     ])
+  })
+
+  it('splits space-separated chinese sentences into one range per line', () => {
+    expect(splitHighlightRanges('塔尖仍舊記得 這擁抱極美好')).toEqual([
+      { start: 0, end: 7, lang: 'zh' },
+      { start: 7, end: 13, lang: 'zh' },
+    ])
+  })
+
+  it('splits comma-separated chinese clauses into separate ranges', () => {
+    expect(splitHighlightRanges('你好，世界')).toEqual([
+      { start: 0, end: 3, lang: 'zh' },
+      { start: 3, end: 5, lang: 'zh' },
+    ])
+  })
+
+  it('keeps an english comma clause as one range', () => {
+    expect(splitHighlightRanges('Hello, world')).toEqual([{ start: 0, end: 12, lang: 'en' }])
+  })
+
+  it('merges a leading bracket-only range into the following range', () => {
+    expect(splitHighlightRanges('【Now')).toEqual([{ start: 0, end: 4, lang: 'en' }])
+  })
+
+  it('merges a trailing bracket-only range into the preceding range', () => {
+    expect(splitHighlightRanges('分流做好。 」')).toEqual([{ start: 0, end: 7, lang: 'zh' }])
+  })
+})
+
+describe('detectTtsLanguage via segments', () => {
+  it('splits a chinese name followed by an english name into zh and en segments', () => {
+    expect(splitTtsSegments('跨境私家車車主Ronny：')).toEqual([
+      { text: '跨境私家車車主', lang: 'zh', indexStart: 0, indexEnd: 6 },
+      { text: 'Ronny：', lang: 'en', indexStart: 7, indexEnd: 12 },
+    ])
+  })
+
+  it('keeps short accented foreign words out of the ascii-name shortcut', () => {
+    // The shortcut must only fire when the non-ASCII chars are CJK punctuation;
+    // "café" keeps reaching the foreign scorer (franc → vi), not 'en'.
+    expect(splitTtsSegments('café')).toEqual([{ text: 'café', lang: 'vi', indexStart: 0, indexEnd: 3 }])
   })
 })
 

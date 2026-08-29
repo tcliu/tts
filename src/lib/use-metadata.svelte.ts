@@ -2,6 +2,12 @@ import type { PlaybackHandle, CodeEditorHandle } from './use-playback.svelte'
 import type { SettingsHandle } from './use-settings.svelte'
 import { mergeBracketBoundaries, shouldFallbackToRanges } from './bracket-merge'
 
+// Interpolated sentence start time for a highlight range: linear by character
+// position across the segment's spoken duration.
+function syntheticRangeAt(range: { start: number }, textLength: number, segDuration: number): number {
+  return segDuration > 0 ? (range.start / Math.max(1, textLength)) * segDuration : 0
+}
+
 export interface MetadataRow {
   segmentIndex: number
   sentenceIndex: number
@@ -68,8 +74,7 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
       const segDuration = segmentDuration(meta)
       let idx = -1
       for (let i = 0; i < meta.ranges.length; i += 1) {
-        const syntheticAt = segDuration > 0 ? (meta.ranges[i].start / Math.max(1, meta.text.length)) * segDuration : 0
-        if (syntheticAt <= playback.playbackElapsed) idx = i
+        if (syntheticRangeAt(meta.ranges[i], meta.text.length, segDuration) <= playback.playbackElapsed) idx = i
         else break
       }
       return idx
@@ -114,13 +119,12 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
         // timing so the Info panel shows 2 rows instead of 1.
         // Ranges are already bracket-merged in splitHighlightRanges.
         meta.ranges.forEach((range, boundaryIndex) => {
-          const syntheticAt = segDuration > 0 ? (range.start / Math.max(1, meta.text.length)) * segDuration : 0
           const raw = meta.text.slice(range.start, range.end)
           const text = raw.trim() !== '' ? raw.trim() : raw
           result.push({
             segmentIndex: meta.index,
             sentenceIndex: 0,
-            at: cumulative + syntheticAt,
+            at: cumulative + syntheticRangeAt(range, meta.text.length, segDuration),
             offset: meta.baseOffset + range.start,
             lang: range.lang ?? meta.lang,
             text,

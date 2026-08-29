@@ -108,7 +108,7 @@
         <table class="w-full border-collapse text-sm">
           <thead class="sticky top-0 z-10 bg-slate-950">
             <tr class="text-left text-xs text-slate-400">
-              <th scope="col" class="px-2 py-1 font-medium">{text.tableSentence ?? text.tableSeg}</th>
+              <th scope="col" class="px-2 py-1 font-medium">{text.tableSentence}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableLang}</th>

@@ -100,4 +100,98 @@ describe('useMetadata rows', () => {
       dispose()
     }
   })
+
+  it('falls back to highlight-range rows when Edge under-splits sentences', () => {
+    // One Edge boundary for two highlight ranges (e.g. CJK sentences separated
+    // by a space): the panel must synthesize one row per range with
+    // interpolated times.
+    const text = '塔尖仍舊記得 這擁抱極美好'
+    const segments: Record<number, SegmentMeta> = {
+      0: segment(0, text, {
+        lang: 'zh',
+        boundaries: [{ offset: 0, at: 0, text }],
+        duration: 2,
+        spokenStart: 0,
+        spokenEnd: 2,
+      }),
+    }
+    const playback = {
+      isPlaying: false,
+      currentSegmentIndex: 0,
+      playbackElapsed: 0,
+      totalElapsed: 0,
+      segments,
+    } as unknown as PlaybackHandle
+
+    const { metadata, dispose } = createMetadata(playback)
+    try {
+      expect(metadata.rows).toHaveLength(2)
+      expect(metadata.rows.map(row => row.text)).toEqual(['塔尖仍舊記得', '這擁抱極美好'])
+      expect(metadata.rows.map(row => row.offset)).toEqual([0, 7])
+      // 7/13 of the 2s span, interpolated by character position.
+      expect(metadata.rows.map(row => row.at)[1]).toBeCloseTo((7 / 13) * 2, 5)
+      expect(metadata.totalSentences).toBe(2)
+      expect(metadata.positionSentenceIndex).toBe(0)
+    } finally {
+      dispose()
+    }
+  })
+
+  it('merges bracket-only boundaries into their neighbouring row', () => {
+    const segments: Record<number, SegmentMeta> = {
+      0: segment(0, '【Now 新聞', {
+        boundaries: [
+          { offset: 0, at: 0, text: '【' },
+          { offset: 1, at: 0.14, text: 'Now' },
+          { offset: 4, at: 0.55, text: '新聞' },
+        ],
+        duration: 2,
+      }),
+    }
+    const playback = {
+      isPlaying: false,
+      currentSegmentIndex: 0,
+      playbackElapsed: 0,
+      totalElapsed: 0,
+      segments,
+    } as unknown as PlaybackHandle
+
+    const { metadata, dispose } = createMetadata(playback)
+    try {
+      expect(metadata.rows.map(row => row.text)).toEqual(['【Now', '新聞'])
+      expect(metadata.rows.map(row => row.at)).toEqual([0, 0.55])
+      expect(metadata.totalSentences).toBe(2)
+    } finally {
+      dispose()
+    }
+  })
+
+  it('advances the sentence counter with total elapsed time', () => {
+    const segments: Record<number, SegmentMeta> = {
+      0: segment(0, 'First sentence.', {
+        boundaries: [{ offset: 0, at: 0, text: 'First sentence.' }],
+        duration: 2,
+      }),
+      1: segment(1, 'Second sentence.', {
+        boundaries: [{ offset: 0, at: 0, text: 'Second sentence.' }],
+        duration: 2,
+      }),
+    }
+    const playback = {
+      isPlaying: false,
+      currentSegmentIndex: 0,
+      playbackElapsed: 0,
+      totalElapsed: 3,
+      segments,
+    } as unknown as PlaybackHandle
+
+    const { metadata, dispose } = createMetadata(playback)
+    try {
+      expect(metadata.totalSentences).toBe(2)
+      // 3s lands inside the second segment (first spans 0-2s).
+      expect(metadata.positionSentenceIndex).toBe(1)
+    } finally {
+      dispose()
+    }
+  })
 })

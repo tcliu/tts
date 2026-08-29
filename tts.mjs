@@ -197,8 +197,17 @@ function detectTtsLanguage(text) {
   if (DEVANAGARI_RE.test(text)) return 'hi';
   if (/[\u0400-\u052f]/.test(text)) return 'ru';
   if (/[^\x00-\x7F]/.test(text)) {
+    // Short ASCII name whose only non-ASCII chars are CJK punctuation or
+    // fullwidth forms (e.g. "Ronny：") should remain English; accented words
+    // (e.g. "café") must still reach the foreign-language scoring below.
+    const nonAscii = text.replace(/[\x00-\x7F]/g, '');
     const asciiCore = text.replace(/[^\x00-\x7F]/g, '').trim();
-    if (asciiCore && asciiCore.length < 10 && /^[A-Za-z0-9]+(?:[ \-_'][A-Za-z0-9]+)*$/.test(asciiCore)) {
+    if (
+      asciiCore.length > 0 &&
+      asciiCore.length < 10 &&
+      /^[\u3000-\u303f\uff00-\uffef]+$/.test(nonAscii) &&
+      /^[A-Za-z0-9]+(?:[ \-_'][A-Za-z0-9]+)*$/.test(asciiCore)
+    ) {
       return 'en';
     }
     let foreignBest = 0;

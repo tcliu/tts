@@ -98,10 +98,13 @@
 ## Metadata panel
 
 - An Info button toggles a metadata panel.
-- The panel lists each spoken sentence boundary for the current segment during
-  playback as a table of columns.
-- Columns are segment, time, offset, language, and text; the spoken row is
-  highlighted while playing.
+- The panel lists each spoken sentence for the current segment during playback
+  as a table of columns; the row count equals the number of sentences, not
+  segments.
+- Columns are sentence, time, offset, language, and text; the spoken row is
+  highlighted while playing. When Edge under-splits a segment (e.g. CJK text
+  separated by spaces or commas), the panel synthesizes one row per highlight
+  range with interpolated timing so each sentence still appears on its own row.
 - The panel is empty before any playback.
 - The panel's column headers are localized with the rest of the interface.
 - Activating a row (pointer or keyboard) replays the session starting from that
