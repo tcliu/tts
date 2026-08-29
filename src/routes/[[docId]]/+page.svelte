@@ -892,9 +892,9 @@
                       disabled={playback.isPlaying || voiceChipOptions.length === 0}
                       onSelect={(v) => void handleVoiceChipSelect(v)} />
                   {/if}
-                  {#if playback.totalSegments > 0}
+                  {#if metadata.totalSentences > 0}
                     <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-200">
-                      {`${playback.positionSegmentIndex + 1}/${playback.totalSegments}`}
+                      {`${metadata.positionSentenceIndex + 1}/${metadata.totalSentences}`}
                     </span>
                   {/if}
                 </div>

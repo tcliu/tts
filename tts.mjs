@@ -69,8 +69,8 @@ const MAX_SEGMENT_LENGTH = 500;
 const HANGUL_RE = /[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]/;
 const SEGMENT_CJK_RE = /[\u1100-\u11ff\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u3040-\u30ff\u0400-\u052f]/;
 const SINGLE_CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af\u3130-\u318f]/;
-const PUNCT_KEEP_RE = /[.!?。！？…·•\-—─]/;
-const PUNCT_ONLY_RE = /^[.!?。！？…·•\-—─]+$/;
+const PUNCT_KEEP_RE = /[.!?。！？…·•\-—─，、,;；:：]/;
+const PUNCT_ONLY_RE = /^[.!?。！？…·•\-—─，、,;；:：]+$/;
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 const DEVANAGARI_RE = /[\u0900-\u097F]/;
 const BENGALI_RE = /[\u0980-\u09FF]/;
@@ -93,9 +93,9 @@ const HEBREW_RE = /[\u0590-\u05FF]/;
 const ARMENIAN_RE = /[\u0530-\u058F]/;
 
 const ENGLISH_WORDS = new Set([
-  'the', 'a', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'for', 'with', 'at', 'by', 'from',
+  'the', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'for', 'with', 'at', 'by', 'from',
   'is', 'are', 'was', 'were', 'be', 'been', 'being', 'that', 'this', 'these', 'those', 'it', 'its',
-  'as', 'we', 'you', 'they', 'he', 'she', 'i', 'me', 'my', 'your', 'our', 'their', 'have', 'has',
+  'as', 'we', 'you', 'they', 'he', 'she', 'me', 'my', 'your', 'our', 'their', 'have', 'has',
   'had', 'will', 'would', 'can', 'could', 'should', 'may', 'might', 'do', 'does', 'did', 'not',
   'no', 'yes', 'if', 'then', 'so', 'because', 'when', 'where', 'what', 'who', 'how', 'all', 'each',
   'every', 'some', 'any', 'most', 'more', 'much', 'many', 'one', 'two', 'first', 'good', 'time',
@@ -114,12 +114,12 @@ function englishWordScore(text) {
   return score;
 }
 const FOREIGN_WORDS = {
-  de: ['hallo', 'welt', 'danke', 'bitte', 'guten', 'tag', 'wie', 'geht', 'es', 'dir', 'und', 'der', 'die', 'das', 'ein', 'eine', 'ist', 'nicht', 'ich', 'du', 'wir', 'ja', 'nein', 'gut', 'schön', 'morgen', 'abend', 'danke', 'bitte'],
-  nl: ['hallo', 'wereld', 'dank', 'alsjeblieft', 'ja', 'nee', 'goedemorgen', 'goed', 'avond', 'dit', 'een', 'van', 'het', 'niet', 'wat', 'wij', 'jullie', 'zijn', 'wereld', 'dankje'],
+  de: ['hallo', 'welt', 'danke', 'bitte', 'guten', 'tag', 'wie', 'geht', 'es', 'dir', 'und', 'der', 'die', 'das', 'ein', 'eine', 'ist', 'nicht', 'ich', 'du', 'wir', 'ja', 'nein', 'gut', 'schön', 'morgen', 'abend'],
+  nl: ['hallo', 'wereld', 'dank', 'alsjeblieft', 'ja', 'nee', 'goedemorgen', 'goed', 'avond', 'dit', 'een', 'van', 'het', 'niet', 'wat', 'wij', 'jullie', 'zijn', 'dankje'],
   fr: ['bonjour', 'monde', 'merci', 'plait', 'plaît', 'oui', 'non', 'salut', 'comment', 'allez', 'vous', 'bien', 'au', 'revoir', 'pour', 'lui', 'les', 'enfants', 'ce', 'moment', 'calme', 'soir', 'offre', 'tous', 'la', 'opportunité', 'opportunite', 'chaque', 'matin', 'vent', 'souffle', 'doucement', 'demain', 'sera', 'autre', 'jour', 'rempli', 'nouvelles', 'possibilités', 'possibilites'],
   es: ['hola', 'mundo', 'gracias', 'favor', 'buenos', 'dias', 'días', 'como', 'cómo', 'estas', 'estás', 'bien', 'adios', 'adiós', 'hasta', 'luego', 'si', 'sí', 'no', 'durante', 'fin', 'semana', 'muchas', 'personas', 'todos', 'compartimos', 'mismo', 'deseo', 'fundamental', 'armonía', 'armonia', 'una', 'dulce', 'melodía', 'melodia', 'músico', 'musico', 'callejero', 'ofrece', 'oportunidad', 'respirar', 'profundamente', 'recordar', 'bello', 'vida'],
   it: ['ciao', 'mondo', 'grazie', 'prego', 'buongiorno', 'come', 'stai', 'bene', 'arrivederci', 'si', 'no', 'molte', 'persone', 'preferiscono', 'passeggiare', 'lungo', 'viali', 'serali', 'questo', 'luogo', 'incantevole', 'veramente', 'tesoro', 'inestimabile', 'chiunque', 'cerchi', 'pace'],
-  pt: ['olá', 'ola', 'mundo', 'obrigado', 'favor', 'sim', 'não', 'nao', 'bom', 'dia', 'como', 'está', 'esta', 'bem', 'adeus', 'até', 'ate', 'logo'],
+  pt: ['olá', 'ola', 'mundo', 'obrigado', 'favor', 'sim', 'não', 'nao', 'bom', 'dia', 'como', 'está', 'esta', 'bem', 'adeus', 'até', 'ate', 'logo', 'vida', 'lindo', 'fala', 'português', 'bonito'],
   pl: ['cześć', 'czesc', 'świat', 'swiat', 'dziękuję', 'dziekuje', 'proszę', 'prosze', 'tak', 'nie', 'witaj', 'dobry', 'dzień', 'dzien', 'jak', 'się', 'sie', 'masz'],
   tr: ['merhaba', 'dünya', 'dunya', 'teşekkür', 'tesekkur', 'lütfen', 'lutfen', 'evet', 'hayır', 'hayir', 'günaydın', 'gunaydin', 'nasıl', 'nasil', 'sin', 'iyi'],
   sv: ['hej', 'världen', 'varlden', 'tack', 'ja', 'nej', 'god', 'morgon', 'hur', 'mår', 'mar', 'du', 'bra'],
@@ -127,12 +127,39 @@ const FOREIGN_WORDS = {
   nb: ['hei', 'verden', 'takk', 'ja', 'nei', 'god', 'morgen', 'hvordan', 'har', 'du', 'det', 'bra'],
   fi: ['hei', 'maailma', 'kiitos', 'ole', 'hyvä', 'hyva', 'kyllä', 'kylla', 'ei', 'huomenta', 'miten', 'voit', 'hyvin'],
   cs: ['ahoj', 'svět', 'svet', 'děkuji', 'dekuji', 'prosím', 'prosim', 'ano', 'ne', 'dobrý', 'dobry', 'den', 'jak', 'se', 'máš', 'mas'],
-  sk: ['ahoj', 'svet', 'ďakujem', 'dakujem', 'prosím', 'prosim', 'áno', 'ano', 'nie', 'dobrý', 'dobry', 'den', 'ako', 'sa', 'máš', 'mas'],
+  sk: ['ahoj', 'svet', 'ďakujem', 'dakujem', 'prosím', 'prosim', 'áno', 'ano', 'nie', 'dobrý', 'dobry', 'den', 'ako', 'sa', 'máš', 'mas', 'všetkých', 'krásny', 'krásna'],
   hu: ['szia', 'világ', 'vilag', 'köszönöm', 'koszonom', 'kérem', 'kerem', 'igen', 'nem', 'jó', 'jo', 'reggelt', 'hogy', 'vagy', 'jól', 'jol'],
   ro: ['salut', 'lume', 'mulțumesc', 'multumesc', 'vă', 'va', 'rog', 'da', 'nu', 'bună', 'buna', 'ziua', 'ce', 'faci', 'bine'],
   id: ['halo', 'dunia', 'terima', 'kasih', 'ya', 'tidak', 'selamat', 'pagi', 'apa', 'kabar', 'baik'],
   ms: ['halo', 'dunia', 'terima', 'kasih', 'ya', 'tidak', 'selamat', 'pagi', 'apa', 'khabar', 'baik'],
   vi: ['xin', 'chào', 'chao', 'thế', 'the', 'giới', 'gioi', 'cảm', 'cam', 'ơn', 'on', 'vâng', 'vang', 'không', 'khong', 'tôi', 'toi', 'khỏe', 'khoe', 'bạn', 'ban'],
+  af: ['lekker', 'baie', 'nie', 'ek', 'jy', 'vandag', 'gaan', 'gedoen', 'dankie', 'afrikaans', 'hoe'],
+  az: ['və', 'necə', 'sən', 'mən', 'deyil', 'yox', 'salam', 'dünya', 'həyat', 'gözəl', 'insan'],
+  bs: ['šta', 'svijet', 'prijatelj', 'dobro', 'dobar', 'jutro', 'gdje', 'nek', 'zdravo'],
+  ca: ['món', 'avui', 'bonica', 'estàs', 'país', 'terra', 'llengua', 'som', 'fem', 'són', 'hola'],
+  cy: ['helo', 'byd', 'yma', 'mae', 'nhw', 'pob', 'dyn', 'cymru', 'dydd', 'eich', 'defnyddio', 'gallu'],
+  et: ['kuidas', 'täna', 'hommik', 'ilus', 'maailm', 'ole', 'ja', 'ei', 'kas', 'nad', 'on'],
+  fil: ['kumusta', 'magandang', 'umaga', 'ako', 'ikaw', 'siya', 'kami', 'kayo', 'sila', 'tayo', 'ang', 'ng'],
+  ga: ['dia', 'duit', 'domhan', 'maidin', 'mhaith', 'gaeilge', 'slán', 'tá', 'mé', 'bhfuil', 'ár', 'bhur', 'le', 'ag'],
+  gl: ['fermosa', 'hoxe', 'compostela', 'nosa', 'fala', 'terra', 'bonita', 'está', 'ola', 'mundo'],
+  hr: ['što', 'lijep', 'dobar', 'svijet', 'prijatelj', 'jutro', 'gdje', 'nek', 'zdravo'],
+  is: ['heimur', 'góðan', 'daginn', 'allir', 'ég', 'þú', 'hann', 'við', 'þið', 'eru', 'ekki', 'hvað', 'hver', 'frábær', 'vel', 'og'],
+  jv: ['donya', 'lan', 'urip', 'apik', 'kula', 'sampeyan', 'sliramu', 'inggih', 'punika', 'matur', 'nggeh'],
+  lt: ['sveikas', 'pasauli', 'ryto', 'metas', 'labas', 'rytas', 'kaip', 'jūs', 'yra', 'aš', 'tu', 'mes'],
+  lv: ['sveiks', 'pasaule', 'rītu', 'visiem', 'labu', 'labdien', 'rīts', 'kā', 'jūs', 'mēs', 'viņš'],
+  mt: ['dinja', 'ħajja', 'sabiħa', 'kulħadd', 'lil', 'jien', 'int', 'intom', 'huma', 'iva', 'kif', 'fejn', 'sbieħ', 'tajba'],
+  sl: ['zdravo', 'lep', 'lepa', 'dober', 'jutro', 'vsi', 'kako', 'so', 'za', 'vse'],
+  sq: ['përshëndetje', 'botë', 'dhe', 'jetë', 'bukur', 'unë', 'janë', 'mirë', 'ditë'],
+  su: ['jeung', 'kahirupan', 'éndah', 'abdi', 'anjeun', 'urang', 'hidep', 'sami', 'kumaha', 'sadayana'],
+  sw: ['hujambo', 'maisha', 'mazuri', 'sana', 'habari', 'mzuri', 'safi', 'nzuri', 'jambo', 'karibu', 'asante'],
+  uz: ['salom', 'dunyo', 'va', 'hayot', 'juda', 'chiroyli', 'qanday', 'yaxshi'],
+  ne: ['नेपाल', 'काठमाडौं', 'हाम्रो', 'तपाईं', 'माया'],
+  sr: ['zdravo', 'svijet', 'prijatelj', 'dobro', 'jutro', 'gdje', 'nek', 'šta'],
+  mk: ['zdravo', 'svet', 'prijatel', 'dobar', 'den', 'dobro', 'jutro', 'što'],
+  bg: ['zdrasti', 'svyat', 'priyatel', 'dobre', 'den', 'utro', 'kak'],
+  uk: ['pryvit', 'svit', 'druh', 'dobry', 'den', 'ranok', 'yak'],
+  kk: ['salem', 'älem', 'dos', 'jāqsy', 'kün', 'tań'],
+  mn: ['sain', 'baina', 'delkhi', 'mongol', 'öröö'],
 };
 function isProbablyEnglish(text) {
   return ENGLISH_DISTINCTIVE_RE.test(text);
@@ -149,7 +176,7 @@ function detectTtsLanguage(text) {
   if (/[\u3040-\u30ff]/.test(text)) return 'ja';
   if (/[嘅咗唔啲佢嗰哋畀]/.test(text)) return 'yue';
   if (HANGUL_RE.test(text)) return 'ko';
-  if (/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/.test(text)) return 'zh';
+  if (/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(text)) return 'zh';
   if (THAI_RE.test(text)) return 'th';
   if (LAO_RE.test(text)) return 'lo';
   if (MYANMAR_RE.test(text)) return 'my';
@@ -170,6 +197,10 @@ function detectTtsLanguage(text) {
   if (DEVANAGARI_RE.test(text)) return 'hi';
   if (/[\u0400-\u052f]/.test(text)) return 'ru';
   if (/[^\x00-\x7F]/.test(text)) {
+    const asciiCore = text.replace(/[^\x00-\x7F]/g, '').trim();
+    if (asciiCore && asciiCore.length < 10 && /^[A-Za-z0-9]+(?:[ \-_'][A-Za-z0-9]+)*$/.test(asciiCore)) {
+      return 'en';
+    }
     let foreignBest = 0;
     for (const lang of Object.keys(FOREIGN_WORDS)) foreignBest = Math.max(foreignBest, foreignWordScore(text, lang));
     if (englishWordScore(text) >= foreignBest) return 'en';
@@ -352,10 +383,18 @@ function splitParagraphRanges(run) {
   return out;
 }
 
+const CJK_SENTENCE_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+function isCjkSentenceText(text) {
+  return CJK_SENTENCE_RE.test(text);
+}
+
 function splitIntoSentences(text) {
   const sentences = [];
   let last = 0;
-  const termRe = /[.!?。！？]+\s*/g;
+  const isCjk = isCjkSentenceText(text);
+  const termRe = isCjk
+    ? /(?:[.!?。！？，、,;；:：]+\s*|[—─]{2,}\s*|\s+)/g
+    : /[.!?。！？]+\s*/g;
   let match;
   while ((match = termRe.exec(text)) !== null) {
     sentences.push(text.slice(last, match.index + match[0].length));
@@ -412,11 +451,15 @@ function cleanParagraph(paragraph, lang) {
   while (i < paragraph.text.length) {
     const char = paragraph.text[i];
     if (char === '\r' && paragraph.text[i + 1] === '\n') {
+      clean += ' ';
+      offsets.push(input);
       input += 2;
       i += 2;
       continue;
     }
     if (char === '\n') {
+      clean += ' ';
+      offsets.push(input);
       input += 1;
       i += 1;
       continue;
@@ -471,6 +514,76 @@ function splitTtsSegments(text, maxSegmentLength = MAX_SEGMENT_LENGTH) {
     }
   }
   return segments;
+}
+
+function splitSentenceRanges(text) {
+  const sentences = [];
+  let last = 0;
+  const isCjk = isCjkSentenceText(text);
+  const termRe = isCjk
+    ? /(?:[.!?。！？，、,;；:：]+\s*|[—─]{2,}\s*|\s+)/g
+    : /(?:[.!?。！？]+\s*|[—─]{2,}\s*)/g;
+  let match;
+  while ((match = termRe.exec(text)) !== null) {
+    const end = match.index + match[0].length;
+    sentences.push({ text: text.slice(last, end), start: last, end });
+    last = end;
+  }
+  if (last < text.length) {
+    sentences.push({ text: text.slice(last), start: last, end: text.length });
+  }
+  return sentences;
+}
+
+const OPEN_BRACKET_ONLY_RE = /^[【「『（\(\[〈《“‘]+$/;
+const CLOSE_BRACKET_ONLY_RE = /^[】」』）\)\]〉》”’]+$/;
+
+function mergeBracketRanges(ranges, text) {
+  const merged = [];
+  for (let i = 0; i < ranges.length; i += 1) {
+    const range = ranges[i];
+    const raw = text.slice(range.start, range.end);
+    const trimmed = raw.trim();
+    const isOpen = trimmed !== '' && OPEN_BRACKET_ONLY_RE.test(trimmed);
+    const isClose = trimmed !== '' && CLOSE_BRACKET_ONLY_RE.test(trimmed);
+    if (isOpen && i + 1 < ranges.length) {
+      const next = ranges[i + 1];
+      merged.push({ start: range.start, end: next.end, lang: next.lang });
+      i += 1;
+    } else if (isClose && merged.length > 0) {
+      const prev = merged[merged.length - 1];
+      prev.end = range.end;
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged;
+}
+
+function splitHighlightRanges(text) {
+  const ranges = [];
+  for (const sentence of splitSentenceRanges(text)) {
+    const rawRuns = mergeAdjacentRuns(splitTtsRuns(sentence.text));
+    const runs = rawRuns.map(run => {
+      if (run.lang === 'en' && run.text.trim().length >= 10) {
+        const refined = detectTtsLanguage(run.text);
+        if (refined !== run.lang) return { ...run, lang: refined };
+      }
+      return run;
+    });
+    let prev = null;
+    for (const run of runs) {
+      const start = sentence.start + run.start;
+      const end = sentence.start + run.end;
+      if (prev && prev.lang === run.lang && prev.end === start) {
+        prev.end = end;
+      } else {
+        prev = { start, end, lang: run.lang };
+        ranges.push(prev);
+      }
+    }
+  }
+  return mergeBracketRanges(ranges, text);
 }
 
 function displayWidth(s) {

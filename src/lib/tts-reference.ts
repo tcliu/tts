@@ -1,5 +1,6 @@
 import { franc } from 'franc-min'
 import referenceLanguages from './reference-languages.json'
+import { mergeBracketRanges as mergeBracketRangesShared } from './bracket-merge'
 
 export interface TtsVoice {
   name: string
@@ -86,8 +87,8 @@ const MAX_SEGMENT_LENGTH = 500
 const HANGUL_RE = /[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]/
 const SEGMENT_CJK_RE = /[\u1100-\u11ff\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u3040-\u30ff\u0400-\u052f]/
 const SINGLE_CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af\u3130-\u318f]/
-const PUNCT_KEEP_RE = /[.!?。！？…·•\-—─]/
-const PUNCT_ONLY_RE = /^[.!?。！？…·•\-—─]+$/
+const PUNCT_KEEP_RE = /[.!?。！？…·•\-—─，、,;；:：]/
+const PUNCT_ONLY_RE = /^[.!?。！？…·•\-—─，、,;；:：]+$/
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/
 const DEVANAGARI_RE = /[\u0900-\u097F]/
 const BENGALI_RE = /[\u0980-\u09FF]/
@@ -300,7 +301,7 @@ function detectTtsLanguage(text: string) {
   if (/[\u3040-\u30ff]/.test(text)) return 'ja'
   if (/[嘅咗唔啲佢嗰哋畀]/.test(text)) return 'yue'
   if (HANGUL_RE.test(text)) return 'ko'
-  if (/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/.test(text)) return 'zh'
+  if (/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(text)) return 'zh'
   if (THAI_RE.test(text)) return 'th'
   if (LAO_RE.test(text)) return 'lo'
   if (MYANMAR_RE.test(text)) return 'my'
@@ -329,6 +330,11 @@ function detectTtsLanguage(text: string) {
   }
   if (/[\u0400-\u052f]/.test(text)) return classifyCyrillic(text)
   if (/[^\x00-\x7F]/.test(text)) {
+    // Short ASCII name with CJK punctuation (e.g. "Ronny：") should remain English
+    const asciiCore = text.replace(/[^\x00-\x7F]/g, '').trim()
+    if (asciiCore && asciiCore.length < 10 && /^[A-Za-z0-9]+(?:[ \-_'][A-Za-z0-9]+)*$/.test(asciiCore)) {
+      return 'en'
+    }
     const { lang: bestLang, score: bestScore } = bestForeignLanguage(text)
     if (englishWordScore(text) > bestScore) return 'en'
     if (bestLang && bestScore > 0) return bestLang
@@ -506,10 +512,18 @@ function splitParagraphRanges(run: { text: string; lang: string; start: number; 
   return out
 }
 
+const CJK_SENTENCE_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/
+function isCjkSentenceText(text: string): boolean {
+  return CJK_SENTENCE_RE.test(text)
+}
+
 function splitIntoSentences(text: string) {
   const sentences: string[] = []
   let last = 0
-  const termRe = /[.!?。！？]+\s*/g
+  const isCjk = isCjkSentenceText(text)
+  const termRe = isCjk
+    ? /(?:[.!?。！？，、,;；:：]+\s*|[—─]{2,}\s*|\s+)/g
+    : /[.!?。！？]+\s*/g
   let match: RegExpExecArray | null
   while ((match = termRe.exec(text)) !== null) {
     sentences.push(text.slice(last, match.index + match[0].length))
@@ -566,11 +580,15 @@ function cleanParagraph(paragraph: { text: string; start: number; end: number },
   while (i < paragraph.text.length) {
     const char = paragraph.text[i]
     if (char === '\r' && paragraph.text[i + 1] === '\n') {
+      clean += ' '
+      offsets.push(input)
       input += 2
       i += 2
       continue
     }
     if (char === '\n') {
+      clean += ' '
+      offsets.push(input)
       input += 1
       i += 1
       continue
@@ -634,7 +652,10 @@ export function splitTtsSegments(text: string, maxSegmentLength = MAX_SEGMENT_LE
 function splitSentenceRanges(text: string) {
   const sentences: { text: string; start: number; end: number }[] = []
   let last = 0
-  const termRe = /(?:[.!?。！？]+\s*|[—─]{2,}\s*)/g
+  const isCjk = isCjkSentenceText(text)
+  const termRe = isCjk
+    ? /(?:[.!?。！？，、,;；:：]+\s*|[—─]{2,}\s*|\s+)/g
+    : /(?:[.!?。！？]+\s*|[—─]{2,}\s*)/g
   let match: RegExpExecArray | null
   while ((match = termRe.exec(text)) !== null) {
     const end = match.index + match[0].length
@@ -645,6 +666,10 @@ function splitSentenceRanges(text: string) {
     sentences.push({ text: text.slice(last), start: last, end: text.length })
   }
   return sentences
+}
+
+function mergeBracketRanges(ranges: HighlightRange[], text: string): HighlightRange[] {
+  return mergeBracketRangesShared(ranges, text) as HighlightRange[]
 }
 
 export function splitHighlightRanges(text: string): HighlightRange[] {
@@ -664,7 +689,7 @@ export function splitHighlightRanges(text: string): HighlightRange[] {
       }
     }
   }
-  return ranges
+  return mergeBracketRanges(ranges, text)
 }
 
 export function activeHighlightRange(

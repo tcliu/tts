@@ -108,7 +108,7 @@
         <table class="w-full border-collapse text-sm">
           <thead class="sticky top-0 z-10 bg-slate-950">
             <tr class="text-left text-xs text-slate-400">
-              <th scope="col" class="px-2 py-1 font-medium">{text.tableSeg}</th>
+              <th scope="col" class="px-2 py-1 font-medium">{text.tableSentence ?? text.tableSeg}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableLang}</th>
@@ -122,7 +122,7 @@
                 aria-current={row.active ? 'true' : undefined}
                 role="button"
                 tabindex="0"
-                aria-label={`${text.playSegment} ${row.segmentIndex + 1}`}
+                aria-label={`${text.playSegment} ${row.sentenceIndex + 1}`}
                 onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
                 onkeydown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
@@ -136,13 +136,13 @@
                     type="button"
                     tabindex="-1"
                     aria-hidden="true"
-                    aria-label={`${text.playSegment} ${row.segmentIndex + 1}`}
+                    aria-label={`${text.playSegment} ${row.sentenceIndex + 1}`}
                     onclick={(event) => {
                       event.stopPropagation()
                       playback.playFromSegment(row.segmentIndex, row.offset)
                     }}
                     class="absolute inset-0 flex cursor-pointer items-start rounded px-2 py-1 text-left font-mono outline-none transition motion-reduce:transition-none hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500">
-                    {row.segmentIndex + 1}
+                    {row.sentenceIndex + 1}
                   </button>
                 </td>
                 <td class="px-2 py-1 font-mono whitespace-nowrap">{row.at.toFixed(2)}s</td>
