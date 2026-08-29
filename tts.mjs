@@ -670,7 +670,45 @@ function truncate(s, width) {
   return out;
 }
 
+// Japanese-exclusive kanji variants are missing from some zh voice lexicons:
+// zh-HK (Cantonese) voices silently skip them, so 毎朝, is spoken as "朝".
+// Map each variant to its standard Chinese equivalent before synthesis; every
+// pair is a single character, so the transform is length-preserving. Pairs
+// verified against the zh-HK lexicon (variants it already pronounces are
+// left out on purpose). Kokuji and ambiguous forms (雫 辻 込 峠 働 払) have
+// no clean Chinese equivalent and are deliberately not mapped; only a ja
+// voice can read them.
+const ZH_VARIANT_PAIRS = [
+  ['毎', '每'], ['収', '收'], ['仮', '假'], ['辺', '边'], ['実', '实'],
+  ['桜', '樱'], ['訳', '译'], ['読', '读'], ['売', '卖'], ['続', '续'],
+  ['絵', '绘'], ['変', '变'], ['済', '济'], ['検', '检'], ['団', '团'],
+  ['図', '图'], ['気', '气'], ['楽', '乐'], ['応', '应'], ['沢', '泽'],
+  ['満', '满'], ['広', '广'], ['弾', '弹'], ['徳', '德'], ['従', '从'],
+  ['悪', '恶'], ['戦', '战'], ['択', '择'], ['栄', '荣'], ['涙', '泪'],
+  ['焼', '烧'], ['発', '发'], ['県', '县'], ['脳', '脑'], ['臓', '脏'],
+  ['薬', '药'], ['覚', '觉'], ['転', '转'], ['軽', '轻'], ['鉄', '铁'],
+  ['銭', '钱'], ['験', '验'], ['児', '儿'], ['労', '劳'], ['勧', '劝'],
+  ['単', '单'], ['厳', '严'], ['拡', '扩'], ['鶏', '鸡'], ['歴', '历'],
+  ['隠', '隐'], ['拝', '拜'], ['巻', '卷'], ['総', '总'], ['黙', '默'],
+  ['恵', '惠'], ['仏', '佛'], ['亀', '龟'], ['曽', '曾'], ['麺', '面'],
+  ['営', '营'], ['囲', '围'], ['価', '价'], ['亜', '亚'], ['縦', '纵'],
+  ['剰', '剩'], ['頬', '颊'], ['掲', '揭'], ['様', '样'], ['権', '权'],
+  ['浄', '净'], ['渋', '涩'], ['猟', '猎'], ['窓', '窗'], ['竜', '龙'],
+  ['粛', '肃'], ['賛', '赞'], ['郷', '乡'], ['酔', '醉'], ['釈', '释'],
+  ['隣', '邻'], ['雑', '杂'], ['譲', '让'], ['歯', '齿'], ['渇', '渴'],
+  ['抜', '拔'], ['挙', '举'], ['姉', '姐'], ['娯', '娱'], ['巣', '巢'],
+  ['庁', '厅'], ['廃', '废'], ['撃', '击'], ['暦', '历'], ['歓', '欢'],
+  ['歩', '步'], ['帯', '带'], ['帰', '归'], ['戸', '户'], ['砕', '碎'],
+];
+const ZH_VARIANT_MAP = new Map(ZH_VARIANT_PAIRS);
+const ZH_VARIANT_RE = new RegExp(`[${ZH_VARIANT_PAIRS.map(([v]) => v).join('')}]`, 'g');
+
+function normalizeForChineseVoice(text) {
+  return text.replace(ZH_VARIANT_RE, (ch) => ZH_VARIANT_MAP.get(ch) ?? ch);
+}
+
 function edgeSynthesize(text, edgeVoice) {
+  const spokenText = edgeVoice.startsWith('zh') ? normalizeForChineseVoice(text) : text;
   const url =
     'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1' +
     `?TrustedClientToken=${EDGE_TOKEN}&Sec-MS-GEC=${edgeSecMsGecToken()}&Sec-MS-GEC-Version=1-${EDGE_CHROMIUM}` +
@@ -694,7 +732,7 @@ function edgeSynthesize(text, edgeVoice) {
       const ssml =
         `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
         `<voice name='${edgeVoice}'><prosody pitch='+0Hz' rate='+0%' volume='+0%'>` +
-        `${escapeXml(text)}</prosody></voice></speak>`;
+        `${escapeXml(spokenText)}</prosody></voice></speak>`;
       ws.send(`X-RequestId:${randomUUID().replaceAll('-', '')}\r\nContent-Type:application/ssml+xml\r\n` +
         `X-Timestamp:${new Date().toISOString()}\r\nPath:ssml\r\n\r\n${ssml}`);
     });
