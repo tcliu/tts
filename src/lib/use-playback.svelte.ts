@@ -1498,39 +1498,48 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     let selFrom = -1
     let selTo = -1
 
+    const setIsolatedSelection = (start: number, end: number) => {
+      const trimmed = trimWhitespaceRange(segment.text, start, end)
+      if (trimmed.end <= trimmed.start) return false
+      isolatedText = segment.text.slice(trimmed.start, trimmed.end)
+      selFrom = absoluteBase + trimmed.start
+      selTo = absoluteBase + trimmed.end
+      return true
+    }
+
     const wordBoundary = kind === 'word' ? meta.wordBoundaries?.find(b => meta.baseOffset + b.offset === charOffset) : undefined
     if (wordBoundary) {
       const raw = wordBoundary.text ?? ''
       if (raw.trim()) {
-        isolatedText = raw
-        const trimmed = trimWhitespaceRange(segment.text, wordBoundary.offset, wordBoundary.offset + raw.length)
-        selFrom = absoluteBase + trimmed.start
-        selTo = absoluteBase + trimmed.end
+        setIsolatedSelection(wordBoundary.offset, wordBoundary.offset + raw.length)
+      } else {
+        // Whitespace‑only or empty label: fall back to the nearest highlight range
+        // so the word‑play button still isolates a slice rather than becoming continuous playback.
+        const fallbackRange =
+          meta.ranges.find(r => wordBoundary.offset >= r.start && wordBoundary.offset < r.end) ?? meta.ranges[meta.ranges.length - 1]
+        if (fallbackRange) {
+          setIsolatedSelection(fallbackRange.start, fallbackRange.end)
+        }
       }
     } else {
-      const boundary = meta.boundaries.find(b => meta.baseOffset + b.offset === charOffset)
-      if (boundary) {
-        const range =
-          meta.ranges.find(r => boundary.offset >= r.start && boundary.offset < r.end) ?? meta.ranges[meta.ranges.length - 1]
-        const raw = boundary.text ?? (range ? segment.text.slice(range.start, range.end) : '')
-        if (raw.trim()) {
-          isolatedText = raw
-          const start = boundary.offset
-          const end = start + raw.length
-          const trimmed = trimWhitespaceRange(segment.text, start, end)
-          selFrom = absoluteBase + trimmed.start
-          selTo = absoluteBase + trimmed.end
-        }
+      // Sentence: try the exact highlight range that charOffset lands in first;
+      // this avoids the synthetic‑row‑only heuristic and works for every row.
+      const range = meta.ranges.find(r => meta.baseOffset + r.start === charOffset)
+      if (range && setIsolatedSelection(range.start, range.end)) {
+        // isolated slice built from the row's own range
       } else {
-        const range = meta.ranges.find(r => meta.baseOffset + r.start === charOffset)
-        if (range) {
-          const raw = segment.text.slice(range.start, range.end)
-          const trimmedRaw = raw.trim() !== '' ? raw.trim() : raw
-          if (trimmedRaw) {
-            isolatedText = trimmedRaw
-            const trimmed = trimWhitespaceRange(segment.text, range.start, range.end)
-            selFrom = absoluteBase + trimmed.start
-            selTo = absoluteBase + trimmed.end
+        // Fall back to boundary‑based slicing (existing logic)
+        const boundary = meta.boundaries.find(b => meta.baseOffset + b.offset === charOffset)
+        if (boundary) {
+          const boundaryIndex = meta.boundaries.findIndex(b => b === boundary)
+          const start = boundary.offset
+          const end = meta.boundaries[boundaryIndex + 1]?.offset ?? meta.text.length
+          if (!setIsolatedSelection(start, end)) {
+            const fallbackRange =
+              meta.ranges.find(r => boundary.offset >= r.start && boundary.offset < r.end) ?? meta.ranges[meta.ranges.length - 1]
+            if (fallbackRange) {
+              setIsolatedSelection(fallbackRange.start, fallbackRange.end)
+            }
           }
         }
       }

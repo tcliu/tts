@@ -601,6 +601,97 @@ describe('usePlayback stop', () => {
     dispose()
   })
 
+  it('scopes sentence-row playback highlight to the clicked sentence even when boundary text is shorter than the sentence', async () => {
+    const content = 'First sentence here. Second sentence there.'
+    const segments = splitTtsSegments(content)
+    const highlights: Array<{ from: number; to: number }> = []
+    const editor: CodeEditorHandle = {
+      getSelectionText: () => '',
+      getSelectionRange: () => null,
+      setSelection: () => false,
+      clearSelection: () => {},
+      setPlaybackHighlight: (from, to) => {
+        highlights.push({ from, to })
+      },
+      setPlaybackHighlightSelected: (from, to) => {
+        highlights.push({ from, to })
+      },
+      clearPlaybackHighlight: () => {},
+      focus: () => {},
+      hasFocus: () => false,
+    }
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0], {
+      boundaries: [
+        { offset: 0, at: 0, text: 'First' },
+        { offset: 'First sentence here. '.length, at: 1.2, text: 'Second' },
+      ],
+      wordBoundaries: [
+        { offset: 0, at: 0, text: 'First' },
+        { offset: 6, at: 0.3, text: 'sentence' },
+        { offset: 15, at: 0.6, text: 'here.' },
+        { offset: 21, at: 1.2, text: 'Second' },
+        { offset: 28, at: 1.5, text: 'sentence' },
+        { offset: 37, at: 1.8, text: 'there.' },
+      ],
+      spokenStart: 0,
+      spokenEnd: 2.4,
+      duration: 2.4,
+    }))
+
+    const finished = playback.playSentence(0, segments[0].indexStart)
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+
+    expect(highlights[0]).toEqual({ from: 0, to: 'First sentence here.'.length })
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
+  it('isolates a synthetic sentence row instead of the whole segment when Edge under-splits boundaries', async () => {
+    const content = '塔尖仍舊記得 這擁抱極美好'
+    const segments = splitTtsSegments(content)
+    const highlights: Array<{ from: number; to: number }> = []
+    const editor: CodeEditorHandle = {
+      getSelectionText: () => '',
+      getSelectionRange: () => null,
+      setSelection: () => false,
+      clearSelection: () => {},
+      setPlaybackHighlight: (from, to) => {
+        highlights.push({ from, to })
+      },
+      setPlaybackHighlightSelected: (from, to) => {
+        highlights.push({ from, to })
+      },
+      clearPlaybackHighlight: () => {},
+      focus: () => {},
+      hasFocus: () => false,
+    }
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0], {
+      lang: 'zh',
+      boundaries: [{ offset: 0, at: 0, text: content }],
+      wordBoundaries: [],
+      spokenStart: 0,
+      spokenEnd: 2,
+      duration: 2,
+    }))
+
+    const finished = playback.playSentence(0, segments[0].indexStart)
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+
+    expect(highlights[0]).toEqual({ from: 0, to: '塔尖仍舊記得'.length })
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
   it('stores a non-empty manual selection as playback scope instead of seek position', () => {
     const content = 'First paragraph here.\n\nSecond paragraph here.'
     const selectionStart = content.indexOf('paragraph here.')

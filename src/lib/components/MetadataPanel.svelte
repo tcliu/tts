@@ -186,11 +186,11 @@
                 role="button"
                 tabindex="0"
                 aria-label={`${text.playSegment} ${row.sentenceIndex + 1}`}
-                onclick={() => playback.playSentence(row.segmentIndex, row.offset)}
+                onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
                 onkeydown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
-                    playback.playSentence(row.segmentIndex, row.offset)
+                    playback.playFromSegment(row.segmentIndex, row.offset)
                   }
                 }}
                 class="cursor-pointer border-t border-slate-800 align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
@@ -267,11 +267,11 @@
                                 tabindex="0"
                                 data-active={word.active}
                                 aria-label={`${text.playWord} ${word.text}`}
-                                onclick={() => playback.playWord(word.segmentIndex, word.offset)}
+                                onclick={() => playback.playFromSegment(word.segmentIndex, word.offset)}
                                 onkeydown={(event) => {
                                   if (event.key === 'Enter' || event.key === ' ') {
                                     event.preventDefault()
-                                    playback.playWord(word.segmentIndex, word.offset)
+                                    playback.playFromSegment(word.segmentIndex, word.offset)
                                   }
                                 }}
                                 class="cursor-pointer border-t border-slate-800/60 align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset {word.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
