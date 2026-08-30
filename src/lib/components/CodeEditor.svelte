@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { Compartment, EditorSelection, EditorState } from '@codemirror/state'
+  import { Compartment, EditorSelection, EditorState, RangeSetBuilder } from '@codemirror/state'
   import { defaultKeymap, history, historyKeymap, indentLess } from '@codemirror/commands'
   import { bracketMatching, indentOnInput, indentUnit } from '@codemirror/language'
   import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
   import { search, searchKeymap } from '@codemirror/search'
-  import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view'
+  import { Decoration, EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view'
   import { githubDark, githubLight } from '@uiw/codemirror-theme-github'
 
   import type { UiTheme } from '$lib/use-settings.svelte'
@@ -13,6 +13,7 @@
   interface Props {
     content: string
     editable?: boolean
+    selectionEnabled?: boolean
     theme?: UiTheme
     containerClass?: string
     editorClass?: string
@@ -26,6 +27,7 @@
   let {
     content = $bindable(),
     editable = true,
+    selectionEnabled = true,
     theme = 'dark',
     containerClass = '',
     editorClass = '',
@@ -78,6 +80,20 @@
         '.cm-selectionBackground, ::selection': {
           backgroundColor: 'var(--cm-selection)',
         },
+        '.cm-playbackHighlight': {
+          backgroundColor: 'var(--cm-playbackHighlight)',
+          borderRadius: '0.125rem',
+        },
+        '.cm-playbackHighlightSelected': {
+          backgroundColor: 'var(--cm-playbackHighlightSelected)',
+          borderRadius: '0.125rem',
+        },
+        '.cm-selectionBackground .cm-playbackHighlight, .cm-playbackHighlight.cm-selectionBackground, .cm-content:has(.cm-selectionBackground) .cm-playbackHighlight': {
+          backgroundColor: 'var(--cm-playbackHighlightSelected) !important',
+        },
+        '.cm-selectionDisabled': {
+          userSelect: 'none',
+        },
         '.cm-focused': {
           outline: 'none',
         },
@@ -88,9 +104,43 @@
   let editorContainerRef: HTMLDivElement | null = null
   let editorView: EditorView | null = null
   let lastEditable = false
+  let lastSelectionEnabled = true
   let lastTheme: UiTheme = 'dark'
   const editableCompartment = new Compartment()
   const colorThemeCompartment = new Compartment()
+  const playbackHighlightCompartment = new Compartment()
+  const selectionGuardCompartment = new Compartment()
+  const selectionAttrCompartment = new Compartment()
+
+  const playbackHighlightMark = Decoration.mark({ class: 'cm-playbackHighlight' })
+  const playbackHighlightSelectedMark = Decoration.mark({ class: 'cm-playbackHighlightSelected' })
+
+  function playbackHighlightField(from: number | null, to: number | null, selected = false) {
+    return EditorView.decorations.compute([], () => {
+      if (from == null || to == null || from >= to) {
+        return Decoration.none
+      }
+      const builder = new RangeSetBuilder<Decoration>()
+      builder.add(from, to, selected ? playbackHighlightSelectedMark : playbackHighlightMark)
+      return builder.finish()
+    })
+  }
+
+  function selectionGuardExtension(enabled: boolean) {
+    if (enabled) return []
+    return EditorView.domEventHandlers({
+      dragstart(event) {
+        event.preventDefault()
+        return true
+      },
+    })
+  }
+
+  function selectionAttrExtension(enabled: boolean) {
+    return EditorView.contentAttributes.of({
+      class: enabled ? '' : 'cm-selectionDisabled',
+    })
+  }
 
   function insertTwoSpaces(): boolean {
     if (!editorView) return false
@@ -140,6 +190,7 @@
   function createEditor() {
     if (!editorContainerRef) return
     lastEditable = editable
+    lastSelectionEnabled = selectionEnabled
     lastTheme = theme
     editorView = new EditorView({
       state: EditorState.create({
@@ -147,7 +198,10 @@
         extensions: [
           colorThemeCompartment.of(colorThemeExtensions(theme)),
           editableCompartment.of(EditorView.editable.of(editable)),
+          selectionGuardCompartment.of(selectionGuardExtension(selectionEnabled)),
+          selectionAttrCompartment.of(selectionAttrExtension(selectionEnabled)),
           drawSelection(),
+          playbackHighlightCompartment.of(playbackHighlightField(null, null)),
           lineNumbers(),
           search({ top: true }),
           history(),
@@ -169,6 +223,13 @@
             }
             if (update.selectionSet) {
               const main = update.state.selection.main
+              if (!lastSelectionEnabled && main.from !== main.to) {
+                update.view.dispatch({
+                  selection: EditorSelection.cursor(main.head),
+                  userEvent: 'select.pointer.collapse',
+                })
+                return
+              }
               onSelectionChange?.(main.from === main.to ? null : { from: main.from, to: main.to })
             }
           }),
@@ -206,6 +267,18 @@
     lastEditable = editable
     editorView.dispatch({
       effects: editableCompartment.reconfigure(EditorView.editable.of(editable)),
+    })
+  })
+
+  $effect(() => {
+    void selectionEnabled
+    if (!editorView || selectionEnabled === lastSelectionEnabled) return
+    lastSelectionEnabled = selectionEnabled
+    editorView.dispatch({
+      effects: [
+        selectionGuardCompartment.reconfigure(selectionGuardExtension(selectionEnabled)),
+        selectionAttrCompartment.reconfigure(selectionAttrExtension(selectionEnabled)),
+      ],
     })
   })
 
@@ -265,6 +338,29 @@
     const position = editorView.state.selection.main.anchor
     const selection = EditorSelection.create([EditorSelection.range(position, position)])
     editorView.dispatch({ selection })
+  }
+
+  export function setPlaybackHighlight(from: number, to: number) {
+    if (!editorView) return
+    editorView.dispatch({
+      effects: playbackHighlightCompartment.reconfigure(playbackHighlightField(from, to, false)),
+      scrollIntoView: true,
+    })
+  }
+
+  export function setPlaybackHighlightSelected(from: number, to: number) {
+    if (!editorView) return
+    editorView.dispatch({
+      effects: playbackHighlightCompartment.reconfigure(playbackHighlightField(from, to, true)),
+      scrollIntoView: true,
+    })
+  }
+
+  export function clearPlaybackHighlight() {
+    if (!editorView) return
+    editorView.dispatch({
+      effects: playbackHighlightCompartment.reconfigure(playbackHighlightField(null, null)),
+    })
   }
 </script>
 

@@ -41,6 +41,10 @@ Project-specific development conventions for the TTS web app.
 - Written language is the top-level `code` in `reference-languages.json`; spoken variants are `aliases` there (e.g. `yue`→`zh`) resolved via `toWrittenLang` in `tts-reference.ts` with fixed groups in `SPOKEN_GROUP` (e.g. `yue`→`Cantonese`); voice variants are the per-voice `group` (e.g. Mandarin/Cantonese/Taiwanese under `zh`).
 - Temporary scratch files (plans, proposals, scratch notes) go in `.tmp/`,
   never in source directories.
+- Feature requirements for in-progress work go in `.tmp/features/{feature-name}.md`.
+  Treat them as supplementary context during implementation and review, but keep
+  source-of-truth conventions in `AGENTS.md` and durable design/spec details in
+  `docs/design.md` and `docs/spec.md`.
 
 ## UI behavior
 
@@ -48,8 +52,11 @@ Project-specific development conventions for the TTS web app.
   mobile and desktop.
 - Keep all focusable controls keyboard reachable, with explicit focus styles and
   accessible names for icon-only buttons.
-- Playback state must drive editor selection so the current spoken segment is
-  visibly selected while audio is active.
+- Playback state must visibly highlight the current spoken word or segment in
+  the editor while audio is active (`--cm-playbackHighlight` light-blue, `--cm-playbackHighlightSelected` emerald green when inside a manual text selection), but keep any pre-existing native text selection intact under the playback overlay; pointer range selection is collapsed to caret during playback so the native selection cannot drift while caret movement remains enabled to seek. The Info panel active row stays light-blue (cyan) in both modes.
+- A cached manual text selection may scope the controls and Info panel before
+  playback starts, but it must not pre-highlight the first selected word until
+  Play is clicked.
 - Document navigation is reflected in the URL as `{base}/{docId}` and history-backed so Back/Forward moves between documents.
 - All user-facing strings must go through `UI_TEXT` (keyed by `UiLocale`); add
   each new string to every locale (`en`, `zh-TW`, `zh-CN`).
