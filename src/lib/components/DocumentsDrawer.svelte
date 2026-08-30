@@ -14,6 +14,7 @@
     currentDocId: string | null
     panelRef?: HTMLElement | null
     inputRef?: HTMLInputElement | null
+    isOpen?: boolean
     isDocked?: boolean
     onNew: () => void
     onOpen: (id: string) => void
@@ -27,6 +28,7 @@
     currentDocId,
     panelRef = $bindable(null),
     inputRef = $bindable(null),
+    isOpen = false,
     isDocked = false,
     onNew,
     onOpen,
@@ -56,6 +58,13 @@
     },
     onClose: () => onClose?.(),
   }
+
+  const drawerTransition = $derived.by(() => {
+    if (dragging || reduceMotion) {
+      return 'none'
+    }
+    return undefined
+  })
 </script>
 
 <!-- Docking classes (`lg:*`) must stay in sync with +page.svelte's
@@ -63,9 +72,9 @@
 <aside
   bind:this={panelRef}
   aria-label={text.documents}
-  class="absolute inset-y-0 left-0 z-20 flex w-64 shrink-0 flex-col gap-2 border-r border-slate-800 bg-slate-900 py-2 shadow-xl lg:static lg:bg-slate-900/40 lg:shadow-none lg:w-72"
-  style:transform={`translateX(${dragOffset}px)`}
-  style:transition={dragging || reduceMotion ? 'none' : 'transform 200ms ease-out'}
+  class={`absolute inset-y-0 left-0 z-20 flex w-64 shrink-0 flex-col gap-2 border-r border-slate-800 bg-slate-900 py-2 shadow-xl transition-transform duration-200 ease-out motion-reduce:transition-none lg:static lg:translate-x-0 lg:bg-slate-900/40 lg:shadow-none lg:w-72 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+  style:transform={dragging || dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined}
+  style:transition={drawerTransition}
   style:touch-action={isDocked ? undefined : 'pan-y'}
   style:will-change={dragging ? 'transform' : undefined}
   use:dragCloseLeft={dragCloseOptions}>

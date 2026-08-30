@@ -339,7 +339,8 @@
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     if (editorRef?.hasFocus?.()) return
     if (isEditableActiveElement(document.activeElement)) return
-    if (dialogsOpen() || drawer.drawerOpen) return
+    if (dialogsOpen()) return
+    if (drawerPanelRef?.contains(document.activeElement)) return
     if (playback.synthesizedCount === 0 || playbackSliderMax <= 0) return
     event.preventDefault()
     const step = playbackSliderMax * 0.05
@@ -353,6 +354,8 @@
   // TOOLBAR_BANDS; the last entry is empty because every action is inline.
   const toolbarMode: ToolbarMode = $derived(editor.currentDocId ? 'doc' : 'fresh')
   const toolbarMenus = $derived(TOOLBAR_BANDS.map(band => menuFor(band.name, toolbarMode)))
+  const overlayDrawerOpen = $derived(!isDocked && drawer.drawerOpen)
+  const drawerVisible = $derived(isDocked || drawer.drawerOpen)
   // Plain locals, not $state: writing them from inside the effect must not
   // re-trigger the effect (a $state write here would rerun the effect, whose
   // cleanup would cancel the pending debounced warm-up below).
@@ -403,6 +406,11 @@
   })
 
   function toggleDrawer() {
+    if (isDocked) {
+      drawer.documentSearch = ''
+      void tick().then(() => drawerSearchRef?.focus())
+      return
+    }
     const opened = drawer.toggleDrawer()
     if (!opened) {
       drawerButtonRef?.focus()
@@ -517,7 +525,7 @@
   }
 
   $effect(() => {
-    if (!drawer.drawerOpen) {
+    if (!overlayDrawerOpen) {
       return
     }
     function handleEscape(event: KeyboardEvent) {
@@ -549,7 +557,7 @@
   // `click` (not pointerdown) so touch scrolls and drag selections that start
   // outside do not close the drawer.
   $effect(() => {
-    if (!drawer.drawerOpen || isDocked) {
+    if (!overlayDrawerOpen) {
       return
     }
     function handleDocumentClick(event: MouseEvent) {
@@ -569,7 +577,7 @@
   })
 
   $effect(() => {
-    if (!drawer.drawerOpen) {
+    if (!overlayDrawerOpen) {
       return
     }
     const input = drawerSearchRef
@@ -653,7 +661,7 @@
         variant="secondary"
         size="sm"
         ariaLabel={text.documents}
-        ariaExpanded={drawer.drawerOpen}
+        ariaExpanded={drawerVisible}
         tooltip={text.documents}
         onClick={toggleDrawer}>
         {#snippet icon()}
@@ -694,19 +702,18 @@
   </header>
 
   <div class="relative flex min-h-0 flex-1 overflow-hidden">
-    {#if drawer.drawerOpen}
-      <DocumentsDrawer
-        locale={settings.locale}
-        documents={drawer.visibleDocuments}
-        bind:search={() => drawer.documentSearch, v => (drawer.documentSearch = v)}
-        currentDocId={editor.currentDocId}
-        bind:panelRef={drawerPanelRef}
-        bind:inputRef={drawerSearchRef}
-        isDocked={isDocked}
-        onNew={editor.requestNewDocument}
-        onOpen={editor.requestOpenDocument}
-        onClose={dismissDrawerAndFocusTrigger} />
-    {/if}
+    <DocumentsDrawer
+      locale={settings.locale}
+      documents={drawer.visibleDocuments}
+      bind:search={() => drawer.documentSearch, v => (drawer.documentSearch = v)}
+      currentDocId={editor.currentDocId}
+      bind:panelRef={drawerPanelRef}
+      bind:inputRef={drawerSearchRef}
+      isOpen={drawer.drawerOpen}
+      isDocked={isDocked}
+      onNew={editor.requestNewDocument}
+      onOpen={editor.requestOpenDocument}
+      onClose={dismissDrawerAndFocusTrigger} />
 
     <main class="flex min-w-0 flex-1 flex-col gap-2 px-3 py-2 sm:px-4 sm:py-2">
       {#if editor.currentDocId}
