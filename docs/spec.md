@@ -107,7 +107,10 @@ coherent system instead of a new parallel one.
 - The drawer is a view over `use-documents-drawer`'s filtered list; it only
   triggers handlers on the document editor and never mutates the store directly.
   Below `lg` it overlays the content (`absolute`) and above it docks inline
-  (`lg:static`); the overlay supports closing by dragging/swiping left through
+  (`lg:static`) with header-toggle open/collapsed width states (`lg:w-72` /
+  `lg:w-0`); collapsed docked mode marks the drawer `inert` + `aria-hidden` so
+  hidden controls are not keyboard focus targets. The overlay supports closing
+  by dragging/swiping left through
   the shared `dragCloseLeft` action (touch/pen pointers, `touch-action: pan-y`,
   horizontal dominance, clamped `translateX`, ~30% width or fast-swipe
   threshold) gated by the docked state, and returns focus to the trigger on

@@ -65,6 +65,14 @@
     }
     return undefined
   })
+
+  const dockedClasses = $derived(
+    isDocked && !isOpen
+      ? 'lg:static lg:w-0 lg:min-w-0 lg:overflow-hidden lg:border-r-0 lg:py-0 lg:shadow-none lg:opacity-0 lg:pointer-events-none'
+      : 'lg:static lg:translate-x-0 lg:bg-slate-900/40 lg:shadow-none lg:w-72',
+  )
+
+  const dockedCollapsed = $derived(isDocked && !isOpen)
 </script>
 
 <!-- Docking classes (`lg:*`) must stay in sync with +page.svelte's
@@ -72,7 +80,9 @@
 <aside
   bind:this={panelRef}
   aria-label={text.documents}
-  class={`absolute inset-y-0 left-0 z-20 flex w-64 shrink-0 flex-col gap-2 border-r border-slate-800 bg-slate-900 py-2 shadow-xl transition-transform duration-200 ease-out motion-reduce:transition-none lg:static lg:translate-x-0 lg:bg-slate-900/40 lg:shadow-none lg:w-72 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+  aria-hidden={dockedCollapsed ? 'true' : undefined}
+  inert={dockedCollapsed}
+  class={`absolute inset-y-0 left-0 z-20 flex w-64 shrink-0 flex-col gap-2 border-r border-slate-800 bg-slate-900 py-2 shadow-xl transition-[transform,width,opacity] duration-200 ease-out motion-reduce:transition-none ${isOpen ? 'translate-x-0' : '-translate-x-full'} ${dockedClasses}`}
   style:transform={dragging || dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined}
   style:transition={drawerTransition}
   style:touch-action={isDocked ? undefined : 'pan-y'}

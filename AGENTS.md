@@ -83,10 +83,8 @@ Project-specific development conventions for the TTS web app.
   don't confuse the two. The scrim padding (`px-3 py-4`) lives on the centering
   row, not the scrim, because a container cannot query itself.
 - Settings Voices tab follows the aligned label + control-group row pattern (see `references/responsive-design.md`): voice model group = spoken-language selector (if any) + voice-model selector; support four states a) `label | spoken | voice`, b) `label | voice` (no spoken), c) `label` / `spoken + voice`, d) `label` / `spoken` / `voice` with voice-group left aligned across languages and stacked `flex-col` below `sm` so shrinking forces label and voice-group into separate rows.
-- Documents drawer is docked at `lg` (`lg:static lg:w-72`) and overlayed below it
-  (`absolute inset-y-0 left-0 w-64 z-20`); keep `DOCKED_QUERY` (`(min-width: 64rem)`)
-  in `+page.svelte` synced with `DocumentsDrawer`'s `lg:*` docking classes and gate
-  overlay-only dismissals (click-outside, Escape, swipe) with `isDocked`.
+- Documents drawer is docked at `lg` with two states: expanded (`lg:static lg:w-72`) and header-toggle collapsed (`lg:static lg:w-0`), and overlayed below it (`absolute inset-y-0 left-0 w-64 z-20`) on smaller viewports; keep `DOCKED_QUERY` (`(min-width: 64rem)`) in `+page.svelte` synced with `DocumentsDrawer`'s `lg:*` classes and gate overlay-only dismissals (click-outside, Escape, swipe) with `isDocked`.
+- A docked-collapsed drawer must be non-interactive (`inert` + `aria-hidden`) so keyboard focus cannot move into hidden controls.
 - Overlay drawer must close by dragging/swiping left on mobile — the shared
   `dragCloseLeft` action owns the pointer state machine (touch/pen only,
   `touch-action: pan-y`, pointer capture, horizontal dominance, left-only

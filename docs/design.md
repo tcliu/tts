@@ -94,6 +94,8 @@
 - A Documents button toggles a side drawer that lists saved documents.
 - The drawer has a `New document` button and a search field filtering rows by
   name; the list is empty before any document is saved.
+- On large screens the drawer is docked inline and starts expanded; the
+  Documents button can collapse it to free editor space and re-open it.
 - On mobile the drawer overlays the content and also closes by dragging/swiping
   it left.
 - Activating a row opens that document.

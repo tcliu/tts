@@ -109,6 +109,7 @@
 
   let settingsOpen = $state(false)
   let showMetadata = $state(false)
+  let dockedDrawerOpen = $state(true)
   // Hide the editor so the info panel fills the content area; the state
   // outlives panel close/reopen so toggling Info keeps the expanded layout.
   let metadataExpanded = $state(false)
@@ -353,7 +354,7 @@
   const toolbarMode: ToolbarMode = $derived(editor.currentDocId ? 'doc' : 'fresh')
   const toolbarMenus = $derived(TOOLBAR_BANDS.map(band => menuFor(band.name, toolbarMode)))
   const overlayDrawerOpen = $derived(!isDocked && drawer.drawerOpen)
-  const drawerVisible = $derived(isDocked || drawer.drawerOpen)
+  const drawerVisible = $derived(isDocked ? dockedDrawerOpen : drawer.drawerOpen)
   // Plain locals, not $state: writing them from inside the effect must not
   // re-trigger the effect (a $state write here would rerun the effect, whose
   // cleanup would cancel the pending debounced warm-up below).
@@ -405,8 +406,11 @@
 
   function toggleDrawer() {
     if (isDocked) {
-      drawer.documentSearch = ''
-      void tick().then(() => drawerSearchRef?.focus())
+      dockedDrawerOpen = !dockedDrawerOpen
+      if (dockedDrawerOpen) {
+        drawer.documentSearch = ''
+        void tick().then(() => drawerSearchRef?.focus())
+      }
       return
     }
     const opened = drawer.toggleDrawer()
@@ -688,7 +692,7 @@
       currentDocId={editor.currentDocId}
       bind:panelRef={drawerPanelRef}
       bind:inputRef={drawerSearchRef}
-      isOpen={drawer.drawerOpen}
+      isOpen={drawerVisible}
       isDocked={isDocked}
       onNew={editor.requestNewDocument}
       onOpen={editor.requestOpenDocument}

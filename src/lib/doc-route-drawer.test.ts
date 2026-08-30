@@ -10,11 +10,16 @@ describe('doc route drawer layout contract', () => {
     expect(pageSource).not.toMatch(/\{#if\s+drawer\.drawerOpen\}[\s\S]*<DocumentsDrawer/)
   })
 
-  it('treats large screens as visibly docked even when the overlay drawer is closed', () => {
-    expect(pageSource).toContain('const drawerVisible = $derived(isDocked || drawer.drawerOpen)')
+  it('keeps large screens docked by default but still lets the button toggle the drawer', () => {
+    expect(pageSource).toContain('let dockedDrawerOpen = $state(true)')
+    expect(pageSource).toContain('const drawerVisible = $derived(isDocked ? dockedDrawerOpen : drawer.drawerOpen)')
+    expect(pageSource).toContain('isOpen={drawerVisible}')
     expect(pageSource).toContain('ariaExpanded={drawerVisible}')
-    expect(drawerSource).toContain("${isOpen ? 'translate-x-0' : '-translate-x-full'}")
-    expect(drawerSource).toContain('lg:translate-x-0')
+    expect(pageSource).toContain('dockedDrawerOpen = !dockedDrawerOpen')
+    expect(drawerSource).toContain('lg:w-0')
+    expect(drawerSource).toContain('lg:pointer-events-none')
+    expect(drawerSource).toContain('aria-hidden={dockedCollapsed ? \'true\' : undefined}')
+    expect(drawerSource).toContain('inert={dockedCollapsed}')
     expect(drawerSource).toContain('style:transform={dragging || dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined}')
   })
 
