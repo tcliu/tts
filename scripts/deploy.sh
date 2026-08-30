@@ -8,6 +8,17 @@ readonly DEPLOY_MAX_ATTEMPTS=3
 readonly DEPLOY_RETRY_DELAY=5
 readonly DEPLOY_WAIT_TIMEOUT=5m
 
+format_elapsed_time() {
+  local total_seconds="$1"
+  local minutes=$(( total_seconds / 60 ))
+  local seconds=$(( total_seconds % 60 ))
+  if [[ ${minutes} -gt 0 ]]; then
+    printf '%dm%02ds' "${minutes}" "${seconds}"
+    return
+  fi
+  printf '%ds' "${seconds}"
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -139,6 +150,7 @@ EOF
 
 wait_for_ready_deployment() {
   local deployment_url="$1"
+  local log_command="$(printf '%q ' vercel inspect "${deployment_url}" --logs --wait --timeout "${DEPLOY_WAIT_TIMEOUT}")"
   local inspect_output=""
   local inspect_status=0
   local log_status=0
@@ -146,6 +158,7 @@ wait_for_ready_deployment() {
   local attempt
 
   echo "-> Waiting for Vercel deployment to become ready..."
+  echo "-> Vercel deployment log command: ${log_command% }"
   for attempt in $(seq 1 "${DEPLOY_MAX_ATTEMPTS}"); do
     set +e
     run_vercel_cli inspect "${deployment_url}" --logs --wait --timeout "${DEPLOY_WAIT_TIMEOUT}"
@@ -415,8 +428,12 @@ deploy_vercel() {
   local base_url
   local deploy_output
   local deployment_url
+  local started_at
+  local finished_at
+  local elapsed
   app_version="$(git -C "${ROOT_DIR}" rev-parse HEAD 2>/dev/null || printf 'unknown')"
   base_url="$(configured_base_url)"
+  started_at="$(date +%s)"
 
   if [[ ! -f "${ROOT_DIR}/.vercel/project.json" ]]; then
     echo "Missing .vercel/project.json in ${ROOT_DIR}. Run 'vercel link' from the repo root first." >&2
@@ -439,7 +456,10 @@ deploy_vercel() {
 
   sync_project_domains
 
-  echo "OK Vercel deploy complete -> ${base_url}"
+  finished_at="$(date +%s)"
+  elapsed=$(( finished_at - started_at ))
+
+  echo "OK Vercel deploy complete -> ${base_url} ($(format_elapsed_time "${elapsed}"))"
 }
 
 main() {
