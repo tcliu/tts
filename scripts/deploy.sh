@@ -60,8 +60,12 @@ extract_deployment_url() {
 const raw = String(process.env.COMMAND_OUTPUT || '');
 
 function trimJsonPayload(value) {
-  const index = value.search(/[\[{]/);
-  return index === -1 ? '' : value.slice(index);
+  const lineStart = value.search(/(^|\r?\n)\s*\{/);
+  const start = lineStart === -1 ? value.indexOf('{') : value.indexOf('{', lineStart);
+  if (start === -1) return '';
+
+  const end = value.lastIndexOf('}');
+  return end >= start ? value.slice(start, end + 1) : value.slice(start);
 }
 
 function normalizeUrl(value) {
@@ -115,14 +119,17 @@ deployment_ready_state() {
 
   INSPECT_OUTPUT="${inspect_output}" node <<'EOF'
 const raw = String(process.env.INSPECT_OUTPUT || '');
-const index = raw.search(/[\[{]/);
+const lineStart = raw.search(/(^|\r?\n)\s*\{/);
+const index = lineStart === -1 ? raw.indexOf('{') : raw.indexOf('{', lineStart);
+const end = raw.lastIndexOf('}');
 
 if (index === -1) {
   process.exit(0);
 }
 
 try {
-  const parsed = JSON.parse(raw.slice(index));
+  const payload = end >= index ? raw.slice(index, end + 1) : raw.slice(index);
+  const parsed = JSON.parse(payload);
   process.stdout.write(String(parsed?.readyState || '').trim());
 } catch (error) {
   console.error('Failed to parse deployment inspect JSON:', error?.message || error);
