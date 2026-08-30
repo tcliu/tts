@@ -11,11 +11,15 @@ function createEditor(overrides: Partial<Parameters<typeof useDocumentEditor>[0]
 } {
   let content = ''
   const settings = {
+    locale: 'en',
     get content(): string {
       return content
     },
     set content(value: string) {
       content = value
+    },
+    get canPlay(): boolean {
+      return content.trim().length > 0
     },
   } as unknown as SettingsHandle
   const deps = {
@@ -146,5 +150,92 @@ describe('useDocumentEditor upload', () => {
     editor.confirmDiscard()
     expect(settings.content).toBe('edited')
     expect(deps.openFilePicker).toHaveBeenCalledOnce()
+  })
+})
+
+describe('useDocumentEditor save flow', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/')
+  })
+
+  afterEach(() => {
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('exposes a fallback draft name for a new document', () => {
+    const documents = {
+      documents: [],
+    } as unknown as DocumentsHandle
+    const { editor } = createEditor({ documents })
+
+    expect(editor.currentDocId).toBeNull()
+    expect(editor.currentDocName).toBe('Untitled')
+  })
+
+  it('uses the next available untitled name for drafts', () => {
+    const documents = {
+      documents: [
+        { id: '1', name: 'Untitled', content: '', updatedAt: 1 },
+        { id: '2', name: 'Untitled 1', content: '', updatedAt: 2 },
+      ],
+    } as unknown as DocumentsHandle
+    const { editor } = createEditor({ documents })
+
+    expect(editor.currentDocName).toBe('Untitled 2')
+  })
+
+  it('lets draft documents rename inline before saving', () => {
+    const documents = {
+      documents: [],
+    } as unknown as DocumentsHandle
+    const { editor } = createEditor({ documents })
+
+    expect(editor.renameDocument('Scratch')).toBe(true)
+    expect(editor.currentDocName).toBe('Scratch')
+  })
+
+  it('saves a draft immediately using its inline name', () => {
+    const savedDocument = { id: 'doc-1', name: 'Scratch', content: 'Draft body', updatedAt: 10 }
+    const save = vi.fn((name: string, content: string) => ({ ...savedDocument, name, content }))
+    const documents = {
+      documents: [],
+      findByName: vi.fn(() => undefined),
+      findById: vi.fn((id: string) => (id === savedDocument.id ? savedDocument : undefined)),
+      save,
+    } as unknown as DocumentsHandle
+    const { editor, settings } = createEditor({ documents })
+
+    settings.content = 'Draft body'
+    editor.renameDocument('Scratch')
+    editor.saveDocument()
+
+    expect(save).toHaveBeenCalledWith('Scratch', 'Draft body')
+    expect(editor.currentDocId).toBe('doc-1')
+    expect(editor.currentDocName).toBe('Scratch')
+    expect(editor.overwriteConfirmOpen).toBe(false)
+  })
+
+  it('opens overwrite confirmation when a draft name already exists', () => {
+    const existing = { id: 'doc-existing', name: 'Scratch', content: 'old', updatedAt: 1 }
+    const save = vi.fn((name: string, content: string) => ({ id: existing.id, name, content, updatedAt: 2 }))
+    const documents = {
+      documents: [existing],
+      findByName: vi.fn((name: string) => (name === 'Scratch' ? existing : undefined)),
+      save,
+    } as unknown as DocumentsHandle
+    const { editor, settings } = createEditor({ documents })
+
+    settings.content = 'Draft body'
+    editor.renameDocument('Scratch')
+    editor.saveDocument()
+
+    expect(editor.overwriteConfirmOpen).toBe(true)
+    expect(save).not.toHaveBeenCalled()
+
+    editor.applyOverwrite()
+
+    expect(save).toHaveBeenCalledWith('Scratch', 'Draft body')
+    expect(editor.overwriteConfirmOpen).toBe(false)
+    expect(editor.currentDocId).toBe(existing.id)
   })
 })

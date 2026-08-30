@@ -35,10 +35,8 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   let draftCacheId = $state(createDraftCacheId())
   let baselineContent = $state<string | null>(null)
 
-  let saveDialogOpen = $state(false)
-  let saveName = $state('')
-  let saveInitialName = $state('')
-  let showNameError = $state(false)
+  let draftName = $state('')
+  let pendingSaveName = $state('')
   let overwriteConfirmOpen = $state(false)
 
   let discardDialogOpen = $state(false)
@@ -60,11 +58,24 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
 
   const isDirty = $derived(baselineContent !== null && settings.content !== baselineContent)
   // Nothing to persist: the editor is empty, or a document is loaded in its
-  // saved state. An unnamed buffer always counts as unsaved work.
+  // saved state. Draft buffers stay saveable through their inline title.
   const saveDisabled = $derived(!settings.canPlay || (currentDocId !== null && !isDirty))
-  const saveDirty = $derived(saveName !== saveInitialName)
-  const currentDocName = $derived(currentDocId ? (documents.findById(currentDocId)?.name ?? '') : '')
+  const currentDocName = $derived(currentDocId ? (documents.findById(currentDocId)?.name ?? '') : draftName.trim() || nextAvailableDraftName())
   const deleteTargetName = $derived(deleteTargetId ? (documents.findById(deleteTargetId)?.name ?? '') : '')
+
+  function nextAvailableDraftName(): string {
+    const baseName = UI_TEXT[settings.locale]?.documentNamePlaceholder ?? 'Untitled'
+    const existingNames = new Set(documents.documents.map(document => document.name))
+    let fallbackName = baseName
+    if (existingNames.has(fallbackName)) {
+      let index = 1
+      while (existingNames.has(`${baseName} ${index}`)) {
+        index += 1
+      }
+      fallbackName = `${baseName} ${index}`
+    }
+    return fallbackName
+  }
 
   function resetDraftCacheId() {
     draftCacheId = createDraftCacheId()
@@ -119,15 +130,18 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
       if (!target) {
         settings.content = ''
         currentDocId = null
+        draftName = ''
         baselineContent = ''
         return
       }
       settings.content = target.content
       currentDocId = target.id
+      draftName = ''
       baselineContent = target.content
     } else {
       settings.content = ''
       currentDocId = null
+      draftName = ''
       baselineContent = ''
     }
   }
@@ -172,7 +186,8 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
 
   function handleRenameDocument(name: string): boolean {
     if (!currentDocId) {
-      return false
+      draftName = name.trim()
+      return true
     }
     return documents.rename(currentDocId, name)
   }
@@ -190,6 +205,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     // Detach into a new unsaved document carrying the same content; nothing
     // is persisted until the user saves it under a name.
     currentDocId = null
+    draftName = ''
     resetDraftCacheId()
     baselineContent = settings.content
     deps.focusEditor()
@@ -224,6 +240,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     }
     if (documents.remove(id) && id === currentDocId) {
       currentDocId = null
+      draftName = ''
       resetDraftCacheId()
       pushDocHistory(null)
     }
@@ -303,72 +320,39 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     showUploadNotice('uploaded')
   }
 
-  function openSaveDialog() {
+  function saveDocument() {
     if (saveDisabled) {
       return
     }
-    const current = currentDocId ? documents.findById(currentDocId) : undefined
-    if (current) {
-      applySave(current.name)
-      return
-    }
-    const baseName = UI_TEXT[settings.locale]?.documentNamePlaceholder ?? 'Untitled'
-    const existingNames = new Set(documents.documents.map(document => document.name))
-    let fallbackName = baseName
-    if (existingNames.has(fallbackName)) {
-      let index = 1
-      while (existingNames.has(`${baseName} ${index}`)) {
-        index += 1
-      }
-      fallbackName = `${baseName} ${index}`
-    }
-    saveName = fallbackName
-    saveInitialName = saveName
-    showNameError = false
-    saveDialogOpen = true
-  }
-
-  function resetSaveDraft() {
-    saveName = saveInitialName
-    showNameError = false
-  }
-
-  function cancelSave() {
-    saveDialogOpen = false
-    overwriteConfirmOpen = false
-  }
-
-  // Dismissing only the stacked replace-confirm returns to the save form;
-  // the base dialog stays open.
-  function cancelOverwrite() {
-    overwriteConfirmOpen = false
-  }
-
-  function confirmSave() {
-    const name = saveName.trim()
-    if (!name) {
-      showNameError = true
-      return
-    }
+    const name = currentDocId ? currentDocName : draftName.trim() || nextAvailableDraftName()
     // Saving under a name owned by a different document replaces that
     // document; require an explicit confirmation before destroying it.
     const existing = documents.findByName(name)
     if (existing && existing.id !== currentDocId) {
+      pendingSaveName = name
       overwriteConfirmOpen = true
       return
     }
     applySave(name)
   }
 
+  // Dismissing only the stacked replace-confirm returns to the save form;
+  // the inline draft title stays editable behind it.
+  function cancelOverwrite() {
+    overwriteConfirmOpen = false
+    pendingSaveName = ''
+  }
+
   function applyOverwrite() {
-    applySave(saveName.trim())
+    applySave(pendingSaveName)
   }
 
   function applySave(name: string) {
     const saved = documents.save(name, settings.content)
     currentDocId = saved.id
     baselineContent = saved.content
-    saveDialogOpen = false
+    draftName = ''
+    pendingSaveName = ''
     overwriteConfirmOpen = false
     pushDocHistory(saved.id)
   }
@@ -467,24 +451,6 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     get currentDocName() {
       return currentDocName
     },
-    get saveDialogOpen() {
-      return saveDialogOpen
-    },
-    get saveDirty() {
-      return saveDirty
-    },
-    get saveName() {
-      return saveName
-    },
-    set saveName(value) {
-      saveName = value
-    },
-    get showNameError() {
-      return showNameError
-    },
-    set showNameError(value) {
-      showNameError = value
-    },
     get overwriteConfirmOpen() {
       return overwriteConfirmOpen
     },
@@ -525,11 +491,8 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     importFile,
     resetEditor,
     copyEditorContent,
-    openSaveDialog,
-    resetSaveDraft,
-    cancelSave,
+    saveDocument,
     cancelOverwrite,
-    confirmSave,
     applyOverwrite,
   }
 }

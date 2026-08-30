@@ -191,8 +191,6 @@
   let drawerPanelRef = $state<HTMLElement | null>(null)
   let drawerSearchRef = $state<HTMLInputElement | null>(null)
 
-  let saveNameInputRef = $state<HTMLInputElement | null>(null)
-
   let editorRef = $state<CodeEditorHandle | null>(null)
 
   const text = $derived(UI_TEXT[settings.locale])
@@ -427,7 +425,7 @@
     } else if (action === 'reset') {
       editor.resetEditor()
     } else if (action === 'save') {
-      editor.openSaveDialog()
+      editor.saveDocument()
     } else if (action === 'copy') {
       void editor.copyEditorContent()
     } else if (action === 'info') {
@@ -482,7 +480,7 @@
   }
 
   function dialogsOpen() {
-    return settingsOpen || editor.saveDialogOpen || editor.discardDialogOpen || editor.deleteDialogOpen || editor.playbackConfirmOpen
+    return settingsOpen || editor.overwriteConfirmOpen || editor.discardDialogOpen || editor.deleteDialogOpen || editor.playbackConfirmOpen
   }
 
   function selectLanguage(value: UiLocale) {
@@ -588,25 +586,6 @@
   })
 
   $effect(() => {
-    if (!editor.saveDialogOpen) {
-      return
-    }
-    const input = saveNameInputRef
-    if (!input) {
-      return
-    }
-    void tick().then(() => {
-      input.focus()
-      const end = input.value.length
-      try {
-        input.setSelectionRange(end, end)
-      } catch {
-        input.select()
-      }
-    })
-  })
-
-  $effect(() => {
     function handleGlobalKeydown(event: KeyboardEvent) {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
         return
@@ -618,7 +597,7 @@
       if (dialogsOpen()) {
         return
       }
-      editor.openSaveDialog()
+      editor.saveDocument()
     }
     window.addEventListener('keydown', handleGlobalKeydown)
     return () => window.removeEventListener('keydown', handleGlobalKeydown)
@@ -716,11 +695,9 @@
       onClose={dismissDrawerAndFocusTrigger} />
 
     <main class="flex min-w-0 flex-1 flex-col gap-2 px-3 py-2 sm:px-4 sm:py-2">
-      {#if editor.currentDocId}
-        <div class="flex flex-none min-w-0 items-center">
-          <EditableText locale={settings.locale} text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
-        </div>
-      {/if}
+      <div class="flex flex-none min-w-0 items-center">
+        <EditableText locale={settings.locale} text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
+      </div>
       <section aria-label={text.playbackControls} class="@container flex flex-none flex-wrap items-center gap-1.5">
       <span class={REVEAL_CLASS.play}>
         <Button
@@ -764,7 +741,7 @@
           size="sm"
           disabled={editor.saveDisabled}
           ariaLabel={text.save}
-          onClick={editor.openSaveDialog}
+          onClick={editor.saveDocument}
           className="px-2.5 py-1.5 text-sm">
           {#snippet icon()}
             <SaveIcon className="h-4 w-4" />
@@ -1009,52 +986,7 @@
     {/await}
   {/if}
 
-  {#if editor.saveDialogOpen}
-    <BaseDialog title={text.saveDialogTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelSave}>
-      <form
-        class="flex flex-col gap-4"
-        onsubmit={event => {
-          event.preventDefault()
-          editor.confirmSave()
-        }}>
-        <label class="flex flex-col gap-1.5 text-sm text-slate-300">
-          <span>{text.documentNameLabel}</span>
-          <input
-            bind:this={saveNameInputRef}
-            type="text"
-            bind:value={() => editor.saveName, v => (editor.saveName = v)}
-            required
-            oninput={() => {
-              if (editor.saveName.trim()) {
-                editor.showNameError = false
-              }
-            }}
-            placeholder={text.documentNamePlaceholder}
-            aria-label={text.documentNameLabel}
-            class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50" />
-          {#if editor.showNameError}
-            <p role="alert" class="text-xs text-rose-400">{text.documentNameRequired}</p>
-          {/if}
-        </label>
-        <div class="flex justify-end gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              editor.resetSaveDraft()
-              saveNameInputRef?.focus()
-            }}
-            disabled={!editor.saveDirty}>
-            {text.reset}
-          </Button>
-          <Button variant="primary" accent="cyan" type="submit">
-            {text.save}
-          </Button>
-        </div>
-      </form>
-    </BaseDialog>
-  {/if}
-
-  {#if editor.saveDialogOpen && editor.overwriteConfirmOpen}
+  {#if editor.overwriteConfirmOpen}
     <BaseDialog title={text.overwriteTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelOverwrite}>
       <div class="flex flex-col gap-4">
         <p class="text-sm leading-6 text-slate-400">{text.overwriteMessage}</p>
