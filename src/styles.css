@@ -37,6 +37,9 @@
   --cm-activeLineGutter: rgba(22, 27, 34, 0.95);
   --cm-activeLine: rgba(48, 54, 61, 0.45);
   --cm-selection: rgba(56, 139, 253, 0.35);
+  --cm-playbackHighlight: rgba(34, 211, 238, 0.28);
+  --cm-playbackHighlightStrong: rgba(103, 232, 249, 0.9);
+  --cm-playbackHighlightSelected: rgba(52, 211, 153, 0.32);
 }
 
 /*
@@ -112,6 +115,9 @@
   --cm-activeLineGutter: rgba(241, 245, 249, 0.95);
   --cm-activeLine: rgba(2, 6, 23, 0.04);
   --cm-selection: rgba(9, 105, 218, 0.18);
+  --cm-playbackHighlight: rgba(8, 145, 178, 0.22);
+  --cm-playbackHighlightStrong: rgba(14, 116, 144, 0.9);
+  --cm-playbackHighlightSelected: rgba(21, 128, 61, 0.22);
 }
 
 [data-theme='sepia'] {
@@ -140,6 +146,9 @@
   --cm-activeLineGutter: rgba(245, 238, 222, 0.95);
   --cm-activeLine: rgba(120, 90, 30, 0.06);
   --cm-selection: rgba(180, 83, 9, 0.16);
+  --cm-playbackHighlight: rgba(217, 119, 6, 0.2);
+  --cm-playbackHighlightStrong: rgba(180, 83, 9, 0.85);
+  --cm-playbackHighlightSelected: rgba(22, 101, 52, 0.2);
 }
 
 [data-theme='ember'] {
@@ -169,6 +178,9 @@
   --cm-activeLineGutter: rgba(33, 23, 20, 0.95);
   --cm-activeLine: rgba(120, 70, 30, 0.25);
   --cm-selection: rgba(245, 158, 11, 0.25);
+  --cm-playbackHighlight: rgba(251, 191, 36, 0.22);
+  --cm-playbackHighlightStrong: rgba(252, 211, 77, 0.9);
+  --cm-playbackHighlightSelected: rgba(110, 231, 183, 0.3);
 }
 
 [data-theme='nebula'] {
@@ -198,6 +210,9 @@
   --cm-activeLineGutter: rgba(23, 18, 35, 0.95);
   --cm-activeLine: rgba(120, 100, 190, 0.28);
   --cm-selection: rgba(167, 139, 250, 0.3);
+  --cm-playbackHighlight: rgba(196, 181, 253, 0.24);
+  --cm-playbackHighlightStrong: rgba(196, 181, 253, 0.9);
+  --cm-playbackHighlightSelected: rgba(52, 211, 153, 0.3);
 }
 
 [data-theme='sky'] {
@@ -220,6 +235,9 @@
   --cm-activeLineGutter: rgba(239, 245, 250, 0.95);
   --cm-activeLine: rgba(2, 132, 199, 0.07);
   --cm-selection: rgba(14, 116, 233, 0.16);
+  --cm-playbackHighlight: rgba(3, 105, 161, 0.2);
+  --cm-playbackHighlightStrong: rgba(3, 105, 161, 0.88);
+  --cm-playbackHighlightSelected: rgba(21, 128, 61, 0.22);
 }
 
 [data-theme='mint'] {
@@ -247,6 +265,9 @@
   --cm-activeLineGutter: rgba(239, 250, 243, 0.95);
   --cm-activeLine: rgba(5, 122, 90, 0.07);
   --cm-selection: rgba(5, 150, 105, 0.16);
+  --cm-playbackHighlight: rgba(4, 120, 87, 0.2);
+  --cm-playbackHighlightStrong: rgba(4, 120, 87, 0.88);
+  --cm-playbackHighlightSelected: rgba(5, 150, 105, 0.3);
 }
 
 [data-theme='lavender'] {
@@ -274,6 +295,9 @@
   --cm-activeLineGutter: rgba(245, 243, 255, 0.95);
   --cm-activeLine: rgba(109, 40, 217, 0.06);
   --cm-selection: rgba(124, 58, 237, 0.16);
+  --cm-playbackHighlight: rgba(109, 40, 217, 0.18);
+  --cm-playbackHighlightStrong: rgba(109, 40, 217, 0.88);
+  --cm-playbackHighlightSelected: rgba(22, 101, 52, 0.2);
 }
 
 [data-theme='forest'] {
@@ -302,6 +326,9 @@
   --cm-activeLineGutter: rgba(23, 32, 28, 0.95);
   --cm-activeLine: rgba(40, 110, 80, 0.3);
   --cm-selection: rgba(52, 211, 153, 0.25);
+  --cm-playbackHighlight: rgba(110, 231, 183, 0.22);
+  --cm-playbackHighlightStrong: rgba(110, 231, 183, 0.9);
+  --cm-playbackHighlightSelected: rgba(52, 211, 153, 0.35);
 }
 
 [data-theme='midnight'] {
@@ -330,6 +357,9 @@
   --cm-activeLineGutter: rgba(21, 26, 43, 0.95);
   --cm-activeLine: rgba(50, 90, 160, 0.28);
   --cm-selection: rgba(96, 165, 250, 0.28);
+  --cm-playbackHighlight: rgba(147, 197, 253, 0.22);
+  --cm-playbackHighlightStrong: rgba(147, 197, 253, 0.9);
+  --cm-playbackHighlightSelected: rgba(52, 211, 153, 0.32);
 }
 
 html,

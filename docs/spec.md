@@ -47,24 +47,35 @@ coherent system instead of a new parallel one.
 
 ## Playback model
 
-- Playback always synthesizes and caches the full editor content; a manual text
-  selection never narrows synthesis scope, it only selects the segment and word
-  boundary where playback starts.
-- When a manual text selection exists, playback snaps to the first available
-  word boundary inside that selection; if the selection begins mid-word or no
-  in-range word boundary exists yet, it falls back to the nearest earlier
-  boundary in the same segment.
+- A non-empty manual text selection before Play narrows playback scope to that
+  selected substring. The substring is trimmed before synthesis/cache lookup so
+  leading or trailing spaces do not fragment cache entries.
+- When the trimmed selection starts and ends on whole-word boundaries and every
+  covering source segment already has cached synthesis for the active voice and
+  speed, playback reuses those cached blobs by slicing only the selected words
+  from the source timeline into scoped session segments; if the first or last
+  selected word is partial, or any covering segment is uncached, playback falls
+  back to synthesizing the trimmed selected substring as a fresh scoped segment.
+- A collapsed selection behaves as a caret position, not as a scoped playback
+  request.
 - The full playback text is segmented using the same rules as `tts.mjs`.
 - Segments are played sequentially.
 - Upcoming segments synthesize in parallel while the current one plays, capped
   by the Synthesis concurrency setting; cancellation (Stop or unmount) aborts
   in-flight synthesis requests and settles the active audio element.
 - While a segment is active, playback timing follows word boundaries when they
-  are available and the editor selects the current spoken word. Sentence
-  boundaries remain the metadata-table rows.
-- Stopping playback preserves the current selection.
-- When playback finishes, restore the pre-playback selection state so the editor
-  returns to the selection the user had before playback started.
+  are available and the editor renders the current spoken word through a
+  dedicated playback-highlight overlay (`--cm-playbackHighlight` light-blue for
+  full-document, `--cm-playbackHighlightSelected` emerald green when the word
+  lies inside a manual text selection); the Info panel's active row stays light-blue (cyan) in both modes. Sentence boundaries remain the metadata-table rows.
+- Playback never mutates the user's native text selection. During playback the
+  editor collapses any range selection to a caret so the native selection cannot
+  drift while the overlay highlight advances, but caret movement (click/arrow)
+  remains enabled to seek playback.
+- Before playback starts, a cached scoped selection may prime the controls and
+  Info panel with selected-text-only metadata, but it must not pre-highlight the
+  first selected word in the editor.
+- Stopping or finishing playback clears only the playback-highlight overlay.
 - A metadata pipeline records per-sentence boundaries for the session. Editing
   the content invalidates it and re-synthesizes segments in a bounded,
   cancellable background pass to refresh boundaries.
@@ -134,7 +145,7 @@ coherent system instead of a new parallel one.
   synthesized segments in IndexedDB (bounded count). After a reload it verifies
   its local copy with `If-None-Match` and reuses the stored blob on `304`;
   warm-up waits for the IndexedDB hydration to land before scanning segments.
-- Cache entries are keyed by `(text, voice, rate)`, so a different voice or speed
+- Cache entries are keyed by trimmed `(text, voice, rate)`, so a different voice or speed
   stores a separate entry; identical content with the same voice and speed reuses
   the cached audio.
 - Each persisted entry is tagged with the document id, so the cache can be

@@ -942,6 +942,7 @@
               bind:content={settings.content}
               onSelectionChange={range => playback.syncSelectionStart(range)}
               editable={!playback.isPlaying}
+              selectionEnabled={!playback.isPlaying}
               theme={settings.theme}
               autoFocus={true}
               editorAriaLabel={text.editorLabel}

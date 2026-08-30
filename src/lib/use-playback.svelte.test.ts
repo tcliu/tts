@@ -69,6 +69,9 @@ function createEditor(): CodeEditorHandle {
     getSelectionRange: () => null,
     setSelection: () => false,
     clearSelection: () => {},
+    setPlaybackHighlight: () => {},
+    setPlaybackHighlightSelected: () => {},
+    clearPlaybackHighlight: () => {},
     focus: () => {},
     hasFocus: () => false,
   }
@@ -134,6 +137,13 @@ function createSelectionEditor(selection: { from: number; to: number } | null, o
       return true
     },
     clearSelection: () => {},
+    setPlaybackHighlight: (from: number, to: number) => {
+      onSetSelection?.(from, to)
+    },
+    setPlaybackHighlightSelected: (from: number, to: number) => {
+      onSetSelection?.(from, to)
+    },
+    clearPlaybackHighlight: () => {},
     focus: () => {},
     hasFocus: () => false,
   }
@@ -321,7 +331,7 @@ describe('usePlayback stop', () => {
     dispose()
   })
 
-  it('keeps a selection on the last character of a segment in that segment', async () => {
+  it('treats a one-character selection at a segment edge as scoped playback', async () => {
     const content = 'Hello world.\n\nSecond sentence.'
     const segments = splitTtsSegments(content)
     const firstSegment = segments[0]
@@ -334,7 +344,8 @@ describe('usePlayback stop', () => {
     playback.syncSelectionStart({ from: firstSegment.indexEnd, to: firstSegment.indexEnd + 1 })
     flushSync()
 
-    expect(playback.currentSegmentIndex).toBe(1)
+    expect(playback.currentSegmentIndex).toBe(0)
+    expect(playback.playbackElapsed).toBe(0)
     dispose()
   })
 
@@ -346,6 +357,7 @@ describe('usePlayback stop', () => {
     const content = 'First paragraph here.\n\nSecond paragraph here.'
     const segments = splitTtsSegments(content)
     let selection: { from: number; to: number } | null = null
+    let highlight: { from: number; to: number } | null = null
     const editor: CodeEditorHandle = {
       getSelectionText: () => '',
       getSelectionRange: () => selection,
@@ -355,6 +367,15 @@ describe('usePlayback stop', () => {
       },
       clearSelection: () => {
         selection = null
+      },
+      setPlaybackHighlight: (from, to) => {
+        highlight = { from, to }
+      },
+      setPlaybackHighlightSelected: (from, to) => {
+        highlight = { from, to }
+      },
+      clearPlaybackHighlight: () => {
+        highlight = null
       },
       focus: () => {},
     hasFocus: () => false,
@@ -369,7 +390,7 @@ describe('usePlayback stop', () => {
 
     await playback.seekTo(5.5)
     flushSync()
-    expect(selection).not.toBeNull()
+    expect(highlight).not.toBeNull()
     expect(playback.totalElapsed).toBeCloseTo(5.5, 2)
 
     vi.mocked(getCachedSynthesis).mockClear()
@@ -390,7 +411,34 @@ describe('usePlayback stop', () => {
     dispose()
   })
 
-  it('treats a manual selection as a full-document start position', async () => {
+  it('treats a collapsed selection as caret positioning for the next Play', async () => {
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const caret = content.indexOf('Second')
+    const editor = createSelectionEditor({ from: caret, to: caret })
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    const segments = splitTtsSegments(content)
+    playback.primeSession(segments, 0, { from: caret, to: caret })
+    playback.recordSegment(0, createSegmentMeta(0, segments[0], { duration: 4, spokenEnd: 4 }))
+    playback.recordSegment(1, createSegmentMeta(1, segments[1], { duration: 6, spokenEnd: 6 }))
+
+    playback.syncSelectionStart({ from: caret, to: caret })
+    flushSync()
+
+    expect(playback.currentSegmentIndex).toBe(2)
+    expect(playback.playbackElapsed).toBe(0)
+
+    vi.mocked(getCachedSynthesis).mockClear()
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    expect(vi.mocked(getCachedSynthesis).mock.calls[0]?.[0]).toBe(segments[1].text)
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
+  it('plays only the selected text before playback starts', async () => {
     const content = 'First paragraph here.\n\nSecond paragraph here.'
     const selectionStart = content.indexOf('Second')
     const editor = createSelectionEditor({ from: selectionStart, to: selectionStart + 'Second'.length })
@@ -400,18 +448,160 @@ describe('usePlayback stop', () => {
     const finished = playback.startPlayback()
     await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
 
-    expect(playback.totalSegments).toBe(2)
-    expect(playback.currentSegmentIndex).toBe(2)
-    expect(vi.mocked(getCachedSynthesis).mock.calls.map(call => call[0])).toEqual(
-      expect.arrayContaining(['First paragraph here.', 'Second paragraph here.']),
-    )
+    expect(playback.totalSegments).toBe(1)
+    expect(playback.currentSegmentIndex).toBe(1)
+    expect(vi.mocked(getCachedSynthesis).mock.calls.map(call => call[0])).toEqual(['Second'])
 
     playback.stopPlayback()
     await finished
     dispose()
   })
 
-  it('snaps manual selection to the first word inside the selected text', () => {
+  it('keeps the native selection untouched while selected-text playback drives a separate highlight', async () => {
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const selectionStart = content.indexOf('Second')
+    const selection = { from: selectionStart, to: selectionStart + 'Second paragraph here.'.length }
+    const highlights: Array<{ from: number; to: number }> = []
+    const editor: CodeEditorHandle = {
+      getSelectionText: () => content.slice(selection.from, selection.to),
+      getSelectionRange: () => selection,
+      setSelection: () => false,
+      clearSelection: () => {},
+      setPlaybackHighlight: (from, to) => {
+        highlights.push({ from, to })
+      },
+      setPlaybackHighlightSelected: (from, to) => {
+        highlights.push({ from, to })
+      },
+      clearPlaybackHighlight: () => {},
+      focus: () => {},
+      hasFocus: () => false,
+    }
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    vi.mocked(getCachedSynthesis).mockClear()
+    vi.mocked(getCachedSynthesis).mockImplementationOnce(async () => ({
+      blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+      boundaries: [{ offset: 0, at: 0, text: 'Second paragraph here.' }],
+      wordBoundaries: [
+        { offset: 0, at: 0, text: 'Second' },
+        { offset: 7, at: 0.6, text: 'paragraph' },
+        { offset: 17, at: 1.2, text: 'here.' },
+      ],
+      spokenStart: 0,
+      spokenEnd: 1.8,
+    }))
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    await vi.waitFor(() => expect(highlights.length).toBeGreaterThan(0))
+
+    expect(editor.getSelectionRange()).toEqual(selection)
+    expect(vi.mocked(getCachedSynthesis).mock.calls[0]?.[0]).toBe('Second paragraph here.')
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
+  it('reuses cached synthesis for whole-word selections without including earlier words', async () => {
+    const content = 'First second third fourth fifth sixth'
+    const selectionText = 'third fourth fifth'
+    const selectionStart = content.indexOf(selectionText)
+    const selection = { from: selectionStart, to: selectionStart + selectionText.length }
+    const highlights: Array<{ from: number; to: number }> = []
+    const editor: CodeEditorHandle = {
+      getSelectionText: () => content.slice(selection.from, selection.to),
+      getSelectionRange: () => selection,
+      setSelection: () => false,
+      clearSelection: () => {},
+      setPlaybackHighlight: (from, to) => {
+        highlights.push({ from, to })
+      },
+      setPlaybackHighlightSelected: (from, to) => {
+        highlights.push({ from, to })
+      },
+      clearPlaybackHighlight: () => {},
+      focus: () => {},
+      hasFocus: () => false,
+    }
+    vi.mocked(peekCachedSynthesis).mockImplementation((text) => {
+      if (text !== content) return null
+      return {
+        blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+        boundaries: [
+          { offset: 0, at: 0, text: content },
+        ],
+        wordBoundaries: [
+          { offset: 0, at: 0, text: 'First' },
+          { offset: 6, at: 0.4, text: 'second' },
+          { offset: 13, at: 0.8, text: 'third' },
+          { offset: 19, at: 1.2, text: 'fourth' },
+          { offset: 26, at: 1.6, text: 'fifth' },
+          { offset: 32, at: 2.0, text: 'sixth' },
+        ],
+        spokenStart: 0,
+        spokenEnd: 2.4,
+      }
+    })
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    await vi.waitFor(() => expect(AudioStub.instances.length).toBeGreaterThan(0))
+    const audio = AudioStub.instances[AudioStub.instances.length - 1]
+
+    expect(playback.totalSegments).toBe(1)
+    expect(playback.positionSegmentText).toBe(selectionText)
+    expect(audio.currentTime).toBeCloseTo(0.8, 5)
+    expect(highlights[0]).toEqual({ from: selectionStart, to: selectionStart + 'third'.length })
+
+    playback.stopPlayback()
+    await finished
+    vi.mocked(peekCachedSynthesis).mockReset()
+    dispose()
+  })
+
+  it('plays isolated short words from the start of the audio blob instead of a trimmed spoken window', async () => {
+    const content = 'the city completely wakes up'
+    const segments = splitTtsSegments(content)
+    const editor = createSelectionEditor(null)
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0], {
+      boundaries: [{ offset: 0, at: 0.1, text: content }],
+      wordBoundaries: [
+        { offset: 0, at: 0.1, text: 'the' },
+        { offset: 4, at: 0.21, text: 'city' },
+      ],
+      spokenStart: 0.1,
+      spokenEnd: 1.5,
+      duration: 1.4,
+    }))
+
+    vi.mocked(getCachedSynthesis).mockImplementationOnce(async () => ({
+      blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+      boundaries: [{ offset: 0, at: 0.1, text: 'the' }],
+      wordBoundaries: [{ offset: 0, at: 0.1, text: 'the' }],
+      spokenStart: 0.1,
+      spokenEnd: 0.18,
+    }))
+
+    const finished = playback.playWord(0, segments[0].indexStart)
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    const audio = await vi.waitFor(() => {
+      const instance = AudioStub.instances[AudioStub.instances.length - 1]
+      expect(instance).toBeDefined()
+      return instance
+    })
+    await vi.waitFor(() => expect(audio.currentTime).toBe(0))
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
+  it('stores a non-empty manual selection as playback scope instead of seek position', () => {
     const content = 'First paragraph here.\n\nSecond paragraph here.'
     const selectionStart = content.indexOf('paragraph here.')
     const selectionEnd = selectionStart + 'paragraph here.'.length
@@ -425,9 +615,9 @@ describe('usePlayback stop', () => {
 
     playback.syncSelectionStart({ from: selectionStart, to: selectionEnd })
 
-    expect(playback.currentSegmentIndex).toBe(1)
-    expect(playback.playbackElapsed).toBeCloseTo(0.5, 5)
-    expect(playback.totalElapsed).toBeCloseTo(0.5, 5)
+    expect(playback.currentSegmentIndex).toBe(0)
+    expect(playback.playbackElapsed).toBe(0)
+    expect(playback.totalElapsed).toBe(0)
   })
 
   it('drops stale segment metadata when the content changes between selections', () => {
@@ -495,7 +685,7 @@ describe('usePlayback stop', () => {
     dispose()
   })
 
-  it('falls back to the nearest earlier boundary when a selection starts mid-word', () => {
+  it('keeps mid-word manual selection scoped instead of snapping playback immediately', () => {
     const content = 'First paragraph here.\n\nSecond paragraph here.'
     const selectionStart = content.indexOf('paragraph here.') + 2
     const selectionEnd = selectionStart + 4
@@ -509,10 +699,9 @@ describe('usePlayback stop', () => {
 
     playback.syncSelectionStart({ from: selectionStart, to: selectionEnd })
 
-    expect(playback.currentSegmentIndex).toBe(1)
-    // Mid-word start snaps to the nearest earlier boundary, not the next one.
-    expect(playback.playbackElapsed).toBeCloseTo(0.5, 5)
-    expect(playback.totalElapsed).toBeCloseTo(0.5, 5)
+    expect(playback.currentSegmentIndex).toBe(0)
+    expect(playback.playbackElapsed).toBe(0)
+    expect(playback.totalElapsed).toBe(0)
   })
 
   it('does not zero the playback session when selection changes before metadata exists', () => {
@@ -557,7 +746,7 @@ describe('usePlayback stop', () => {
 
     playback.syncSelectionStart({ from: selectionStart, to: selectionEnd })
     expect(playback.totalDuration).toBeCloseTo(2.5, 5)
-    expect(playback.playbackElapsed).toBeCloseTo(0.5, 5)
+    expect(playback.playbackElapsed).toBe(0)
   })
 
   it('selects the current word during playback when word boundaries are present', () => {
@@ -856,6 +1045,86 @@ describe('usePlayback stop', () => {
     expect(playback.totalDuration).toBeCloseTo(1.5, 5)
     expect(playback.positionSegmentIndex).toBe(0)
     expect(playback.isPlaying).toBe(false)
+
+    vi.mocked(peekCachedSynthesis).mockReset()
+    dispose()
+  })
+
+  it('updates the cached playback session when selection scope changes', () => {
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const fullSegments = splitTtsSegments(content)
+    const scopedStart = content.indexOf('Second')
+    const scopedEnd = scopedStart + 'Second paragraph here.'.length
+    let selection: { from: number; to: number } | null = null
+    const editor: CodeEditorHandle = {
+      getSelectionText: () => (selection ? content.slice(selection.from, selection.to) : ''),
+      getSelectionRange: () => selection,
+      getCaretPosition: () => selection?.to ?? 0,
+      setSelection: () => false,
+      clearSelection: () => {},
+      setPlaybackHighlight: () => {},
+      setPlaybackHighlightSelected: () => {},
+      clearPlaybackHighlight: () => {},
+      focus: () => {},
+      hasFocus: () => false,
+    }
+
+    vi.mocked(peekCachedSynthesis).mockImplementation((text) => {
+      if (text === fullSegments[0].text) {
+        return {
+          blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+          boundaries: FIRST_SEGMENT_BOUNDARIES,
+          wordBoundaries: FIRST_SEGMENT_BOUNDARIES,
+          spokenStart: 0,
+          spokenEnd: 1.5,
+        }
+      }
+      if (text === fullSegments[1].text) {
+        return {
+          blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+          boundaries: SECOND_SEGMENT_BOUNDARIES,
+          wordBoundaries: SECOND_SEGMENT_BOUNDARIES,
+          spokenStart: 0,
+          spokenEnd: 1,
+        }
+      }
+      if (text === 'Second paragraph here.') {
+        return {
+          blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+          boundaries: [{ offset: 0, at: 0, text: 'Second paragraph here.' }],
+          wordBoundaries: [
+            { offset: 0, at: 0, text: 'Second' },
+            { offset: 7, at: 0.6, text: 'paragraph' },
+            { offset: 17, at: 0.9, text: 'here.' },
+          ],
+          spokenStart: 0,
+          spokenEnd: 1.2,
+        }
+      }
+      return null
+    })
+
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    playback.warmFromCache()
+    expect(playback.synthesizedCount).toBe(2)
+    expect(playback.totalDuration).toBeCloseTo(2.5, 5)
+
+    selection = { from: scopedStart, to: scopedEnd }
+    playback.syncSelectionStart(selection)
+    flushSync()
+
+    expect(playback.totalSegments).toBe(1)
+    expect(playback.positionSegmentText).toBe('Second paragraph here.')
+    expect(playback.totalDuration).toBeCloseTo(1, 5)
+
+    selection = null
+    playback.syncSelectionStart(null)
+    flushSync()
+
+    expect(playback.totalSegments).toBe(2)
+    expect(playback.synthesizedCount).toBe(2)
+    expect(playback.totalDuration).toBeCloseTo(2.5, 5)
 
     vi.mocked(peekCachedSynthesis).mockReset()
     dispose()

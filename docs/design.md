@@ -36,19 +36,27 @@
 ## Playback
 
 - The playback button is enabled only when there is input text.
-- Playback always speaks the full editor content; when the editor has a text
-  selection, playback starts from the selected text instead of the beginning.
+- Playback speaks the full editor content when no text is selected. When the
+  editor has a non-empty text selection before Play, playback is scoped to that
+  selected text only.
 - Playback splits the input into segments and speaks them sequentially.
-- During playback, the current spoken word is selected in the editor.
+- During playback, the current spoken word is shown with a separate playback
+  highlight in the editor: light-blue for full-document playback and emerald green when the word lies inside a manual text selection so the highlight remains visible above the blue selection background. The Info panel's active sentence/word row stays light-blue (cyan) in both modes.
 - During playback, the playback button becomes a Stop button.
-- Activating Stop ends playback and leaves the current segment selected.
-- When playback completes, clear the selection only when playback started
-  without a pre-existing selection.
+- Activating Stop ends playback and clears the playback highlight.
+- The editor's native text selection remains the user's selection; when
+  playback starts from a selection, that native selection stays visible under
+  the playback highlight.
+- While playback is active, pointer range selection is disabled (drag/shift-select collapses to caret) while caret movement remains enabled to seek playback.
 - Playback controls appear above the editor once synthesis has produced a
   result or cached synthesis is available: chips showing the current language,
   voice, and segment counter, plus a seek slider with elapsed and total time.
   Opening or switching to a document with cached audio shows them immediately;
   editing the content hides them until the cache refreshes after a short pause.
+- When a manual selection exists before Play and matching cached audio is
+  available, the controls and Info panel scope to only the selected text even
+  before playback starts, but no playback word highlight is shown until Play is
+  clicked.
 - Dragging the seek slider previews the position; releasing starts or resumes
   playback there.
 - The language and voice chips are dropdowns. Picking a value overrides the

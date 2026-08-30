@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import Button from './Button.svelte'
   import RefreshIcon from '$lib/icons/RefreshIcon.svelte'
   import FollowIcon from '$lib/icons/FollowIcon.svelte'
@@ -26,9 +27,40 @@
 
   let tableBodyRef = $state<HTMLDivElement | null>(null)
   let expandedRows = $state<Set<number>>(new Set())
+  const wordContainers = new Map<number, HTMLDivElement>()
+  const WORD_COLS = ['w-6', 'w-12', 'w-20', 'w-20', ''] as const
+
+  function attachWordContainer(node: HTMLDivElement, sentenceIndex: number) {
+    wordContainers.set(sentenceIndex, node)
+    return {
+      destroy() {
+        wordContainers.delete(sentenceIndex)
+      }
+    }
+  }
 
   $effect(() => {
     metadata.attachScrollContainer(tableBodyRef)
+  })
+
+  $effect(() => {
+    void metadata.rows
+    void metadata.followSentence
+    if (!metadata.followSentence) return
+    // Defer until the word rows have been rendered for the active sentence
+    void tick().then(() => {
+      for (const container of wordContainers.values()) {
+        const active = container.querySelector<HTMLElement>('tr[data-active="true"]')
+        if (!active) continue
+        const containerRect = container.getBoundingClientRect()
+        const activeRect = active.getBoundingClientRect()
+        const isVisible = activeRect.top >= containerRect.top && activeRect.bottom <= containerRect.bottom
+        if (isVisible) continue
+        const reduceMotion =
+          typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        active.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' })
+      }
+    })
   })
 
   function sentenceKey(row: { sentenceIndex: number }): number {
@@ -125,12 +157,21 @@
       <p class="text-xs text-slate-500">{metadata.search.trim() ? text.metadataNoResults : text.noMetadata}</p>
     {:else}
       <div bind:this={tableBodyRef} class="min-h-0 flex-1 overflow-auto">
-        <table class="w-full border-collapse text-sm">
+        <table class="w-full table-fixed border-collapse text-sm">
+          <colgroup>
+            <col class="w-6" />
+            <col class="w-6" />
+            <col class="w-10" />
+            <col class="w-16" />
+            <col class="w-16" />
+            <col class="w-14" />
+            <col />
+          </colgroup>
           <thead class="sticky top-0 z-10 bg-slate-950">
             <tr class="text-left text-xs text-slate-400">
               <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tableExpand}></th>
               <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
-              <th scope="col" class="px-2 py-1 font-medium">{text.tableSentence}</th>
+              <th scope="col" class="px-2 py-1 font-medium" aria-label={text.tableSentence}>{text.tableNumber}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableLang}</th>
@@ -145,11 +186,11 @@
                 role="button"
                 tabindex="0"
                 aria-label={`${text.playSegment} ${row.sentenceIndex + 1}`}
-                onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
+                onclick={() => playback.playSentence(row.segmentIndex, row.offset)}
                 onkeydown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
-                    playback.playFromSegment(row.segmentIndex, row.offset)
+                    playback.playSentence(row.segmentIndex, row.offset)
                   }
                 }}
                 class="cursor-pointer border-t border-slate-800 align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset {row.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
@@ -175,7 +216,7 @@
                     aria-label={`${text.playSegment} ${row.sentenceIndex + 1}`}
                     onclick={(event) => {
                       event.stopPropagation()
-                      playback.playFromSegment(row.segmentIndex, row.offset)
+                      playback.playSentence(row.segmentIndex, row.offset)
                     }}
                     onpointerdown={(e) => e.preventDefault()}
                     class="inline-flex h-6 w-6 items-center justify-center rounded text-cyan-400 outline-none transition motion-reduce:transition-none hover:bg-cyan-500/10 hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500">
@@ -186,7 +227,7 @@
                 <td class="px-2 py-1 font-mono whitespace-nowrap">{row.at.toFixed(2)}s</td>
                 <td class="px-2 py-1 font-mono whitespace-nowrap">{row.offset}</td>
                 <td class="px-2 py-1 whitespace-nowrap">{row.lang}</td>
-                <td class="px-2 py-1">{row.text}</td>
+                <td class="px-2 py-1 break-words">{row.text}</td>
               </tr>
               {#if isExpanded(row)}
                 <tr class="border-t border-slate-800 bg-slate-900/40">
@@ -194,17 +235,31 @@
                     {#if row.words.length === 0}
                       <p class="px-3 py-2 text-xs text-slate-500">{text.noWords}</p>
                     {:else}
-                      <div class="max-h-64 overflow-auto">
-                        <table class="w-full border-collapse text-xs">
-                          <thead class="sticky top-0 z-10 bg-slate-900">
+                      <div class="border-b border-slate-800 bg-slate-900">
+                        <table class="w-full table-fixed border-collapse text-xs">
+                          <colgroup>
+                            {#each WORD_COLS as cls}
+                              <col class={cls} />
+                            {/each}
+                          </colgroup>
+                          <thead class="bg-slate-900">
                             <tr class="text-left text-slate-400">
-                              <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
+                              <th scope="col" class="px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableWord}</th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
                             </tr>
                           </thead>
+                        </table>
+                      </div>
+                      <div class="max-h-64 overflow-auto" use:attachWordContainer={row.sentenceIndex}>
+                        <table class="w-full table-fixed border-collapse text-xs">
+                          <colgroup>
+                            {#each WORD_COLS as cls}
+                              <col class={cls} />
+                            {/each}
+                          </colgroup>
                           <tbody>
                             {#each row.words as word, wIdx}
                               <tr
@@ -212,11 +267,11 @@
                                 tabindex="0"
                                 data-active={word.active}
                                 aria-label={`${text.playWord} ${word.text}`}
-                                onclick={() => playback.playFromSegment(word.segmentIndex, word.offset)}
+                                onclick={() => playback.playWord(word.segmentIndex, word.offset)}
                                 onkeydown={(event) => {
                                   if (event.key === 'Enter' || event.key === ' ') {
                                     event.preventDefault()
-                                    playback.playFromSegment(word.segmentIndex, word.offset)
+                                    playback.playWord(word.segmentIndex, word.offset)
                                   }
                                 }}
                                 class="cursor-pointer border-t border-slate-800/60 align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset {word.active ? 'bg-cyan-500/15 text-cyan-100' : 'text-slate-300 hover:bg-slate-800/60'}">
@@ -226,7 +281,7 @@
                                     aria-label={`${text.playWord} ${word.text}`}
                                     onclick={(event) => {
                                       event.stopPropagation()
-                                      playback.playFromSegment(word.segmentIndex, word.offset)
+                                      playback.playWord(word.segmentIndex, word.offset)
                                     }}
                                     onpointerdown={(e) => e.preventDefault()}
                                     class="inline-flex h-5 w-5 items-center justify-center rounded text-cyan-400 outline-none transition motion-reduce:transition-none hover:bg-cyan-500/10 hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500">
@@ -236,7 +291,7 @@
                                 <td class="px-2 py-1 font-mono whitespace-nowrap">{wIdx + 1}</td>
                                 <td class="px-2 py-1 font-mono whitespace-nowrap">{word.at.toFixed(2)}s</td>
                                 <td class="px-2 py-1 font-mono whitespace-nowrap">{word.offset}</td>
-                                <td class="px-2 py-1">{word.text}</td>
+                                <td class="px-2 py-1 break-words">{word.text}</td>
                               </tr>
                             {/each}
                           </tbody>

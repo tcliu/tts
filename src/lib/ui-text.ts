@@ -41,6 +41,7 @@ export interface UiText {
   playbackFinished: string
   voiceSwitching: string
   tableSentence: string
+  tableNumber: string
   tableTime: string
   tableOffset: string
   tableLang: string
@@ -175,6 +176,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     playbackFinished: 'Playback finished.',
     voiceSwitching: 'Switching voice…',
     tableSentence: 'Sent',
+    tableNumber: '#',
     tableTime: 'Time',
     tableOffset: 'Offset',
     tableLang: 'Lang',
@@ -287,6 +289,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     playbackFinished: '播放完成。',
     voiceSwitching: '正在切換語音…',
     tableSentence: '句',
+    tableNumber: '#',
     tableTime: '時間',
     tableOffset: '位移',
     tableLang: '語言',
@@ -399,6 +402,7 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     playbackFinished: '播放完成。',
     voiceSwitching: '正在切换语音…',
     tableSentence: '句',
+    tableNumber: '#',
     tableTime: '时间',
     tableOffset: '偏移',
     tableLang: '语言',

@@ -78,6 +78,8 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
   let followSentence = $state(true)
 
   const activeSeg = $derived(playback.isPlaying ? playback.currentSegmentIndex - 1 : -1)
+  const activeInfoOffset = $derived(playback.activeInfoOffset)
+  const activeInfoKind = $derived(playback.activeInfoKind)
 
   // Depends only on the per-frame playbackElapsed, isolating the heavy table
   // rebuild below so it is memoized and does not re-run every animation frame.
@@ -87,6 +89,17 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     if (!meta) return -1
     if (shouldFallbackToRanges(meta)) {
       const segDuration = segmentDuration(meta)
+      if (activeInfoOffset >= 0) {
+        const pinnedRangeIndex = meta.ranges.findIndex((range, index) => {
+          const start = meta.baseOffset + range.start
+          const next = meta.ranges[index + 1]
+          const end = next ? meta.baseOffset + next.start : meta.baseOffset + meta.text.length
+          return activeInfoOffset >= start && activeInfoOffset < end
+        })
+        if (pinnedRangeIndex >= 0) {
+          return pinnedRangeIndex
+        }
+      }
       let idx = -1
       for (let i = 0; i < meta.ranges.length; i += 1) {
         if (syntheticRangeAt(meta.ranges[i], meta.text.length, segDuration) <= playback.playbackElapsed) idx = i
@@ -95,9 +108,21 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
       return idx
     }
     const boundaries = mergeBracketBoundaries(meta.boundaries)
+    if (activeInfoOffset >= 0) {
+      const pinnedBoundaryIndex = boundaries.findIndex((boundary, index) => {
+        const start = meta.baseOffset + boundary.offset
+        const next = boundaries[index + 1]
+        const end = next ? meta.baseOffset + next.offset : meta.baseOffset + meta.text.length
+        return activeInfoOffset >= start && activeInfoOffset < end
+      })
+      if (pinnedBoundaryIndex >= 0) {
+        return pinnedBoundaryIndex
+      }
+    }
+    const spokenStart = meta.spokenStart ?? 0
     let idx = -1
     for (let i = 0; i < boundaries.length; i += 1) {
-      if (boundaries[i].at <= playback.playbackElapsed) idx = i
+      if (boundaries[i].at - spokenStart <= playback.playbackElapsed) idx = i
       else break
     }
     return idx
@@ -107,9 +132,13 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     if (activeSeg < 0) return null
     const meta = playback.segments[activeSeg]
     if (!meta?.wordBoundaries || meta.wordBoundaries.length === 0) return null
+    if (activeInfoKind === 'word' && activeInfoOffset >= 0) {
+      return meta.wordBoundaries.find(word => meta.baseOffset + word.offset === activeInfoOffset) ?? null
+    }
+    const spokenStart = meta.spokenStart ?? 0
     let active: (typeof meta.wordBoundaries)[number] | null = null
     for (const wb of meta.wordBoundaries) {
-      if (wb.at <= playback.playbackElapsed) active = wb
+      if (wb.at - spokenStart <= playback.playbackElapsed) active = wb
       else break
     }
     return active
