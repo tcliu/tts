@@ -75,11 +75,15 @@ deploy to Vercel.
    npm run deploy -- vercel
    ```
 
-   This builds, deploys to production, waits for the deployment to reach
-   `READY`, and points the project's production domain at `APP_BASE_URL`
-   (resolved from the shell env, then `.env.vercel`, then `.env`). Stale
-   `<project>.vercel.app` aliases are removed so only the configured domain
-   remains.
+    This starts a production deploy, streams the Vercel upload/build logs,
+    waits for the deployment to reach `READY`, and points the project's
+    production domain at `APP_BASE_URL` (resolved from the shell env, then
+    `.env.vercel`, then `.env`). Stale `<project>.vercel.app` aliases are
+    removed so only the configured domain remains.
+
+    The repo's `.vercelignore` also excludes large local-only directories such
+    as `archive/`, `.worktrees/`, `node_modules/`, and `.vercel/` so they do
+    not inflate upload time.
 
 `vercel.json` sets the SvelteKit framework with `npm run build`. The synthesis
 endpoint runs on the Node.js runtime with a 60s `maxDuration` to cover Edge TTS

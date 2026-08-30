@@ -6,6 +6,7 @@ readonly ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly DOMAIN_STATE_FILE="${ROOT_DIR}/.vercel/domain-state.json"
 readonly DEPLOY_MAX_ATTEMPTS=3
 readonly DEPLOY_RETRY_DELAY=5
+readonly DEPLOY_WAIT_TIMEOUT=5m
 
 usage() {
   cat <<'EOF'
@@ -133,13 +134,16 @@ wait_for_ready_deployment() {
   local deployment_url="$1"
   local inspect_output=""
   local inspect_status=0
+  local log_status=0
   local ready_state=""
   local attempt
 
   echo "-> Waiting for Vercel deployment to become ready..."
   for attempt in $(seq 1 "${DEPLOY_MAX_ATTEMPTS}"); do
     set +e
-    inspect_output="$(run_vercel_cli inspect "${deployment_url}" --wait --timeout 5m --format json 2>&1)"
+    run_vercel_cli inspect "${deployment_url}" --logs --wait --timeout "${DEPLOY_WAIT_TIMEOUT}"
+    log_status=$?
+    inspect_output="$(run_vercel_cli inspect "${deployment_url}" --format json 2>&1)"
     inspect_status=$?
     set -e
 
@@ -148,11 +152,11 @@ wait_for_ready_deployment() {
       return 0
     fi
 
-    if [[ ${inspect_status} -eq 0 || ${attempt} -ge ${DEPLOY_MAX_ATTEMPTS} ]]; then
+    if [[ (${log_status} -eq 0 && ${inspect_status} -eq 0) || ${attempt} -ge ${DEPLOY_MAX_ATTEMPTS} ]]; then
       break
     fi
 
-    echo "-> Inspect attempt ${attempt}/${DEPLOY_MAX_ATTEMPTS} failed (exit ${inspect_status}). Retrying in ${DEPLOY_RETRY_DELAY}s..." >&2
+    echo "-> Inspect attempt ${attempt}/${DEPLOY_MAX_ATTEMPTS} did not reach READY (logs exit ${log_status}, inspect exit ${inspect_status}). Retrying in ${DEPLOY_RETRY_DELAY}s..." >&2
     sleep "${DEPLOY_RETRY_DELAY}"
   done
 
@@ -170,6 +174,10 @@ wait_for_ready_deployment() {
     exit ${inspect_status}
   fi
 
+  if [[ ${log_status} -ne 0 ]]; then
+    exit ${log_status}
+  fi
+
   exit 1
 }
 
@@ -178,15 +186,21 @@ run_deploy_with_retry() {
   local attempt
   local output=""
   local status=1
+  local output_file
+
+  output_file="$(mktemp)"
+  trap 'rm -f "${output_file}"' RETURN
 
   for attempt in $(seq 1 "${DEPLOY_MAX_ATTEMPTS}"); do
     set +e
-    output="$(
+    (
       cd "${ROOT_DIR}"
-      APP_VERSION="${app_version}" run_vercel_cli deploy --prod --yes --no-wait --format json
-    )"
-    status=$?
+      APP_VERSION="${app_version}" run_vercel_cli deploy --prod --yes --no-wait --format json 2>&1 | tee "${output_file}" >&2
+    )
+    status=${PIPESTATUS[0]}
     set -e
+
+    output="$(<"${output_file}")"
 
     if [[ ${status} -eq 0 ]]; then
       printf '%s' "${output}"
