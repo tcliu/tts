@@ -7,6 +7,7 @@
   import Tabs from '$lib/components/Tabs.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
   import { REFERENCE_LANGUAGES, SPEEDS, SPEED_STEP, getVoiceGroups, getVoiceOptions } from '$lib/tts-reference'
+  import { formatBytes } from '$lib/format-bytes'
 
   interface Props {
     locale: UiLocale
@@ -21,6 +22,7 @@
     onSelectSpeed: (speed: number) => void
     onSelectConcurrent: (value: number) => void
     onClearCache: () => void
+    onViewCache: () => void
   }
 
   let {
@@ -36,6 +38,7 @@
     onSelectSpeed,
     onSelectConcurrent,
     onClearCache,
+    onViewCache,
   }: Props = $props()
 
   const text = $derived(UI_TEXT[locale])
@@ -64,13 +67,6 @@
 
   function voicesFor(languageCode: string, group: string) {
     return getVoiceOptions(languageCode, group)
-  }
-
-  function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    const kb = bytes / 1024
-    if (kb < 1024) return `${kb.toFixed(1)} KB`
-    return `${(kb / 1024).toFixed(1)} MB`
   }
 
   function voiceLabel(voice: { name: string; gender: 'Female' | 'Male' }): string {
@@ -182,7 +178,7 @@
             onSelectConcurrent(Number.isFinite(raw) ? raw : 1)
           }} />
       </div>
-      <div class="grid items-center gap-2 border-t border-slate-800 p-3 md:grid-cols-[minmax(0,1fr)_11rem]">
+      <div class="grid items-center gap-2 border-t border-slate-800 p-3 md:grid-cols-[minmax(0,1fr)_auto]">
         <div class="text-sm">
           <span class="font-medium text-slate-100">{text.synthesisCache}</span>
           <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
@@ -195,15 +191,26 @@
             {/if}
           </p>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={cacheStats === null || cacheStats.segments === 0}
-          ariaLabel={text.clearSynthesisCache}
-          className="text-sm"
-          onClick={onClearCache}>
-          {text.clearSynthesisCache}
-        </Button>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={cacheStats === null || cacheStats.segments === 0}
+            ariaLabel={text.clearAllCacheEntries}
+            className="text-sm"
+            onClick={onClearCache}>
+            {text.clearAll}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={cacheStats === null || cacheStats.segments === 0}
+            ariaLabel={text.viewSynthesisCache}
+            className="text-sm"
+            onClick={onViewCache}>
+            {text.view}
+          </Button>
+        </div>
       </div>
     </div>
   {/snippet}

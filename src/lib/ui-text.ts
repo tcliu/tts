@@ -47,6 +47,11 @@ export interface UiText {
   tableOffset: string
   tableLang: string
   tableText: string
+  tableVoice: string
+  tableRate: string
+  tableSize: string
+  tableSaved: string
+  tableDocument: string
   documents: string
   documentSearch: string
   noSavedDocuments: string
@@ -72,6 +77,9 @@ export interface UiText {
   editText: string
   doubleClickToEdit: string
   delete: string
+  clear: string
+  clearAll: string
+  view: string
   deleteConfirmTitle: string
   deleteConfirmMessage: string
   discardTitle: string
@@ -106,6 +114,18 @@ export interface UiText {
   /** @deprecated — use cachedSegmentsNone */
   cachedDocumentsNone: string
   clearSynthesisCache: string
+  clearAllCacheEntries: string
+  clearSelectedCacheEntries: string
+  viewSynthesisCache: string
+  synthesisCacheDetailsTitle: string
+  cacheSearch: string
+  noMatchingCacheEntries: string
+  loadingCacheEntries: string
+  cacheEntriesSelected: string
+  selectAllCacheEntries: string
+  selectCacheEntry: string
+  playSelectedCacheEntries: string
+  stopSelectedCachePlayback: string
   resetPlaybackCache: string
   voiceSearch: string
   noMatchingVoices: string
@@ -182,6 +202,11 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     tableOffset: 'Offset',
     tableLang: 'Lang',
     tableText: 'Text',
+    tableVoice: 'Voice',
+    tableRate: 'Rate',
+    tableSize: 'Size',
+    tableSaved: 'Saved',
+    tableDocument: 'Document',
     documents: 'Documents',
     documentSearch: 'Search documents',
     noSavedDocuments: 'No saved documents.',
@@ -207,6 +232,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     editText: 'Edit text',
     doubleClickToEdit: 'Double-click to edit',
     delete: 'Delete',
+    clear: 'Clear',
+    clearAll: 'Clear all',
+    view: 'View',
     deleteConfirmTitle: 'Delete document?',
     deleteConfirmMessage: `This document will be permanently deleted.`,
     discardTitle: 'Discard unsaved changes?',
@@ -237,6 +265,18 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     documentsUnit: 'segments',
     cachedDocumentsNone: 'No cached segments.',
     clearSynthesisCache: 'Clear cache',
+    clearAllCacheEntries: 'Clear all cached segments',
+    clearSelectedCacheEntries: 'Clear selected cached segments',
+    viewSynthesisCache: 'View cached segments',
+    synthesisCacheDetailsTitle: 'Synthesis cache',
+    cacheSearch: 'Search cached segments',
+    noMatchingCacheEntries: 'No matching cached segments.',
+    loadingCacheEntries: 'Loading cached segments…',
+    cacheEntriesSelected: 'selected',
+    selectAllCacheEntries: 'Select all cached segments',
+    selectCacheEntry: 'Select cached segment',
+    playSelectedCacheEntries: 'Play selected cached segments',
+    stopSelectedCachePlayback: 'Stop selected cached segment playback',
     resetPlaybackCache: 'Reset playback, segment info, and cached audio',
     voiceSearch: 'Search languages or voices',
     noMatchingVoices: 'No matching voices.',
@@ -295,6 +335,11 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     tableOffset: '位移',
     tableLang: '語言',
     tableText: '文字',
+    tableVoice: '語音',
+    tableRate: '速度',
+    tableSize: '大小',
+    tableSaved: '儲存時間',
+    tableDocument: '文件',
     documents: '文件',
     documentSearch: '搜尋文件',
     noSavedDocuments: '尚無已儲存的文件。',
@@ -320,6 +365,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     editText: '編輯文字',
     doubleClickToEdit: '按兩下以編輯',
     delete: '刪除',
+    clear: '清除',
+    clearAll: '全部清除',
+    view: '檢視',
     deleteConfirmTitle: '刪除文件？',
     deleteConfirmMessage: '此文件將被永久刪除。',
     discardTitle: '放棄未儲存的變更？',
@@ -350,6 +398,18 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     documentsUnit: '個片段',
     cachedDocumentsNone: '沒有已快取的片段。',
     clearSynthesisCache: '清除快取',
+    clearAllCacheEntries: '清除全部已快取片段',
+    clearSelectedCacheEntries: '清除所選已快取片段',
+    viewSynthesisCache: '檢視已快取片段',
+    synthesisCacheDetailsTitle: '語音合成快取',
+    cacheSearch: '搜尋已快取片段',
+    noMatchingCacheEntries: '沒有符合的已快取片段。',
+    loadingCacheEntries: '正在載入已快取片段…',
+    cacheEntriesSelected: '已選取',
+    selectAllCacheEntries: '選取全部已快取片段',
+    selectCacheEntry: '選取已快取片段',
+    playSelectedCacheEntries: '播放所選已快取片段',
+    stopSelectedCachePlayback: '停止播放所選已快取片段',
     resetPlaybackCache: '重設播放、段落資訊與已快取音訊',
     voiceSearch: '搜尋語言或語音',
     noMatchingVoices: '沒有符合的語音。',
@@ -408,6 +468,11 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     tableOffset: '偏移',
     tableLang: '语言',
     tableText: '文本',
+    tableVoice: '语音',
+    tableRate: '速度',
+    tableSize: '大小',
+    tableSaved: '保存时间',
+    tableDocument: '文档',
     documents: '文档',
     documentSearch: '搜索文档',
     noSavedDocuments: '尚无已保存的文档。',
@@ -433,6 +498,9 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     editText: '编辑文字',
     doubleClickToEdit: '双击以编辑',
     delete: '删除',
+    clear: '清除',
+    clearAll: '全部清除',
+    view: '查看',
     deleteConfirmTitle: '删除文档？',
     deleteConfirmMessage: '此文档将被永久删除。',
     discardTitle: '放弃未保存的更改？',
@@ -463,6 +531,18 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     documentsUnit: '个片段',
     cachedDocumentsNone: '暂无已缓存的片段。',
     clearSynthesisCache: '清除缓存',
+    clearAllCacheEntries: '清除全部已缓存片段',
+    clearSelectedCacheEntries: '清除所选已缓存片段',
+    viewSynthesisCache: '查看已缓存片段',
+    synthesisCacheDetailsTitle: '语音合成缓存',
+    cacheSearch: '搜索已缓存片段',
+    noMatchingCacheEntries: '没有匹配的已缓存片段。',
+    loadingCacheEntries: '正在加载已缓存片段…',
+    cacheEntriesSelected: '已选',
+    selectAllCacheEntries: '选择全部已缓存片段',
+    selectCacheEntry: '选择已缓存片段',
+    playSelectedCacheEntries: '播放所选已缓存片段',
+    stopSelectedCachePlayback: '停止播放所选已缓存片段',
     resetPlaybackCache: '重置播放、段落信息与已缓存音频',
     voiceSearch: '搜索语言或语音',
     noMatchingVoices: '没有匹配的语音。',

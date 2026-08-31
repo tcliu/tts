@@ -41,8 +41,11 @@
   import ChipDropdown from '$lib/components/ChipDropdown.svelte'
   import {
     clearSynthesisCache,
+    clearSynthesisCacheEntries,
     clearDocumentSynthesisCache,
+    getSynthesisCacheEntries,
     getSynthesisCacheStats,
+    type SynthesisCacheEntry,
     type SynthesisCacheStats,
   } from '$lib/tts-client'
   import { usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
@@ -117,6 +120,9 @@
   // Client-side synthesis cache facts for the Settings dialog; null until the
   // first IndexedDB scan for the currently open dialog lands.
   let cacheStats = $state<SynthesisCacheStats | null>(null)
+  let cacheDialogOpen = $state(false)
+  let cacheDialogLoading = $state(false)
+  let cacheEntries = $state<SynthesisCacheEntry[]>([])
 
   $effect(() => {
     if (!settingsOpen) return
@@ -132,6 +138,31 @@
   async function clearClientSynthesisCache() {
     await clearSynthesisCache()
     cacheStats = { segments: 0, bytes: 0 }
+    cacheEntries = []
+  }
+
+  async function loadCacheEntries() {
+    cacheDialogLoading = true
+    try {
+      cacheEntries = await getSynthesisCacheEntries()
+    } finally {
+      cacheDialogLoading = false
+    }
+  }
+
+  async function openCacheDialog() {
+    cacheDialogOpen = true
+    await loadCacheEntries()
+  }
+
+  async function clearSelectedCacheEntries(keys: string[]) {
+    await clearSynthesisCacheEntries(keys)
+    const nextEntries = cacheEntries.filter(entry => !keys.includes(entry.key))
+    cacheEntries = nextEntries
+    cacheStats = {
+      segments: nextEntries.length,
+      bytes: nextEntries.reduce((total, entry) => total + entry.bytes, 0),
+    }
   }
 
   // Cache keys for every segment of the current document that has a voice;
@@ -979,10 +1010,26 @@
         onSelectGroup={settings.selectGroup}
         onSelectSpeed={settings.setSpeed}
         onSelectConcurrent={settings.setSynthesisConcurrency}
-        onClearCache={() => void clearClientSynthesisCache()} />
+        onClearCache={() => void clearClientSynthesisCache()}
+        onViewCache={() => void openCacheDialog()} />
     {:catch}
       <!-- Chunk load failed; drop the dialog instead of leaving an unhandled rejection. -->
       {settingsOpen = false}
+    {/await}
+  {/if}
+
+  {#if cacheDialogOpen}
+    {#await import('$lib/components/SynthesisCacheDialog.svelte') then { default: SynthesisCacheDialog }}
+      <SynthesisCacheDialog
+        locale={settings.locale}
+        entries={cacheEntries}
+        loading={cacheDialogLoading}
+        onCancel={() => (cacheDialogOpen = false)}
+        onClearSelected={clearSelectedCacheEntries}
+        onBeforePlay={() => playback.stopPlayback()} />
+    {:catch}
+      <!-- Chunk load failed; drop the dialog instead of leaving an unhandled rejection. -->
+      {cacheDialogOpen = false}
     {/await}
   {/if}
 
