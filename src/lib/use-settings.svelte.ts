@@ -119,6 +119,7 @@ export function useSettings(): SettingsHandle {
           voiceSelections = { ...voiceSelections, ...(parsed.voiceSelections ?? {}) }
           groupSelections = { ...groupSelections, ...(parsed.groupSelections ?? {}) }
           if (
+            parsed.theme === 'dark' ||
             parsed.theme === 'light' ||
             parsed.theme === 'ember' ||
             parsed.theme === 'sepia' ||

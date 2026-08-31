@@ -49,18 +49,14 @@ describe('theme id parity across sync points', () => {
     expect(allowed.size).toBe(themes.length - 1)
   })
 
-  it('validates every non-default theme when hydrating stored settings', () => {
+  it('validates every theme when hydrating stored settings', () => {
     const validated = new Set(
       [...settingsSource.matchAll(/parsed\.theme === '([a-z]+)'/g)].map(entry => entry[1]),
     )
     for (const theme of themes) {
-      if (theme === 'dark') {
-        expect(validated.has(theme), 'dark hydrates by falling through validation').toBe(false)
-      } else {
-        expect(validated.has(theme), `${theme} missing from hydrate validation`).toBe(true)
-      }
+      expect(validated.has(theme), `${theme} missing from hydrate validation`).toBe(true)
     }
-    expect(validated.size).toBe(themes.length - 1)
+    expect(validated.size).toBe(themes.length)
   })
 
   it('declares palette overrides for every non-default theme in styles.css', () => {

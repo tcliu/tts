@@ -13,12 +13,18 @@ export async function readTextFile(file: File): Promise<UploadReadResult> {
   if (file.size > MAX_UPLOAD_BYTES) {
     return { ok: false, reason: 'too-large' }
   }
-  let text: string
+  let bytes: ArrayBuffer
   try {
-    text = await file.text()
+    bytes = await file.arrayBuffer()
   } catch {
     return { ok: false, reason: 'read-failed' }
   }
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return { ok: false, reason: 'binary' }
+  }
+  const text = new TextDecoder().decode(bytes)
   if (NON_TEXT_PATTERN.test(text)) {
     return { ok: false, reason: 'binary' }
   }

@@ -66,7 +66,7 @@ describe('useDocumentEditor upload', () => {
   it('reports unreadable files', async () => {
     const { editor } = createEditor()
     const file = new File(['x'], 'x.txt')
-    file.text = () => Promise.reject(new Error('boom'))
+    ;(file as unknown as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer = () => Promise.reject(new Error('boom'))
     await editor.importFile(file)
     expect(editor.uploadNotice).toBe('read-failed')
   })
