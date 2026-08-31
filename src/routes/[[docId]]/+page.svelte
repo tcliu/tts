@@ -45,6 +45,7 @@
     clearDocumentSynthesisCache,
     getSynthesisCacheEntries,
     getSynthesisCacheStats,
+    peekCachedSynthesis,
     type SynthesisCacheEntry,
     type SynthesisCacheStats,
   } from '$lib/tts-client'
@@ -135,10 +136,56 @@
     }
   })
 
+  function isCaretInClearedSegment(clearedKeys: string[]): boolean {
+    const caret =
+      editorRef?.getCaretPosition?.() ?? editorRef?.getSelectionRange?.()?.from ?? null
+    if (caret == null) return false
+    const content = settings.content
+    if (!content.trim()) return false
+    const segments = splitTtsSegments(content)
+    const caretSeg = segments.find(seg => caret >= seg.indexStart && caret <= seg.indexEnd)
+    if (!caretSeg) return false
+    const clearedTexts = new Set(
+      cacheEntries.filter(entry => clearedKeys.includes(entry.key)).map(entry => entry.text),
+    )
+    if (clearedTexts.has(caretSeg.text)) return true
+    const voice = settings.resolveVoiceForSegment(caretSeg.lang)
+    if (!voice?.edge) return false
+    const candidateKeys = [
+      synthesisCacheKey(caretSeg.text, voice.edge, playback.effectiveSpeed),
+      synthesisCacheKey(caretSeg.text, voice.edge, settings.speed),
+    ]
+    return candidateKeys.some(key => clearedKeys.includes(key))
+  }
+
   async function clearClientSynthesisCache() {
+    const allKeys = cacheEntries.map(entry => entry.key)
+    let shouldReset = allKeys.length > 0 && isCaretInClearedSegment(allKeys)
+    if (!shouldReset) {
+      const caret =
+        editorRef?.getCaretPosition?.() ?? editorRef?.getSelectionRange?.()?.from ?? null
+      if (caret != null) {
+        const content = settings.content
+        if (content.trim()) {
+          const segments = splitTtsSegments(content)
+          const caretSeg = segments.find(seg => caret >= seg.indexStart && caret <= seg.indexEnd)
+          if (caretSeg) {
+            const voice = settings.resolveVoiceForSegment(caretSeg.lang)
+            if (
+              voice?.edge &&
+              (peekCachedSynthesis(caretSeg.text, voice.edge, playback.effectiveSpeed) ||
+                peekCachedSynthesis(caretSeg.text, voice.edge, settings.speed))
+            ) {
+              shouldReset = true
+            }
+          }
+        }
+      }
+    }
     await clearSynthesisCache()
     cacheStats = { segments: 0, bytes: 0 }
     cacheEntries = []
+    if (shouldReset) playback.resetSession()
   }
 
   async function loadCacheEntries() {
@@ -156,6 +203,7 @@
   }
 
   async function clearSelectedCacheEntries(keys: string[]) {
+    const shouldReset = keys.length > 0 && isCaretInClearedSegment(keys)
     await clearSynthesisCacheEntries(keys)
     const nextEntries = cacheEntries.filter(entry => !keys.includes(entry.key))
     cacheEntries = nextEntries
@@ -163,6 +211,7 @@
       segments: nextEntries.length,
       bytes: nextEntries.reduce((total, entry) => total + entry.bytes, 0),
     }
+    if (shouldReset) playback.resetSession()
   }
 
   // Cache keys for every segment of the current document that has a voice;
