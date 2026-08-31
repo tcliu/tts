@@ -111,6 +111,8 @@ export const POST: RequestHandler = async event => {
       details: {
         key,
         voice,
+        rate,
+        text_length: text.length,
         error: error instanceof Error ? error.message : 'Unknown error',
         elapsed_ms: Date.now() - startedAt,
       },

@@ -155,15 +155,18 @@ export async function deletePersistedSegmentsByDocId(docId: string): Promise<voi
   const conn = await openDb()
   if (!conn || !docId) return
   try {
-    const records = await getAllRecords(conn)
-    const keys = records.filter(record => record.docId === docId).map(record => record.key)
+    const tx = conn.transaction(STORE, 'readonly')
+    const index = tx.objectStore(STORE).index(DOC_ID_INDEX)
+    const range = IDBKeyRange.only(docId)
+    const records = (await requestDone(index.getAll(range))) as PersistedSynthesisRecord[]
+    const keys = records.map(record => record.key)
     if (keys.length === 0) return
-    const tx = conn.transaction(STORE, 'readwrite')
-    const store = tx.objectStore(STORE)
+    const deleteTx = conn.transaction(STORE, 'readwrite')
+    const store = deleteTx.objectStore(STORE)
     for (const key of keys) {
       store.delete(key)
     }
-    await transactionDone(tx)
+    await transactionDone(deleteTx)
   } catch {
     // Deletion is best-effort.
   }
