@@ -62,11 +62,14 @@ export function normalizeForChineseVoice(text: string): string {
   return text.replace(ZH_VARIANT_RE, ch => ZH_VARIANT_MAP.get(ch) ?? ch)
 }
 
+const EDGE_VOICE_RE = /^[a-z]{2,3}-[A-Z]{2}-.+Neural$/
+
 export async function synthesizeEdgeTts(
   text: string,
   edgeVoice: string,
   rate = 1,
 ): Promise<{ audio: Uint8Array; boundaries: TtsBoundary[]; wordBoundaries: TtsBoundary[]; spokenStart?: number; spokenEnd?: number }> {
+  if (!EDGE_VOICE_RE.test(edgeVoice)) throw new Error('Unknown voice')
   const ratePercent = `${Math.round((rate - 1) * 100)}%`
   // zh voice lexicons lack Japanese-exclusive kanji variants; synthesize the
   // normalized text so nothing is skipped. The transform never changes length,
@@ -130,7 +133,7 @@ export async function synthesizeEdgeTts(
 
       const ssml =
         `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
-        `<voice name='${edgeVoice}'><prosody pitch='+0Hz' rate='${ratePercent}' volume='+0%'>` +
+        `<voice name='${escapeXml(edgeVoice)}'><prosody pitch='+0Hz' rate='${ratePercent}' volume='+0%'>` +
         `${escapeXml(spokenText)}</prosody></voice></speak>`
 
       ws.send(

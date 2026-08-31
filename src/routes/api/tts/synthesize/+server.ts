@@ -1,9 +1,10 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
-import { logAccess } from '$lib/server/logging'
+import { logAccess, logEvent, getRequestIp } from '$lib/server/logging'
 import { synthesizeEdgeTts } from '$lib/server/edge-tts'
 import { synthesisCacheKey, getCachedSynthesis, setCachedSynthesis, matchesIfNoneMatch } from '$lib/server/tts-cache'
-import { REFERENCE_LANGUAGES } from '$lib/tts-reference'
+import { isRateLimited } from '$lib/server/rate-limit'
+import { REFERENCE_LANGUAGES, SPEEDS } from '$lib/tts-reference'
 
 const KNOWN_VOICES = new Set(REFERENCE_LANGUAGES.flatMap(language => language.voices.map(voice => voice.edge)))
 // Client segments are capped at 500 chars; allow headroom for direct API use.
@@ -18,6 +19,7 @@ export const config = {
 
 export const POST: RequestHandler = async event => {
   const { request } = event
+  const ip = getRequestIp(event)
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') {
     return json({ error: 'Invalid request body' }, { status: 400 })
@@ -38,6 +40,17 @@ export const POST: RequestHandler = async event => {
   }
   if (!KNOWN_VOICES.has(voice)) {
     return json({ error: 'Unknown voice' }, { status: 400 })
+  }
+  if (!(SPEEDS as readonly number[]).includes(rate)) {
+    return json({ error: 'Invalid rate' }, { status: 400 })
+  }
+  if (isRateLimited(ip)) {
+    logEvent({
+      ip,
+      action: 'tts_synthesize_rate_limited',
+      details: { voice, rate, text_length: text.length, retry_after_s: 60, level: 'WARN' },
+    })
+    return json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': '60' } })
   }
 
   const key = synthesisCacheKey(text, voice, rate)
