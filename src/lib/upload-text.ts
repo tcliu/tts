@@ -19,12 +19,12 @@ export async function readTextFile(file: File): Promise<UploadReadResult> {
   } catch {
     return { ok: false, reason: 'read-failed' }
   }
+  let text: string
   try {
-    new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
   } catch {
     return { ok: false, reason: 'binary' }
   }
-  const text = new TextDecoder().decode(bytes)
   if (NON_TEXT_PATTERN.test(text)) {
     return { ok: false, reason: 'binary' }
   }

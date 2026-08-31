@@ -132,7 +132,7 @@ export async function pruneCache(): Promise<void> {
   for (const file of files) {
     if (!file.endsWith('.json')) continue
     const full = path.join(dir, file)
-    let fileStat: { size: number }
+    let fileStat: { size: number; mtimeMs: number }
     try {
       fileStat = await stat(full)
     } catch {
@@ -143,7 +143,12 @@ export async function pruneCache(): Promise<void> {
       const raw = await readFile(full, 'utf-8')
       const envelope = JSON.parse(raw) as Partial<CacheEnvelope>
       savedAt = typeof envelope.savedAt === 'number' ? envelope.savedAt : 0
-    } catch {}
+      if (savedAt === 0) savedAt = fileStat.mtimeMs
+    } catch {
+      // Unreadable envelope: keep filesystem mtime as age proxy and let the
+      // next getCachedSynthesis drop it on parse failure.
+      savedAt = fileStat.mtimeMs
+    }
     entries.push({ file: full, savedAt, bytes: fileStat.size })
     totalBytes += fileStat.size
   }
