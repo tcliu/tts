@@ -74,7 +74,7 @@ describe('tts-client-idb', () => {
   it('round-trips a segment and strips storage-only fields', async () => {
     const mod = await loadModule()
     const dirty = { junk: 'leak', ...segment() } as SynthesizedSegment & { junk?: string }
-    await mod.putPersistedSegment('k1', dirty, 'doc-a')
+    await mod.putPersistedSegment('k1', dirty, { docId: 'doc-a', text: 'Hello', voiceId: 'en-US-AriaNeural', rate: 1.25 })
 
     const restored = await mod.getPersistedSegment('k1')
     expect(restored).not.toBeNull()
@@ -88,7 +88,7 @@ describe('tts-client-idb', () => {
   it('keeps every record while under cap', async () => {
     const mod = await loadModule()
     for (let i = 0; i < 5; i += 1) {
-      await mod.putPersistedSegment(`seg-${i}`, segment(), 'doc-a')
+      await mod.putPersistedSegment(`seg-${i}`, segment(), { docId: 'doc-a' })
     }
 
     const keys = await storedKeys()
@@ -104,7 +104,7 @@ describe('tts-client-idb', () => {
     try {
       const mod = await loadModule()
       for (let i = 0; i < 201; i += 1) {
-        await mod.putPersistedSegment(`seg-${String(i).padStart(3, '0')}`, segment(), 'doc-a')
+        await mod.putPersistedSegment(`seg-${String(i).padStart(3, '0')}`, segment(), { docId: 'doc-a' })
       }
 
       const keys = await storedKeys()
@@ -121,23 +121,23 @@ describe('tts-client-idb', () => {
     vi.stubGlobal('indexedDB', undefined)
     const mod = await loadModule()
 
-    await expect(mod.putPersistedSegment('k2', segment(), 'doc-a')).resolves.toBeUndefined()
+    await expect(mod.putPersistedSegment('k2', segment(), { docId: 'doc-a' })).resolves.toBeUndefined()
     await expect(mod.getPersistedSegment('k2')).resolves.toBeNull()
     await expect(mod.loadPersistedRecords()).resolves.toEqual([])
   })
 
   it('reports record count and total audio size', async () => {
     const mod = await loadModule()
-    await mod.putPersistedSegment('k1', segment({ blob: { size: 100 } as unknown as Blob }), 'doc-a')
-    await mod.putPersistedSegment('k2', segment({ blob: { size: 250 } as unknown as Blob }), 'doc-a')
+    await mod.putPersistedSegment('k1', segment({ blob: { size: 100 } as unknown as Blob }), { docId: 'doc-a' })
+    await mod.putPersistedSegment('k2', segment({ blob: { size: 250 } as unknown as Blob }), { docId: 'doc-a' })
 
     await expect(mod.getPersistedCacheStats()).resolves.toEqual({ segments: 2, documents: 1, bytes: 350 })
   })
 
   it('clears every persisted segment', async () => {
     const mod = await loadModule()
-    await mod.putPersistedSegment('k1', segment({ blob: { size: 100 } as unknown as Blob }), 'doc-a')
-    await mod.putPersistedSegment('k2', segment(), 'doc-b')
+    await mod.putPersistedSegment('k1', segment({ blob: { size: 100 } as unknown as Blob }), { docId: 'doc-a' })
+    await mod.putPersistedSegment('k2', segment(), { docId: 'doc-b' })
 
     await mod.clearPersistedSegments()
     await expect(mod.getPersistedCacheStats()).resolves.toEqual({ segments: 0, documents: 0, bytes: 0 })
@@ -147,8 +147,8 @@ describe('tts-client-idb', () => {
 
   it('deletes only the requested document scope', async () => {
     const mod = await loadModule()
-    await mod.putPersistedSegment('k1', segment(), 'doc-a')
-    await mod.putPersistedSegment('k2', segment(), 'doc-b')
+    await mod.putPersistedSegment('k1', segment(), { docId: 'doc-a' })
+    await mod.putPersistedSegment('k2', segment(), { docId: 'doc-b' })
 
     await mod.deletePersistedSegmentsByDocId('')
     await expect(mod.getPersistedSegment('k1')).resolves.not.toBeNull()
@@ -156,5 +156,42 @@ describe('tts-client-idb', () => {
     await mod.deletePersistedSegmentsByDocId('doc-a')
     await expect(mod.getPersistedSegment('k1')).resolves.toBeNull()
     await expect(mod.getPersistedSegment('k2')).resolves.not.toBeNull()
+  })
+
+  it('lists stored metadata and deletes only requested keys', async () => {
+    const mod = await loadModule()
+    await mod.putPersistedSegment('k1', segment({ blob: { size: 100 } as unknown as Blob }), {
+      docId: 'doc-a',
+      text: 'First line',
+      voiceId: 'en-US-AriaNeural',
+      rate: 1,
+    })
+    await mod.putPersistedSegment('k2', segment({ blob: { size: 200 } as unknown as Blob }), {
+      docId: 'doc-b',
+      text: 'Second line',
+      voiceId: 'zh-CN-XiaoxiaoNeural',
+      rate: 1.5,
+    })
+
+    await expect(mod.loadPersistedRecords()).resolves.toEqual([
+      expect.objectContaining({
+        key: 'k1',
+        docId: 'doc-a',
+        text: 'First line',
+        voiceId: 'en-US-AriaNeural',
+        rate: 1,
+      }),
+      expect.objectContaining({
+        key: 'k2',
+        docId: 'doc-b',
+        text: 'Second line',
+        voiceId: 'zh-CN-XiaoxiaoNeural',
+        rate: 1.5,
+      }),
+    ])
+
+    await mod.deletePersistedSegments(['k2'])
+    await expect(mod.getPersistedSegment('k1')).resolves.not.toBeNull()
+    await expect(mod.getPersistedSegment('k2')).resolves.toBeNull()
   })
 })

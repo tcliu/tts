@@ -2,6 +2,7 @@ import { synthesisCacheKey } from './tts-cache-key'
 import type { TtsBoundary } from './tts-reference'
 import {
   clearPersistedSegments,
+  deletePersistedSegments,
   deletePersistedSegmentsByDocId,
   getPersistedCacheStats,
   getPersistedSegment,
@@ -65,7 +66,11 @@ export function onSynthesisCacheHydrated(callback: () => void): void {
   void hydrateSynthesisCache().then(() => callback())
 }
 
-function cacheSynthesis(key: string, entry: SynthesizedSegment, options?: { persist?: boolean; docId?: string }) {
+function cacheSynthesis(
+  key: string,
+  entry: SynthesizedSegment,
+  options?: { persist?: boolean; docId?: string; text?: string; voiceId?: string; rate?: number },
+) {
   if (synthesisCache.has(key)) {
     synthesisCache.delete(key)
   }
@@ -76,7 +81,12 @@ function cacheSynthesis(key: string, entry: SynthesizedSegment, options?: { pers
     synthesisCache.delete(oldest)
   }
   if ((options?.persist ?? true) && entry.blob) {
-    void putPersistedSegment(key, entry, options?.docId)
+    void putPersistedSegment(key, entry, {
+      docId: options?.docId,
+      text: options?.text,
+      voiceId: options?.voiceId,
+      rate: options?.rate,
+    })
   }
 }
 
@@ -171,7 +181,7 @@ export async function getCachedSynthesis(
   if (local) {
     const result = await requestSynthesis({ textToSpeak: trimmed, voiceId, rate, signal, etag: local.etag })
     if (!result.notModified) {
-      cacheSynthesis(cacheKey, result.segment, { docId })
+      cacheSynthesis(cacheKey, result.segment, { docId, text: trimmed, voiceId, rate })
       return result.segment
     }
     // Already persisted; rewriting it would duplicate an identical record
@@ -186,7 +196,7 @@ export async function getCachedSynthesis(
     // a local copy; reaching here without one is an inconsistent server reply.
     throw new Error('Synthesis cache returned 304 without a client ETag')
   }
-  cacheSynthesis(cacheKey, result.segment, { docId })
+  cacheSynthesis(cacheKey, result.segment, { docId, text: trimmed, voiceId, rate })
   return result.segment
 }
 
@@ -197,8 +207,35 @@ export interface SynthesisCacheStats {
   documents?: number
 }
 
+export interface SynthesisCacheEntry {
+  key: string
+  savedAt: number
+  docId?: string
+  text: string
+  voiceId: string
+  rate: number | null
+  bytes: number
+  segment: SynthesizedSegment
+}
+
 export function getSynthesisCacheStats(): Promise<SynthesisCacheStats> {
   return getPersistedCacheStats()
+}
+
+export async function getSynthesisCacheEntries(): Promise<SynthesisCacheEntry[]> {
+  const records = await loadPersistedRecords()
+  return records
+    .map(record => ({
+      key: record.key,
+      savedAt: record.savedAt,
+      docId: record.docId,
+      text: record.text ?? '',
+      voiceId: record.voiceId ?? '',
+      rate: typeof record.rate === 'number' ? record.rate : null,
+      bytes: record.blob?.size ?? 0,
+      segment: toSynthesizedSegment(record),
+    }))
+    .sort((a, b) => b.savedAt - a.savedAt)
 }
 
 // Clears every persisted segment plus the in-memory LRU so a settings-level
@@ -206,6 +243,13 @@ export function getSynthesisCacheStats(): Promise<SynthesisCacheStats> {
 export function clearSynthesisCache(): Promise<void> {
   synthesisCache.clear()
   return clearPersistedSegments()
+}
+
+export async function clearSynthesisCacheEntries(keys: string[]): Promise<void> {
+  for (const key of keys) {
+    synthesisCache.delete(key)
+  }
+  await deletePersistedSegments(keys)
 }
 
 // Clears only the entries belonging to one document while evicting its current

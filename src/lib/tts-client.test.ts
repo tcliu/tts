@@ -8,6 +8,7 @@ const idb = vi.hoisted(() => ({
   putPersistedSegment: vi.fn(async (_key: string, _segment: unknown) => {}),
   getPersistedCacheStats: vi.fn(async () => ({ segments: 0, bytes: 0 })),
   clearPersistedSegments: vi.fn(async () => {}),
+  deletePersistedSegments: vi.fn(async (_keys: string[]) => {}),
   deletePersistedSegmentsByDocId: vi.fn(async (_docId: string) => {}),
   // Mirror the real storage-shape whitelist so leaked storage fields cannot
   // silently satisfy assertions here.
@@ -75,6 +76,7 @@ describe('tts-client', () => {
     idb.putPersistedSegment.mockReset().mockResolvedValue(undefined)
     idb.getPersistedCacheStats.mockReset().mockResolvedValue({ segments: 0, bytes: 0 })
     idb.clearPersistedSegments.mockReset().mockResolvedValue(undefined)
+    idb.deletePersistedSegments.mockReset().mockResolvedValue(undefined)
     idb.deletePersistedSegmentsByDocId.mockReset().mockResolvedValue(undefined)
   })
 
@@ -90,7 +92,12 @@ describe('tts-client', () => {
     expect(result.etag).toBe('etag-1')
     expect(result.blob).toBeInstanceOf(Blob)
     expect(idb.putPersistedSegment).toHaveBeenCalledOnce()
-    expect(idb.putPersistedSegment).toHaveBeenCalledWith(synthesisCacheKey(TEXT, VOICE, RATE), result, 'doc-a')
+    expect(idb.putPersistedSegment).toHaveBeenCalledWith(synthesisCacheKey(TEXT, VOICE, RATE), result, {
+      docId: 'doc-a',
+      text: TEXT,
+      voiceId: VOICE,
+      rate: RATE,
+    })
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({ 'Content-Type': 'application/json' })
   })
 
@@ -156,6 +163,53 @@ describe('tts-client', () => {
     await expect(client.getSynthesisCacheStats()).resolves.toEqual({ segments: 3, bytes: 120 })
   })
 
+  it('lists cache entries newest first with metadata and audio bytes', async () => {
+    idb.loadPersistedRecords.mockResolvedValue([
+      {
+        key: 'older',
+        savedAt: 10,
+        docId: 'doc-a',
+        text: 'Older segment',
+        voiceId: 'en-US-AriaNeural',
+        rate: 1,
+        blob: { size: 10 },
+        boundaries: [],
+        wordBoundaries: [],
+      },
+      {
+        key: 'newer',
+        savedAt: 20,
+        docId: 'doc-b',
+        text: 'Newer segment',
+        voiceId: 'zh-CN-XiaoxiaoNeural',
+        rate: 1.5,
+        blob: { size: 25 },
+        boundaries: [],
+        wordBoundaries: [],
+      },
+    ])
+    const client = await loadFresh()
+
+    await expect(client.getSynthesisCacheEntries()).resolves.toEqual([
+      expect.objectContaining({
+        key: 'newer',
+        docId: 'doc-b',
+        text: 'Newer segment',
+        voiceId: 'zh-CN-XiaoxiaoNeural',
+        rate: 1.5,
+        bytes: 25,
+      }),
+      expect.objectContaining({
+        key: 'older',
+        docId: 'doc-a',
+        text: 'Older segment',
+        voiceId: 'en-US-AriaNeural',
+        rate: 1,
+        bytes: 10,
+      }),
+    ])
+  })
+
   it('clearing the whole cache drops resident entries and persisted records', async () => {
     fetchMock.mockResolvedValue(okResponse(serverPayload()))
     const client = await loadFresh()
@@ -182,5 +236,19 @@ describe('tts-client', () => {
     expect(client.peekCachedSynthesis(TEXT, VOICE, RATE)).toBeNull()
     expect(client.peekCachedSynthesis(textB, VOICE, RATE)).not.toBeNull()
     expect(idb.deletePersistedSegmentsByDocId).toHaveBeenCalledWith('doc-a')
+  })
+
+  it('clearing selected cache entries evicts resident entries and deletes only those keys', async () => {
+    const textB = 'Second passage'
+    fetchMock.mockResolvedValue(okResponse(serverPayload()))
+    const client = await loadFresh()
+    await client.getCachedSynthesis(TEXT, VOICE, RATE, undefined, 'doc-a')
+    await client.getCachedSynthesis(textB, VOICE, RATE, undefined, 'doc-b')
+
+    await client.clearSynthesisCacheEntries([synthesisCacheKey(TEXT, VOICE, RATE)])
+
+    expect(client.peekCachedSynthesis(TEXT, VOICE, RATE)).toBeNull()
+    expect(client.peekCachedSynthesis(textB, VOICE, RATE)).not.toBeNull()
+    expect(idb.deletePersistedSegments).toHaveBeenCalledWith([synthesisCacheKey(TEXT, VOICE, RATE)])
   })
 })

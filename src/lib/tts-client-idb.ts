@@ -8,6 +8,9 @@ export interface PersistedSynthesisRecord extends SynthesizedSegment {
   key: string
   savedAt: number
   docId?: string
+  text?: string
+  voiceId?: string
+  rate?: number
 }
 
 const DB_NAME = 'tts-synthesis'
@@ -72,8 +75,23 @@ async function getAllRecords(conn: IDBDatabase): Promise<PersistedSynthesisRecor
   return (await requestDone(request)) as PersistedSynthesisRecord[]
 }
 
-function toPersistedRecord(key: string, segment: SynthesizedSegment, docId?: string): PersistedSynthesisRecord {
-  return { key, savedAt: Date.now(), docId, ...segment }
+export interface PersistedSynthesisMeta {
+  docId?: string
+  text?: string
+  voiceId?: string
+  rate?: number
+}
+
+function toPersistedRecord(key: string, segment: SynthesizedSegment, meta?: PersistedSynthesisMeta): PersistedSynthesisRecord {
+  return {
+    ...segment,
+    key,
+    savedAt: Date.now(),
+    docId: meta?.docId,
+    text: meta?.text,
+    voiceId: meta?.voiceId,
+    rate: meta?.rate,
+  }
 }
 
 export function toSynthesizedSegment(record: PersistedSynthesisRecord): SynthesizedSegment {
@@ -172,12 +190,27 @@ export async function deletePersistedSegmentsByDocId(docId: string): Promise<voi
   }
 }
 
-export async function putPersistedSegment(key: string, segment: SynthesizedSegment, docId?: string): Promise<void> {
+export async function deletePersistedSegments(keys: string[]): Promise<void> {
+  const conn = await openDb()
+  if (!conn || keys.length === 0) return
+  try {
+    const tx = conn.transaction(STORE, 'readwrite')
+    const store = tx.objectStore(STORE)
+    for (const key of keys) {
+      store.delete(key)
+    }
+    await transactionDone(tx)
+  } catch {
+    // Deletion is best-effort.
+  }
+}
+
+export async function putPersistedSegment(key: string, segment: SynthesizedSegment, meta?: PersistedSynthesisMeta): Promise<void> {
   const conn = await openDb()
   if (!conn) return
   try {
     const tx = conn.transaction(STORE, 'readwrite')
-    tx.objectStore(STORE).put(toPersistedRecord(key, segment, docId))
+    tx.objectStore(STORE).put(toPersistedRecord(key, segment, meta))
     await transactionDone(tx)
     await evictOverCap(conn)
   } catch {
