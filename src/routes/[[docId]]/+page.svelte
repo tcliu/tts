@@ -8,7 +8,7 @@
   import PanelMenu from '$lib/components/PanelMenu.svelte'
   import { REVEAL_CLASS, TOOLBAR_BANDS, menuFor, type PanelAction, type ToolbarMode } from '$lib/toolbar-ladder'
   import DocumentsDrawer from '$lib/components/DocumentsDrawer.svelte'
-  import HeaderRadioMenu from '$lib/components/HeaderRadioMenu.svelte'
+  import Menu from '$lib/components/Menu.svelte'
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
   import SunIcon from '$lib/icons/SunIcon.svelte'
   import MoonIcon from '$lib/icons/MoonIcon.svelte'
@@ -38,6 +38,7 @@
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
   import { REFERENCE_LANGUAGES, SPEED_OPTIONS, splitTtsSegments } from '$lib/tts-reference'
   import { synthesisCacheKey } from '$lib/tts-cache-key'
+  import { isScopeInvalidatedByClearedKeys } from '$lib/tts-cache-clear'
   import ChipDropdown from '$lib/components/ChipDropdown.svelte'
   import {
     clearSynthesisCache,
@@ -45,6 +46,7 @@
     clearDocumentSynthesisCache,
     getSynthesisCacheEntries,
     getSynthesisCacheStats,
+    peekCachedSynthesis,
     type SynthesisCacheEntry,
     type SynthesisCacheStats,
   } from '$lib/tts-client'
@@ -135,10 +137,65 @@
     }
   })
 
+  function currentScopeSegment(segments?: ReturnType<typeof splitTtsSegments>) {
+    const content = settings.content
+    if (!content.trim()) return null
+    const playbackSegment = playback.currentSessionSegment
+    if (playbackSegment) {
+      return playbackSegment
+    }
+    const resolvedSegments = segments ?? splitTtsSegments(content)
+    const caret =
+      editorRef?.getCaretPosition?.() ?? editorRef?.getSelectionRange?.()?.from ?? null
+    if (caret == null) return null
+    return resolvedSegments.find(seg => caret >= seg.indexStart && caret <= seg.indexEnd) ?? null
+  }
+
+  function currentScopeInvalidatedByClearedKeys(
+    clearedKeys: string[],
+    entries = cacheEntries,
+    segments?: ReturnType<typeof splitTtsSegments>,
+  ): boolean {
+    const scope = currentScopeSegment(segments)
+    return isScopeInvalidatedByClearedKeys(scope, clearedKeys, entries, {
+      effectiveSpeed: playback.effectiveSpeed,
+      defaultSpeed: settings.speed,
+      resolveVoiceEdge: lang => playback.effectiveVoiceEdge(lang),
+    })
+  }
+
   async function clearClientSynthesisCache() {
+    const content = settings.content
+    let shouldReset = false
+    if (content.trim()) {
+      if (playback.hasSession || playback.synthesizedCount > 0) {
+        shouldReset = true
+      } else {
+        const segments = splitTtsSegments(content)
+        const effective = playback.effectiveSpeed
+        const fallback = settings.speed
+        shouldReset = segments.some(seg => {
+          const voiceEdge = settings.resolveVoiceForSegment(seg.lang)?.edge
+          if (!voiceEdge) return false
+          if (effective === fallback) return !!peekCachedSynthesis(seg.text, voiceEdge, effective)
+          return (
+            !!peekCachedSynthesis(seg.text, voiceEdge, effective) ||
+            !!peekCachedSynthesis(seg.text, voiceEdge, fallback)
+          )
+        })
+        if (!shouldReset) {
+          const snapshot = cacheEntries.length ? cacheEntries : await getSynthesisCacheEntries()
+          if (snapshot.length > 0) {
+            const allKeys = snapshot.map(entry => entry.key)
+            shouldReset = currentScopeInvalidatedByClearedKeys(allKeys, snapshot, segments)
+          }
+        }
+      }
+    }
     await clearSynthesisCache()
     cacheStats = { segments: 0, bytes: 0 }
     cacheEntries = []
+    if (shouldReset) playback.resetSession()
   }
 
   async function loadCacheEntries() {
@@ -156,6 +213,7 @@
   }
 
   async function clearSelectedCacheEntries(keys: string[]) {
+    const shouldReset = keys.length > 0 && currentScopeInvalidatedByClearedKeys(keys)
     await clearSynthesisCacheEntries(keys)
     const nextEntries = cacheEntries.filter(entry => !keys.includes(entry.key))
     cacheEntries = nextEntries
@@ -163,6 +221,7 @@
       segments: nextEntries.length,
       bytes: nextEntries.reduce((total, entry) => total + entry.bytes, 0),
     }
+    if (shouldReset) playback.resetSession()
   }
 
   // Cache keys for every segment of the current document that has a voice;
@@ -681,28 +740,66 @@
       <h1 class="text-base font-semibold tracking-tight sm:text-lg">{text.appShortTitle}</h1>
     </div>
     <div class="flex items-center gap-2">
-      <HeaderRadioMenu
-        label={text.language}
-        menuLabel={text.languageMenuLabel}
-        options={UI_LANGUAGE_OPTIONS}
-        selected={settings.locale}
-        onSelect={selectLanguage}
-        escapeYield={dialogsOpen}>
+      <Menu
+        items={UI_LANGUAGE_OPTIONS}
+        itemKey={option => option.value}
+        ariaLabel={text.language}
+        triggerTooltip={text.language}
+        align="right"
+        autoPlace={true}
+        triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
+        itemRole="menuitemradio"
+        itemChecked={option => option.value === settings.locale}
+        itemClass={(option, state) =>
+          `flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${
+            state.disabled
+              ? 'cursor-not-allowed text-slate-600'
+              : state.active
+                ? 'bg-slate-800 text-cyan-200'
+                : option.value === settings.locale
+                  ? 'bg-cyan-500/15 text-cyan-200'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
+          }`}
+        onSelect={index => selectLanguage(UI_LANGUAGE_OPTIONS[index].value)}>
         {#snippet icon()}
           <GlobeIcon className="h-4 w-4" />
         {/snippet}
-      </HeaderRadioMenu>
-      <HeaderRadioMenu
-        label={text.theme}
-        menuLabel={text.themeMenuLabel}
-        options={themeOptions}
-        selected={settings.theme}
-        onSelect={selectTheme}
-        escapeYield={dialogsOpen}>
+        {#snippet item(option)}
+          <span>{option.label}</span>
+        {/snippet}
+      </Menu>
+      <Menu
+        items={themeOptions}
+        itemKey={option => option.value}
+        ariaLabel={text.theme}
+        triggerTooltip={text.theme}
+        align="right"
+        autoPlace={true}
+        triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
+        itemRole="menuitemradio"
+        itemChecked={option => option.value === settings.theme}
+        itemClass={(option, state) =>
+          `flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${
+            state.disabled
+              ? 'cursor-not-allowed text-slate-600'
+              : state.active
+                ? 'bg-slate-800 text-cyan-200'
+                : option.value === settings.theme
+                  ? 'bg-cyan-500/15 text-cyan-200'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
+          }`}
+        onSelect={index => selectTheme(themeOptions[index].value)}>
         {#snippet icon()}
           <PaletteIcon className="h-4 w-4" />
         {/snippet}
-      </HeaderRadioMenu>
+        {#snippet item(option, _state)}
+          {@const OptionIcon = option.icon}
+          {#if OptionIcon}
+            <OptionIcon className="h-4 w-4 shrink-0" />
+          {/if}
+          <span>{option.label}</span>
+        {/snippet}
+      </Menu>
       <Button variant="secondary" size="sm" ariaLabel={text.settings} tooltip={text.settings} onClick={() => (settingsOpen = true)}>
         {#snippet icon()}
           <SettingsIcon className="h-4 w-4" />
@@ -889,7 +986,7 @@
                   {statusMessage}
                 </span>
               {/if}
-              {#if playback.synthesizedCount > 0 && playback.positionSegmentIndex >= 0}
+              {#if playback.segments[playback.positionSegmentIndex]}
                 <div class="flex min-w-0 flex-wrap items-center gap-2">
                   <ChipDropdown
                     label={writtenLabel}
@@ -936,7 +1033,7 @@
                 </div>
               {/if}
             </div>
-            {#if playback.synthesizedCount > 0}
+            {#if playback.segments[playback.positionSegmentIndex]}
               <PlaybackSlider
                 displayValue={playbackSliderDisplayValue}
                 totalDuration={playback.totalDuration}

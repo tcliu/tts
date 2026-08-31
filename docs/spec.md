@@ -154,6 +154,11 @@ coherent system instead of a new parallel one.
 - Each persisted entry is tagged with the document id, so the cache can be
   cleared for a single document (the Reset action clears the open document's
   cached audio) or for every document from the Settings Synthesis tab (Cache entry).
+- Clearing all client-side synthesis cache while the editor is open resets the
+  active playback session and metadata rows when the current document has any
+  surfaced playback/cache state; clearing selected cache entries resets them
+  only when the current playback/caret scope's segment is among the cleared
+  entries.
 
 ## Settings model
 
@@ -168,7 +173,7 @@ coherent system instead of a new parallel one.
 - The Voices tab has a search box filtering by language name or voice name.
 - The settings dialog keeps the same outer size across all tabs, sized to the
   Voices tab (largest); other tabs do not shrink it.
-- The Speed tab shows the default speed as a NumberInput (`0.5–2`, step `0.25`,
+- The Speed tab shows the default speed as a NumberInput (`0.25–3`, step `0.25`,
   default `1`); the Synthesis tab shows the Synthesis concurrency NumberInput
   (`1–8`, step `1`).
 - Default speed options must match the speed list in `tts.mjs`.
@@ -193,9 +198,10 @@ coherent system instead of a new parallel one.
 - The theme menu's option list, localized labels, and per-option icon map
   enumerate the themes; the trigger uses a static palette icon. Extend them
   together with the union.
-- Both header radio menus render through the shared `HeaderRadioMenu`
-  component, which owns open state, portal placement, dismissal, and roving
-  keyboard handling via `$lib/menu-keyboard`.
+- Both header radio menus render through the shared `Menu` component
+  (radio variant with `Tooltip`), which owns open state, portal placement
+  via `positionPanel`, dismissal via `useDropdown`, and roving keyboard
+  handling via `useListSelection`.
 
 ## Constraints
 

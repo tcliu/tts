@@ -1,6 +1,6 @@
 export type ClickOutsideOptions = {
   enabled?: boolean
-  handler: (event: MouseEvent) => void
+  handler: (event: PointerEvent) => void
   include?: Array<HTMLElement | null | undefined>
 }
 
@@ -8,7 +8,7 @@ export function clickOutside(node: HTMLElement, options: ClickOutsideOptions | (
   const getOptions = (): ClickOutsideOptions =>
     typeof options === 'function' ? { handler: options } : options
 
-  function handlePointerDown(event: MouseEvent) {
+  function handlePointerDown(event: PointerEvent) {
     const { enabled = true, handler, include = [] } = getOptions()
     if (!enabled) return
     const target = event.target as Node

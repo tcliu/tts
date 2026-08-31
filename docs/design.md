@@ -53,6 +53,10 @@
   voice, and segment counter, plus a seek slider with elapsed and total time.
   Opening or switching to a document with cached audio shows them immediately;
   editing the content hides them until the cache refreshes after a short pause.
+- Clearing all client-side synthesis cache while the editor is open hides the
+  playback controls and clears the Info panel rows for the current document;
+  clearing selected cached entries does so only when the current playback/caret
+  position belongs to one of the cleared segments.
 - When a manual selection exists before Play and matching cached audio is
   available, the controls and Info panel scope to only the selected text even
   before playback starts, but no playback word highlight is shown until Play is
@@ -148,7 +152,7 @@
 - Languages with multiple spoken-language groups show a spoken-language
   dropdown and a voice-model dropdown.
 - The Speed tab shows the default speed field (`1` as the default, NumberInput
-  with `0.5–2` range and `0.25` step).
+  with `0.25–3` range and `0.25` step).
 - The Synthesis tab contains a Synthesis concurrency field that caps how many
   segments synthesize in parallel and a Cache entry showing how many segments
   have stored synthesis and the total size on disk, with a button to clear

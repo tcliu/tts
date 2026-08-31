@@ -7,6 +7,7 @@ import {
   toWrittenLang,
   type HighlightRange,
   type TtsBoundary,
+  type TtsSegment,
   type TtsVoice,
 } from './tts-reference'
 import {
@@ -93,6 +94,7 @@ export interface PlaybackHandle {
   readonly activeInfoOffset: number
   readonly activeInfoKind: 'sentence' | 'word' | null
   readonly segments: Record<number, SegmentMeta>
+  readonly currentSessionSegment: TtsSegment | null
   readonly sessionSource: string
   readonly playbackSpeed: number
   readonly effectiveSpeed: number
@@ -2405,6 +2407,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     },
     get segments() {
       return segmentMetaMap
+    },
+    get currentSessionSegment() {
+      return positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] ?? null : null
     },
     initStatus,
     onLocaleChanged,
