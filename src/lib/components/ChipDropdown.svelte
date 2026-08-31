@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { tick } from 'svelte'
-  import { clickOutside } from '$lib/actions/click-outside'
+  import { flushSync, tick } from 'svelte'
+  import { useDropdown } from '$lib/actions/use-dropdown.svelte'
+  import { useListSelection, revealInScrollport } from '$lib/actions/use-list-selection.svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
   import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
   import CheckIcon from '$lib/icons/CheckIcon.svelte'
@@ -76,12 +77,12 @@
   )
 
   let open = $state(false)
+  const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
   let buttonRef = $state<HTMLButtonElement | null>(null)
   let panelRef = $state<HTMLDivElement | null>(null)
   let inputRef = $state<HTMLInputElement | null>(null)
   let filterText = $state('')
-  let highlightIndex = $state(0)
 
   const filteredOptions = $derived.by(() => {
     if (!filterable) return options
@@ -90,14 +91,23 @@
     return options.filter(option => option.label.toLowerCase().includes(needle) || option.value.toLowerCase().includes(needle))
   })
 
+  // In filterable mode, keep the highlight anchored on the active value
+  // whenever the visible list changes so a typed search that still includes
+  // the active value leaves the cursor on it.
   let lastFiltered: Option[] | null = null
   $effect(() => {
     if (!open || !filterable) return
     if (lastFiltered !== filteredOptions) {
       lastFiltered = filteredOptions
-      const idx = filteredOptions.findIndex((option) => option.value === activeValue)
-      highlightIndex = idx >= 0 ? idx : 0
+      selection.syncToActive(filteredOptions, option => option.value === activeValue)
     }
+  })
+
+  $effect(() => {
+    if (!open) return
+    // Clamp when the filtered list shrinks without a syncToActive run (e.g.
+    // non-filterable options swap) so aria-activedescendant never dangles.
+    selection.clamp(filteredOptions.length)
   })
 
   $effect(() => {
@@ -116,6 +126,13 @@
     open = false
   }
 
+  // Keep the highlighted option visible while arrowing through a scrollable
+  // panel: the option never receives focus (aria-activedescendant pattern),
+  // so the browser would otherwise let it drift out of the scrollport.
+  function revealActive() {
+    revealInScrollport(panelRef?.querySelector<HTMLButtonElement>(`[id="${panelId}-option-${selection.index}"]`))
+  }
+
   function toggle() {
     if (disabled) return
     if (open) close()
@@ -125,9 +142,7 @@
   function openPanel() {
     if (disabled) return
     // Highlight the active value when opening so keyboard and mouse share the same start.
-    const list = filterable ? filteredOptions : options
-    const idx = list.findIndex((option) => option.value === activeValue)
-    highlightIndex = idx >= 0 ? idx : 0
+    selection.syncToActive(filteredOptions, option => option.value === activeValue)
     if (filterable) filterText = ''
     open = true
   }
@@ -139,15 +154,18 @@
   }
 
   function moveHighlight(direction: 'down' | 'up') {
-    const list = filteredOptions
-    if (list.length === 0) return
+    if (filteredOptions.length === 0) return
     if (!open) {
       openPanel()
-      if (direction === 'up') highlightIndex = list.length - 1
+      if (direction === 'up') selection.move('last', filteredOptions.length)
       return
     }
-    if (direction === 'down') highlightIndex = (highlightIndex + 1) % list.length
-    else highlightIndex = (highlightIndex - 1 + list.length) % list.length
+    selection.move(direction, filteredOptions.length)
+    revealActive()
+    // OS key auto-repeat fires back-to-back keydowns; Svelte batches $state
+    // until the next microtask, so the active highlight would only appear
+    // on keyup. Flush synchronously so each repeat paints immediately.
+    flushSync()
   }
 
   function handleButtonKeydown(event: KeyboardEvent) {
@@ -160,12 +178,16 @@
     } else if (event.key === 'Home') {
       if (open && filteredOptions.length > 0) {
         event.preventDefault()
-        highlightIndex = 0
+        selection.move('first', filteredOptions.length)
+        revealActive()
+        flushSync()
       }
     } else if (event.key === 'End') {
       if (open && filteredOptions.length > 0) {
         event.preventDefault()
-        highlightIndex = filteredOptions.length - 1
+        selection.move('last', filteredOptions.length)
+        revealActive()
+        flushSync()
       }
     } else if (event.key === 'Enter' || event.key === ' ') {
       if (!open) {
@@ -174,7 +196,7 @@
         return
       }
       event.preventDefault()
-      const option = filteredOptions[highlightIndex]
+      const option = filteredOptions[selection.index]
       if (option) select(option.value)
     }
   }
@@ -188,13 +210,17 @@
       moveHighlight('up')
     } else if (event.key === 'Home') {
       event.preventDefault()
-      highlightIndex = 0
+      selection.move('first', filteredOptions.length)
+      revealActive()
+      flushSync()
     } else if (event.key === 'End') {
       event.preventDefault()
-      highlightIndex = filteredOptions.length - 1
+      selection.move('last', filteredOptions.length)
+      revealActive()
+      flushSync()
     } else if (event.key === 'Enter') {
       event.preventDefault()
-      const option = filteredOptions[highlightIndex] ?? filteredOptions[0]
+      const option = filteredOptions[selection.index] ?? filteredOptions[0]
       if (option) select(option.value)
     } else if (event.key === 'Tab') {
       // Close on Tab so focus never sits outside an open listbox (APG combobox).
@@ -211,21 +237,20 @@
     }
   }
 
-  $effect(() => {
-    if (!open) return
-    function handleKeydownCapture(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        // If filterable input has text, let its handler clear first
-        if (filterable && filterText) return
-        event.stopImmediatePropagation()
-        event.preventDefault()
-        close()
-        buttonRef?.focus()
-      }
-    }
-    window.addEventListener('keydown', handleKeydownCapture, true)
-    return () => window.removeEventListener('keydown', handleKeydownCapture, true)
-  })
+  useDropdown(() => ({
+    isOpen: () => open,
+    container: () => containerRef,
+    onOutsideClick: () => close(),
+    onEscape: () => {
+      // If the filterable input has text, let its handler clear it first.
+      if (filterable && filterText) return true
+      close()
+      buttonRef?.focus()
+      return false
+    },
+    onScrollClose: () => close(),
+    panel: () => panelRef,
+  }))
 </script>
 
 {#snippet optionList()}
@@ -238,8 +263,8 @@
       aria-selected={option.value === activeValue}
       onpointerdown={(event) => event.preventDefault()}
       onclick={() => select(option.value)}
-      onmouseenter={() => (highlightIndex = index)}
-      class={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-xs outline-none transition ${index === highlightIndex ? 'bg-slate-800 text-slate-100' : option.value === activeValue ? VARIANT_ACTIVE[variant] : 'text-slate-300'}`}>
+      onmouseenter={() => selection.set(index)}
+      class={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-xs outline-none transition ${index === selection.index ? 'bg-slate-800 text-slate-100' : option.value === activeValue ? VARIANT_ACTIVE[variant] : 'text-slate-300'}`}>
       <span class="min-w-0 truncate">{option.label}</span>
       {#if option.value === activeValue}
         <CheckIcon className="h-3 w-3 shrink-0 opacity-70" />
@@ -254,7 +279,7 @@
   class="relative inline-flex"
   bind:this={containerRef}
   data-escape-capture={open ? '' : null}
-  use:clickOutside={{ enabled: open, handler: () => close(), include: [panelRef] }}>
+>
   <button
     type="button"
     bind:this={buttonRef}
@@ -263,7 +288,7 @@
     aria-haspopup={filterable ? undefined : 'listbox'}
     aria-expanded={filterable ? undefined : open}
     aria-controls={!filterable && open ? panelId : undefined}
-    aria-activedescendant={!filterable && open && filteredOptions[highlightIndex] ? `${panelId}-option-${highlightIndex}` : undefined}
+    aria-activedescendant={!filterable && open && filteredOptions[selection.index] ? `${panelId}-option-${selection.index}` : undefined}
     disabled={disabled}
     onclick={toggle}
     onkeydown={handleButtonKeydown}
@@ -289,7 +314,7 @@
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={open ? panelId : undefined}
-            aria-activedescendant={open && filteredOptions[highlightIndex] ? `${panelId}-option-${highlightIndex}` : undefined}
+            aria-activedescendant={open && filteredOptions[selection.index] ? `${panelId}-option-${selection.index}` : undefined}
             onkeydown={handleFilterKeydown}
             class="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/50" />
         </div>

@@ -10,9 +10,11 @@
 
 <script lang="ts" generics="T">
   import { positionPanel } from '$lib/position-panel.svelte'
-  import { clickOutside } from '$lib/actions/click-outside'
-  import { tick } from 'svelte'
+  import { useDropdown } from '$lib/actions/use-dropdown.svelte'
+  import { useListSelection } from '$lib/actions/use-list-selection.svelte'
+  import { flushSync, tick } from 'svelte'
   import type { DropdownPanelProps } from '$lib/dropdown-chrome'
+  import Tooltip from './Tooltip.svelte'
 
   interface Props extends DropdownPanelProps {
     items: T[]
@@ -22,6 +24,8 @@
     item: Snippet<[T, MenuItemState]>
     ariaLabel: string
     triggerClass?: string
+    triggerTooltip?: string
+    triggerTooltipAlign?: 'center' | 'left' | 'right'
     itemClass?: (item: T, state: MenuItemState) => string
     itemRole?: 'menuitem' | 'menuitemradio'
     itemChecked?: (item: T) => boolean
@@ -38,6 +42,8 @@
     align = 'right',
     autoPlace = true,
     triggerClass = '',
+    triggerTooltip,
+    triggerTooltipAlign = 'center',
     panelClass = '',
     itemClass,
     itemRole = 'menuitem',
@@ -49,7 +55,7 @@
   const menuId = $derived(`menu-${uid}`)
 
   let open = $state(false)
-  let activeIndex = $state(0)
+  const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
   let triggerRef = $state<HTMLButtonElement | null>(null)
   let panelRef = $state<HTMLDivElement | null>(null)
@@ -85,22 +91,51 @@
     return -1
   }
 
-  function moveFocus(delta: number) {
+  function initialActiveIndex(): number {
+    if (itemRole === 'menuitemradio' && itemChecked) {
+      const checkedIndex = items.findIndex(item => itemChecked(item) && !isDisabled(item))
+      if (checkedIndex >= 0) return checkedIndex
+    }
+    const fallback = firstEnabledIndex()
+    return fallback >= 0 ? fallback : 0
+  }
+
+  function moveFocus(direction: 'down' | 'up' | 'first' | 'last') {
     const count = items.length
     if (count === 0) return
-    let index = activeIndex
+    if (direction === 'first') {
+      const index = firstEnabledIndex()
+      if (index === -1) return
+      selection.set(index)
+      itemRefs[index]?.focus()
+      return
+    }
+    if (direction === 'last') {
+      const index = lastEnabledIndex()
+      if (index === -1) return
+      selection.set(index)
+      itemRefs[index]?.focus()
+      return
+    }
+    const delta = direction === 'down' ? 1 : -1
+    let idx = selection.peek()
     for (let step = 0; step < count; step++) {
-      index = (index + delta + count) % count
-      if (!isDisabled(items[index])) {
-        activeIndex = index
-        itemRefs[index]?.focus()
+      idx = (idx + delta + count) % count
+      if (!isDisabled(items[idx])) {
+        selection.set(idx)
+        itemRefs[idx]?.focus()
+        // OS key auto-repeat fires back-to-back keydowns; Svelte batches
+        // $state until the next microtask, so the active highlight would
+        // only appear on keyup. Flush synchronously so each repeat paints
+        // the newly active item immediately.
+        flushSync()
         return
       }
     }
   }
 
   function setActive(index: number) {
-    activeIndex = index
+    selection.set(index)
     itemRefs[index]?.focus()
   }
 
@@ -114,24 +149,16 @@
   function handlePanelKeydown(event: KeyboardEvent) {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      moveFocus(1)
+      moveFocus('down')
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      moveFocus(-1)
+      moveFocus('up')
     } else if (event.key === 'Home') {
       event.preventDefault()
-      const index = firstEnabledIndex()
-      if (index !== -1) {
-        activeIndex = index
-        itemRefs[index]?.focus()
-      }
+      moveFocus('first')
     } else if (event.key === 'End') {
       event.preventDefault()
-      const index = lastEnabledIndex()
-      if (index !== -1) {
-        activeIndex = index
-        itemRefs[index]?.focus()
-      }
+      moveFocus('last')
     }
   }
 
@@ -144,37 +171,30 @@
   $effect(() => {
     if (open) {
       tick().then(() => {
-        const index = firstEnabledIndex()
-        activeIndex = index === -1 ? 0 : index
-        itemRefs[activeIndex]?.focus()
+        selection.set(initialActiveIndex())
+        itemRefs[selection.index]?.focus()
       })
     }
   })
 
   $effect(() => {
     if (!open) return
-    function handleKeydownCapture(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.stopImmediatePropagation()
-        event.preventDefault()
-        close()
-      }
-    }
-    const handleScroll = () => close(false)
-    window.addEventListener('keydown', handleKeydownCapture, true)
-    window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
-    return () => {
-      window.removeEventListener('keydown', handleKeydownCapture, true)
-      window.removeEventListener('scroll', handleScroll, { capture: true })
-    }
+    selection.clamp(items.length)
   })
+
+  useDropdown(() => ({
+    isOpen: () => open,
+    container: () => containerRef,
+    onOutsideClick: () => close(false),
+    onEscape: () => {
+      close()
+    },
+    onScrollClose: () => close(false),
+    panel: () => panelRef,
+  }))
 </script>
 
-<div
-  class="relative inline-flex"
-  bind:this={containerRef}
-  data-escape-capture={open ? '' : null}
-  use:clickOutside={{ enabled: open, handler: () => close(false), include: [panelRef] }}>
+{#snippet triggerButton()}
   <button
     type="button"
     bind:this={triggerRef}
@@ -187,6 +207,20 @@
     class={`inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950 text-slate-200 outline-none transition motion-reduce:transition-none hover:border-cyan-500 hover:text-cyan-300 focus:border-cyan-500 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${triggerClass}`}>
     {@render icon()}
   </button>
+{/snippet}
+
+<div
+  class="relative inline-flex"
+  bind:this={containerRef}
+  data-escape-capture={open ? '' : null}>
+  {#if triggerTooltip}
+    <span class="group relative inline-flex">
+      {@render triggerButton()}
+      <Tooltip align={triggerTooltipAlign}>{triggerTooltip}</Tooltip>
+    </span>
+  {:else}
+    {@render triggerButton()}
+  {/if}
   {#if open}
     <div
       bind:this={panelRef}
@@ -198,13 +232,13 @@
       use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, align, autoPlace })}
       class={`fixed left-0 top-0 z-40 will-change-transform overflow-hidden rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur ${panelClass}`}>
       {#each items as itemValue, index (itemKey(itemValue))}
-        {@const state = { index, active: index === activeIndex, disabled: isDisabled(itemValue) }}
+        {@const state = { index, active: index === selection.index, disabled: isDisabled(itemValue) }}
         <button
           type="button"
           role={itemRole}
           aria-checked={itemRole === 'menuitemradio' && itemChecked ? itemChecked(itemValue) : undefined}
           bind:this={itemRefs[index]}
-          tabindex={index === activeIndex ? 0 : -1}
+          tabindex={index === selection.index ? 0 : -1}
           onclick={() => handleItemClick(index)}
           onmouseenter={() => setActive(index)}
           disabled={state.disabled}
