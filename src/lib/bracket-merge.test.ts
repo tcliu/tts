@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   mergeBracketBoundaries,
   mergeBracketRanges,
-  shouldFallbackToRanges,
+  shouldUseRangeRows,
 } from './bracket-merge'
 
 describe('mergeBracketRanges', () => {
@@ -59,16 +59,40 @@ describe('mergeBracketBoundaries', () => {
   })
 })
 
-describe('shouldFallbackToRanges', () => {
+describe('shouldUseRangeRows', () => {
   it('is true when boundaries under-count ranges', () => {
-    expect(shouldFallbackToRanges({ boundaries: [{ offset: 0, at: 0, text: 'x' }], ranges: [{ start: 0, end: 1, lang: 'zh' }, { start: 1, end: 2, lang: 'zh' }] })).toBe(true)
+    expect(shouldUseRangeRows({ boundaries: [{ offset: 0, at: 0, text: 'x' }], ranges: [{ start: 0, end: 1, lang: 'zh' }, { start: 1, end: 2, lang: 'zh' }] })).toBe(true)
   })
 
   it('is false when boundaries and ranges align', () => {
-    expect(shouldFallbackToRanges({ boundaries: [{ offset: 0, at: 0, text: 'x' }, { offset: 2, at: 1, text: 'y' }], ranges: [{ start: 0, end: 1, lang: 'zh' }] })).toBe(false)
+    expect(shouldUseRangeRows({ boundaries: [{ offset: 0, at: 0, text: 'x' }, { offset: 2, at: 1, text: 'y' }], ranges: [{ start: 0, end: 1, lang: 'zh' }] })).toBe(false)
   })
 
   it('is false with no boundaries', () => {
-    expect(shouldFallbackToRanges({ boundaries: [], ranges: [] })).toBe(false)
+    expect(shouldUseRangeRows({ boundaries: [], ranges: [] })).toBe(false)
+  })
+
+  it('is true when boundaries empty but same-lang ranges exist', () => {
+    expect(
+      shouldUseRangeRows({
+        boundaries: [],
+        ranges: [
+          { start: 0, end: 7, lang: 'zh' },
+          { start: 7, end: 13, lang: 'zh' },
+        ],
+      }),
+    ).toBe(true)
+  })
+
+  it('is false when ranges differ by lang', () => {
+    expect(
+      shouldUseRangeRows({
+        boundaries: [{ offset: 0, at: 0, text: 'x' }],
+        ranges: [
+          { start: 0, end: 2, lang: 'zh' },
+          { start: 2, end: 4, lang: 'en' },
+        ],
+      }),
+    ).toBe(false)
   })
 })

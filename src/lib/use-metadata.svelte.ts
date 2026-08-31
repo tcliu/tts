@@ -1,6 +1,6 @@
 import type { PlaybackHandle, CodeEditorHandle } from './use-playback.svelte'
 import type { SettingsHandle } from './use-settings.svelte'
-import { mergeBracketBoundaries, shouldFallbackToRanges } from './bracket-merge'
+import { mergeBracketBoundaries, shouldUseRangeRows } from './bracket-merge'
 
 // Interpolated sentence start time for a highlight range: linear by character
 // position across the segment's spoken duration.
@@ -87,7 +87,7 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
     if (activeSeg < 0) return -1
     const meta = playback.segments[activeSeg]
     if (!meta) return -1
-    if (shouldFallbackToRanges(meta)) {
+    if (shouldUseRangeRows(meta)) {
       const segDuration = segmentDuration(meta)
       if (activeInfoOffset >= 0) {
         const pinnedRangeIndex = meta.ranges.findIndex((range, index) => {
@@ -158,25 +158,11 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
       if (!meta) continue
       cumulativeBySegment.set(meta.index, cumulative)
       const segDuration = segmentDuration(meta)
-      if (meta.boundaries.length === 0) {
-        // A segment without sentence boundaries must still appear in document
-        // order, or the Seg column shows gaps that read as shuffled rows.
-        result.push({
-          segmentIndex: meta.index,
-          sentenceIndex: 0,
-          at: cumulative,
-          offset: meta.baseOffset,
-          lang: meta.lang,
-          text: meta.text,
-          boundaryIndex: 0,
-          active: false,
-          words: [],
-          hasWords: false,
-        })
-      } else if (shouldFallbackToRanges(meta)) {
+      if (shouldUseRangeRows(meta)) {
         // Edge under-split (e.g. CJK space/comma separated sentences) — use
         // highlight ranges as synthetic sentence boundaries with interpolated
-        // timing so the Info panel shows 2 rows instead of 1.
+        // timing so the Info panel still reflects text sentence splits when a
+        // voice returns no sentence boundaries or boundaries that span across them.
         // Ranges are already bracket-merged in splitHighlightRanges.
         meta.ranges.forEach((range, boundaryIndex) => {
           const raw = meta.text.slice(range.start, range.end)
@@ -193,6 +179,21 @@ export function useMetadata(deps: MetadataDeps): MetadataHandle {
             words: [],
             hasWords: false,
           })
+        })
+      } else if (meta.boundaries.length === 0) {
+        // A segment without sentence boundaries must still appear in document
+        // order, or the Seg column shows gaps that read as shuffled rows.
+        result.push({
+          segmentIndex: meta.index,
+          sentenceIndex: 0,
+          at: cumulative,
+          offset: meta.baseOffset,
+          lang: meta.lang,
+          text: meta.text,
+          boundaryIndex: 0,
+          active: false,
+          words: [],
+          hasWords: false,
         })
       } else {
         const mergedBoundaries = mergeBracketBoundaries(meta.boundaries)

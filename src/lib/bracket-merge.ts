@@ -64,6 +64,17 @@ export function mergeBracketBoundaries<B extends BoundaryLike>(boundaries: B[]):
   return merged
 }
 
-export function shouldFallbackToRanges(meta: { boundaries: BoundaryLike[]; ranges: HighlightRangeLike[] }): boolean {
-  return meta.boundaries.length > 0 && meta.ranges.length > 0 && meta.boundaries.length < meta.ranges.length
+export function shouldUseRangeRows(meta: { ranges: HighlightRangeLike[]; boundaries: BoundaryLike[] }): boolean {
+  if (!meta || meta.ranges.length === 0) return false
+  const sentenceRangeStarts: number[] = []
+  for (let i = 1; i < meta.ranges.length; i += 1) {
+    if (meta.ranges[i - 1]?.lang === meta.ranges[i]?.lang) {
+      sentenceRangeStarts.push(meta.ranges[i].start)
+    }
+  }
+  if (sentenceRangeStarts.length === 0) return false
+  const mergedBoundaries = mergeBracketBoundaries(meta.boundaries)
+  if (mergedBoundaries.length === 0) return true
+  const boundaryStarts = new Set(mergedBoundaries.map(b => b.offset))
+  return sentenceRangeStarts.some(start => !boundaryStarts.has(start))
 }
