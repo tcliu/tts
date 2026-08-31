@@ -1411,6 +1411,48 @@ describe('usePlayback segment language override', () => {
     dispose()
   })
 
+  it('keeps the chip voice model stable when manual selections change within the same written language', async () => {
+    const content = '嘅咗唔啲佢嗰哋畀 你好世界'
+    const resolveVoiceForSegment = vi.fn((segmentLang: string) => {
+      if (segmentLang === 'yue') return { edge: 'zh-HK-HiuMaanNeural', name: 'HiuMaan', gender: 'Female' }
+      if (segmentLang === 'zh') return { edge: 'zh-CN-XiaoxiaoNeural', name: 'Xiaoxiao', gender: 'Female' }
+      return { edge: 'en-US-AriaNeural', name: 'Aria', gender: 'Female' }
+    })
+    const deps: PlaybackDeps = {
+      settings: {
+        locale: 'en',
+        speed: 1,
+        synthesisConcurrency: 2,
+        canPlay: true,
+        content,
+        resolveVoiceForSegment,
+      } as unknown as SettingsHandle,
+      getEditor: createEditor,
+      getCacheScopeId: () => 'doc-a',
+      prepareForPlayback: () => {},
+    }
+    const { playback, dispose } = createPlaybackHost(deps)
+    const segments = splitTtsSegments(content)
+
+    playback.primeSession([segments[0]], 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0], { lang: 'yue' }))
+    flushSync()
+    expect(playback.positionSegmentLang).toBe('yue')
+    expect(playback.positionLanguageCode).toBe('zh')
+    expect(playback.positionVoiceName).toBe('Xiaoxiao')
+    expect(playback.positionVoiceEdge).toBe('zh-CN-XiaoxiaoNeural')
+
+    playback.primeSession([segments[1]], 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[1], { lang: 'zh' }))
+    flushSync()
+    expect(playback.positionSegmentLang).toBe('zh')
+    expect(playback.positionLanguageCode).toBe('zh')
+    expect(playback.positionVoiceName).toBe('Xiaoxiao')
+    expect(playback.positionVoiceEdge).toBe('zh-CN-XiaoxiaoNeural')
+
+    dispose()
+  })
+
   it('leaves the segment untouched when no voice resolves for the language', async () => {
     const { deps, content, resolveVoiceForSegment } = createSpyDeps()
     resolveVoiceForSegment.mockImplementation((segmentLang: string) =>
