@@ -561,6 +561,43 @@ describe('usePlayback stop', () => {
     dispose()
   })
 
+  it('stops selected cached playback at the last selected word end instead of the next word start', async () => {
+    const content = 'First second third fourth fifth sixth'
+    const selectionText = 'third fourth fifth'
+    const selectionStart = content.indexOf(selectionText)
+    const selection = { from: selectionStart, to: selectionStart + selectionText.length }
+    const editor = createSelectionEditor(selection)
+    vi.mocked(peekCachedSynthesis).mockImplementation((text) => {
+      if (text !== content) return null
+      return {
+        blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+        boundaries: [{ offset: 0, at: 0, text: content }],
+        wordBoundaries: [
+          { offset: 0, at: 0, text: 'First', duration: 0.25 },
+          { offset: 6, at: 0.4, text: 'second', duration: 0.25 },
+          { offset: 13, at: 0.8, text: 'third', duration: 0.25 },
+          { offset: 19, at: 1.2, text: 'fourth', duration: 0.25 },
+          { offset: 26, at: 1.6, text: 'fifth', duration: 0.25 },
+          { offset: 32, at: 2.0, text: 'sixth', duration: 0.25 },
+        ],
+        spokenStart: 0,
+        spokenEnd: 2.4,
+      }
+    })
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    const finished = playback.startPlayback()
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+    await vi.waitFor(() => expect(playback.totalDuration).toBeGreaterThan(0))
+
+    expect(playback.totalDuration).toBeCloseTo((1.6 + 0.25) - 0.8, 5)
+
+    playback.stopPlayback()
+    await finished
+    vi.mocked(peekCachedSynthesis).mockReset()
+    dispose()
+  })
+
   it('plays isolated short words from the start of the audio blob instead of a trimmed spoken window', async () => {
     const content = 'the city completely wakes up'
     const segments = splitTtsSegments(content)
@@ -639,6 +676,57 @@ describe('usePlayback stop', () => {
       spokenStart: 0,
       spokenEnd: 2.4,
       duration: 2.4,
+    }))
+
+    const finished = playback.playSentence(0, segments[0].indexStart)
+    await vi.waitFor(() => expect(playback.isPlaying).toBe(true))
+
+    expect(highlights[0]).toEqual({ from: 0, to: 'First sentence here.'.length })
+
+    playback.stopPlayback()
+    await finished
+    dispose()
+  })
+
+  it('keeps sentence-row highlight scoped when isolated playback only has sentence boundaries', async () => {
+    const content = 'First sentence here. Second sentence there.'
+    const segments = splitTtsSegments(content)
+    const highlights: Array<{ from: number; to: number }> = []
+    const editor: CodeEditorHandle = {
+      getSelectionText: () => '',
+      getSelectionRange: () => null,
+      setSelection: () => false,
+      clearSelection: () => {},
+      setPlaybackHighlight: (from, to) => {
+        highlights.push({ from, to })
+      },
+      setPlaybackHighlightSelected: (from, to) => {
+        highlights.push({ from, to })
+      },
+      clearPlaybackHighlight: () => {},
+      focus: () => {},
+      hasFocus: () => false,
+    }
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    playback.primeSession(segments, 0)
+    playback.recordSegment(0, createSegmentMeta(0, segments[0], {
+      boundaries: [
+        { offset: 0, at: 0, text: 'First' },
+        { offset: 'First sentence here. '.length, at: 1.2, text: 'Second' },
+      ],
+      wordBoundaries: [],
+      spokenStart: 0,
+      spokenEnd: 2.4,
+      duration: 2.4,
+    }))
+
+    vi.mocked(getCachedSynthesis).mockImplementationOnce(async () => ({
+      blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+      boundaries: [{ offset: 0, at: 0, text: 'First sentence here.' }],
+      wordBoundaries: [],
+      spokenStart: 0,
+      spokenEnd: 1.2,
     }))
 
     const finished = playback.playSentence(0, segments[0].indexStart)
@@ -1542,6 +1630,54 @@ describe('usePlayback voice override during playback', () => {
     playback.stopPlayback()
     await finished
     dispose()
+  })
+
+  it('reuses an already-scoped manual-selection session after a paused voice change', async () => {
+    mockSynthesisPerVoice()
+    const content = 'First paragraph here.'
+    const selectionStart = content.indexOf('paragraph')
+    const selection = { from: selectionStart, to: selectionStart + 'paragraph'.length }
+    const editor = createSelectionEditor(selection)
+    const { deps } = createSpyDeps(content)
+
+    vi.mocked(peekCachedSynthesis).mockImplementation((text, voiceId) => {
+      if (text !== content) return null
+      return {
+        blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+        boundaries: [{ offset: 0, at: 0, text: content }],
+        wordBoundaries: voiceId === OVERRIDE_VOICE ? OVERRIDE_BOUNDARIES : FIRST_SEGMENT_BOUNDARIES,
+        spokenStart: 0,
+        spokenEnd: voiceId === OVERRIDE_VOICE ? 2 : 1.5,
+      }
+    })
+
+    const host = createPlaybackHost({ ...deps, getEditor: () => editor })
+    const selectedPlayback = host.playback
+    const segments = splitTtsSegments(content)
+    selectedPlayback.primeSession(segments, 0, selection)
+    selectedPlayback.recordSegment(0, createSegmentMeta(0, segments[0], {
+      text: 'paragraph',
+      boundaries: [{ offset: 0, at: 0, text: 'paragraph' }],
+      wordBoundaries: [{ offset: 0, at: 0, text: 'paragraph' }],
+      baseOffset: selectionStart,
+      spokenStart: 0,
+      spokenEnd: 0.5,
+      duration: 0.5,
+    }))
+
+    await selectedPlayback.overrideSegmentVoice(0, OVERRIDE_VOICE)
+    expect(selectedPlayback.effectiveVoiceEdge('en')).toBe(OVERRIDE_VOICE)
+
+    vi.mocked(getCachedSynthesis).mockClear()
+    const finished = selectedPlayback.startPlayback()
+    await vi.waitFor(() => expect(selectedPlayback.isPlaying).toBe(true))
+
+    expect(vi.mocked(getCachedSynthesis).mock.calls[0]?.[1]).toBe(OVERRIDE_VOICE)
+
+    selectedPlayback.stopPlayback()
+    await finished
+    vi.mocked(peekCachedSynthesis).mockReset()
+    host.dispose()
   })
 
   it('gates Play and abandons the resume when stopped while switching', async () => {

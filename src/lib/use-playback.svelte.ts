@@ -280,7 +280,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (isPartialWordSelection(scoped, content, covering)) return null
     const reusable: ReusableScopedSegment[] = []
     for (const seg of covering) {
-      const voice = deps.settings.resolveVoiceForSegment(seg.lang)
+      const voice = resolveEffectiveVoice(seg.lang)
       if (!voice?.edge) return null
       const cached = peekCachedSynthesis(seg.text, voice.edge, effectiveSpeed)
       if (!cached) return null
@@ -296,8 +296,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       const first = selectedWords[0]
       const last = selectedWords[selectedWords.length - 1]
       const sourceStartAt = first.at
+      const lastBoundaryEnd = last.duration != null ? last.at + last.duration : null
       const nextAfterLast = sourceBoundaries.find(boundary => boundary.at > last.at)
-      const sourceEndAt = nextAfterLast?.at ?? cached.spokenEnd ?? last.at + 0.5
+      const sourceEndAt = lastBoundaryEnd ?? nextAfterLast?.at ?? cached.spokenEnd ?? last.at + 0.5
       const absoluteStart = seg.indexStart + first.offset
       const absoluteEnd = Math.min(scoped.to, seg.indexEnd + 1)
       const text = content.slice(absoluteStart, absoluteEnd)
@@ -1437,12 +1438,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     const content = deps.settings.content
     const selectedRange = editor.getSelectionRange()
     if (hasNonEmptySelection(selectedRange) && selectedRange) {
-      const segments = splitTtsSegments(content)
-      if (segments.length === 0) {
-        return
-      }
-      primeSession(segments, 0, selectedRange)
-      clearSegments()
       deps.prepareForPlayback()
       await playSelectedText(selectedRange)
       return
@@ -1546,6 +1541,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     }
 
     if (!isolatedText) return false
+    const fragmentText: string = isolatedText
 
     const lang = effectiveSegmentLang(segmentIndex)
     const voice = resolveEffectiveVoice(lang)
@@ -1574,7 +1570,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
 
     try {
       const docId = deps.getCacheScopeId()
-      const synth = await getCachedSynthesis(isolatedText, voice.edge, effectiveSpeed, controller.abort.signal, docId)
+      const synth = await getCachedSynthesis(fragmentText, voice.edge, effectiveSpeed, controller.abort.signal, docId)
       if (controller.cancelled) return true
       const duration = await readAudioDuration(synth.blob, controller.abort.signal)
       if (controller.cancelled) return true
@@ -1584,10 +1580,43 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       // Play the isolated fragment only; do not continue to subsequent sentences.
       const spokenStart = synth.spokenStart ?? 0
       const spokenEnd = kind === 'word' ? undefined : synth.spokenEnd
+      const fragmentRanges = splitHighlightRanges(fragmentText)
+      const isolatedHighlights = highlightBoundaries(
+        { wordBoundaries: synth.wordBoundaries, boundaries: synth.boundaries },
+        synth.wordBoundaries?.length ? synth.wordBoundaries : synth.boundaries,
+      )
+      const applyIsolatedHighlight = (currentTime: number) => {
+        if (isolatedHighlights.length === 0) return
+        const relativeAt = currentTime - spokenStart
+        const active = activeBoundaryAt(isolatedHighlights, relativeAt)
+        if (active?.text) {
+          const wordStart = active.offset
+          const wordEnd = wordStart + active.text.length
+          const trimmed = trimWhitespaceRange(fragmentText, wordStart, wordEnd)
+          if (trimmed.end > trimmed.start) {
+            applyPlaybackHighlight(selFrom + trimmed.start, selFrom + trimmed.end)
+          }
+          return
+        }
+        const activeRange = activeHighlightRange(fragmentRanges, isolatedHighlights, relativeAt)
+        if (activeRange) {
+          const trimmed = trimWhitespaceRange(fragmentText, activeRange.start, activeRange.end)
+          if (trimmed.end > trimmed.start) {
+            applyPlaybackHighlight(selFrom + trimmed.start, selFrom + trimmed.end)
+          }
+          return
+        }
+        // Fallback to the whole isolated fragment when metadata cannot map to
+        // a more precise word or sentence range.
+        const fallbackTrimmed = trimWhitespaceRange(fragmentText, 0, fragmentText.length)
+        if (fallbackTrimmed.end > fallbackTrimmed.start) {
+          applyPlaybackHighlight(selFrom + fallbackTrimmed.start, selFrom + fallbackTrimmed.end)
+        }
+      }
       await playAudioBlob(
         controller,
         synth.blob,
-        undefined,
+        isolatedHighlights.length > 0 ? applyIsolatedHighlight : undefined,
         d => {
           playbackDuration = d
         },
@@ -1794,6 +1823,18 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (!scoped) {
       return
     }
+    const editor = deps.getEditor()
+    if (editor && sessionMatchesEditor(editor, content) && sessionSelectionScoped) {
+      playbackEnded = false
+      await runPlayback(sessionSegments, sessionOffset, resumeSegmentIndex, resumeSegmentTime)
+      return
+    }
+    const fullSegments = splitTtsSegments(content)
+    if (fullSegments.length === 0) {
+      return
+    }
+    primeSession(fullSegments, 0, range)
+    clearSegments()
     const lang = splitTtsSegments(scoped.text)[0]?.lang ?? splitTtsSegments(content)[0]?.lang ?? 'en'
     const voice = resolveEffectiveVoice(lang)
     if (!voice?.edge) {
@@ -1857,8 +1898,16 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           for (let idx = 0; idx < reusable.length; idx += 1) {
             if (controller.cancelled) return
             const segment = reusable[idx]
-            const segVoice = deps.settings.resolveVoiceForSegment(segment.lang)
-            const cached = peekCachedSynthesis(segment.source.text, segVoice!.edge, effectiveSpeed)!
+            const segVoice = resolveEffectiveVoice(segment.lang)
+            if (!segVoice?.edge) {
+              throw new LocalizedPlaybackError(
+                `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, segment.lang)})`,
+              )
+            }
+            const cached = peekCachedSynthesis(segment.source.text, segVoice.edge, effectiveSpeed)
+            if (!cached) {
+              throw new Error('Scoped playback lost its source cache entry')
+            }
             const meta = segmentMetaMap[idx]
             if (!meta) continue
             currentSegmentIndex = idx + 1
@@ -2040,10 +2089,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     playbackDuration = 0
     currentSynthesisRate = effectiveSpeed
     metadataAvailable = false
-    // A re-split renumbers every segment; any per-segment language override
-    // keyed by the old index would now address the wrong text.
-    segmentLangOverrides = new Map()
-    sessionVoiceSelections = new Map()
     // Invalidate any pending debounced seek that was queued before the reset.
     pendingSelectionGeneration += 1
     if (pendingSelectionSeekTimer) {
