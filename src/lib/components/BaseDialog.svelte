@@ -41,7 +41,10 @@
     titleId = `tts-dialog-title-${dialogIndex}`
     previouslyFocused = document.activeElement
     void tick().then(() => {
-      dialogRef?.focus()
+      const firstInput = dialogRef?.querySelector<HTMLElement>(
+        'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [autofocus]',
+      )
+      ;(firstInput ?? dialogRef)?.focus()
     })
   })
 
@@ -109,10 +112,11 @@
   })
 </script>
 
-<div class="fixed inset-0 z-40 @container">
+<div class="fixed inset-0 z-40 @container tts-dialog">
   <button
     type="button"
     aria-label={closeLabel}
+    tabindex="-1"
     class="absolute inset-0 bg-slate-950/80 outline-none"
     onclick={handleCancelRequest}></button>
   <div class="relative flex min-h-full items-center justify-center px-3 py-4 @max-md:p-0">

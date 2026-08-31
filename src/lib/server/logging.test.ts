@@ -55,6 +55,8 @@ describe('logAccess', () => {
   })
 
   it('falls back to x-forwarded-for and logs the resolution failure', () => {
+    const prevVercel = process.env.VERCEL
+    process.env.VERCEL = '1'
     const event = fakeEvent({
       request: new Request('https://example.test/api/tts/synthesize', {
         headers: { 'x-forwarded-for': '198.51.100.4, 70.41.3.18' },
@@ -63,12 +65,17 @@ describe('logAccess', () => {
         throw new Error('unavailable')
       },
     })
-    logAccess({ event, action: 'tts_synthesize_start', details: { text_length: 5 } })
-    expect(logged).toHaveLength(2)
-    expect(logged[0]).toMatch(
-      /ERROR ip=198\.51\.100\.4 action=client_ip_resolve_error error="unavailable" source="x-forwarded-for"$/,
-    )
-    expect(logged[1]).toMatch(/ip=198\.51\.100\.4 action=tts_synthesize_start text_length=5$/)
+    try {
+      logAccess({ event, action: 'tts_synthesize_start', details: { text_length: 5 } })
+      expect(logged).toHaveLength(2)
+      expect(logged[0]).toMatch(
+        /ERROR ip=198\.51\.100\.4 action=client_ip_resolve_error error="unavailable" source="x-forwarded-for"$/,
+      )
+      expect(logged[1]).toMatch(/ip=198\.51\.100\.4 action=tts_synthesize_start text_length=5$/)
+    } finally {
+      if (prevVercel === undefined) delete process.env.VERCEL
+      else process.env.VERCEL = prevVercel
+    }
   })
 
   it('resolves to unknown when the client address fails without a forwarded header', () => {

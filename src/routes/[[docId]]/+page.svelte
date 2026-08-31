@@ -8,7 +8,7 @@
   import PanelMenu from '$lib/components/PanelMenu.svelte'
   import { REVEAL_CLASS, TOOLBAR_BANDS, menuFor, type PanelAction, type ToolbarMode } from '$lib/toolbar-ladder'
   import DocumentsDrawer from '$lib/components/DocumentsDrawer.svelte'
-  import HeaderRadioMenu from '$lib/components/HeaderRadioMenu.svelte'
+  import Menu from '$lib/components/Menu.svelte'
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
   import SunIcon from '$lib/icons/SunIcon.svelte'
   import MoonIcon from '$lib/icons/MoonIcon.svelte'
@@ -749,28 +749,66 @@
       <h1 class="text-base font-semibold tracking-tight sm:text-lg">{text.appShortTitle}</h1>
     </div>
     <div class="flex items-center gap-2">
-      <HeaderRadioMenu
-        label={text.language}
-        menuLabel={text.languageMenuLabel}
-        options={UI_LANGUAGE_OPTIONS}
-        selected={settings.locale}
-        onSelect={selectLanguage}
-        escapeYield={dialogsOpen}>
+      <Menu
+        items={UI_LANGUAGE_OPTIONS}
+        itemKey={option => option.value}
+        ariaLabel={text.language}
+        triggerTooltip={text.language}
+        align="right"
+        autoPlace={true}
+        triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
+        itemRole="menuitemradio"
+        itemChecked={option => option.value === settings.locale}
+        itemClass={(option, state) =>
+          `flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${
+            state.disabled
+              ? 'cursor-not-allowed text-slate-600'
+              : state.active
+                ? 'bg-slate-800 text-cyan-200'
+                : option.value === settings.locale
+                  ? 'bg-cyan-500/15 text-cyan-200'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
+          }`}
+        onSelect={index => selectLanguage(UI_LANGUAGE_OPTIONS[index].value)}>
         {#snippet icon()}
           <GlobeIcon className="h-4 w-4" />
         {/snippet}
-      </HeaderRadioMenu>
-      <HeaderRadioMenu
-        label={text.theme}
-        menuLabel={text.themeMenuLabel}
-        options={themeOptions}
-        selected={settings.theme}
-        onSelect={selectTheme}
-        escapeYield={dialogsOpen}>
+        {#snippet item(option)}
+          <span>{option.label}</span>
+        {/snippet}
+      </Menu>
+      <Menu
+        items={themeOptions}
+        itemKey={option => option.value}
+        ariaLabel={text.theme}
+        triggerTooltip={text.theme}
+        align="right"
+        autoPlace={true}
+        triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
+        itemRole="menuitemradio"
+        itemChecked={option => option.value === settings.theme}
+        itemClass={(option, state) =>
+          `flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${
+            state.disabled
+              ? 'cursor-not-allowed text-slate-600'
+              : state.active
+                ? 'bg-slate-800 text-cyan-200'
+                : option.value === settings.theme
+                  ? 'bg-cyan-500/15 text-cyan-200'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
+          }`}
+        onSelect={index => selectTheme(themeOptions[index].value)}>
         {#snippet icon()}
           <PaletteIcon className="h-4 w-4" />
         {/snippet}
-      </HeaderRadioMenu>
+        {#snippet item(option, _state)}
+          {@const OptionIcon = option.icon}
+          {#if OptionIcon}
+            <OptionIcon className="h-4 w-4 shrink-0" />
+          {/if}
+          <span>{option.label}</span>
+        {/snippet}
+      </Menu>
       <Button variant="secondary" size="sm" ariaLabel={text.settings} tooltip={text.settings} onClick={() => (settingsOpen = true)}>
         {#snippet icon()}
           <SettingsIcon className="h-4 w-4" />

@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { tick } from 'svelte'
-  import { clickOutside } from '$lib/actions/click-outside'
+  import { flushSync, tick } from 'svelte'
+  import { useDropdown } from '$lib/actions/use-dropdown.svelte'
+  import { useListSelection, revealInScrollport } from '$lib/actions/use-list-selection.svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
   import { TEXT_SIZE, type TextSize } from '$lib/text-size'
   import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
@@ -37,7 +38,7 @@
     buttonClass,
     controlClass,
     optionClass,
-    panelClass = 'w-max max-w-xs overflow-hidden rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur',
+    panelClass = 'w-max max-w-xs max-h-[min(50vh,20rem)] overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur',
   }: Props = $props()
 
   let id = $props.id()
@@ -66,12 +67,12 @@
   )
 
   let open = $state(false)
+  const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
   let inputRef = $state<HTMLInputElement | null>(null)
   let controlRef = $state<HTMLInputElement | HTMLButtonElement | HTMLDivElement | null>(null)
   let panelRef = $state<HTMLDivElement | null>(null)
   let filterText = $state('')
-  let highlightIndex = $state(0)
   let suppressOpenOnFocus = false
 
   const filteredOptions = $derived.by(() => {
@@ -94,17 +95,32 @@
     }
   })
 
+  // Reset the highlight to the top of the visible list whenever it changes
+  // (filter typing, options prop swap) so the cursor does not stay stranded
+  // on a row that has scrolled out of view.
   let lastFilteredOptions: Option[] | null = null
   $effect(() => {
     if (!open) return
     if (lastFilteredOptions !== filteredOptions) {
       lastFilteredOptions = filteredOptions
-      highlightIndex = 0
+      selection.reset()
     }
+  })
+
+  $effect(() => {
+    if (!open) return
+    selection.clamp(filteredOptions.length)
   })
 
   function close() {
     open = false
+  }
+
+  // Keep the highlighted option visible while arrowing through a scrollable
+  // panel: the option never receives focus (aria-activedescendant pattern),
+  // so the browser would otherwise let it drift out of the scrollport.
+  function revealActive() {
+    revealInScrollport(panelRef?.querySelector<HTMLButtonElement>(`[id="${panelId}-option-${selection.index}"]`))
   }
 
   function toggle() {
@@ -117,8 +133,8 @@
 
   function openPanel() {
     lastFilteredOptions = filteredOptions
+    selection.reset()
     open = true
-    highlightIndex = 0
   }
 
   function handleControlFocus() {
@@ -150,29 +166,26 @@
     }
   }
 
-  function moveHighlight(direction: 'down' | 'up') {
-    if (filteredOptions.length === 0) return
-    if (!open) {
-      openPanel()
-      if (direction === 'up') {
-        highlightIndex = filteredOptions.length - 1
-      }
-      return
-    }
-    if (direction === 'down') {
-      highlightIndex = (highlightIndex + 1) % filteredOptions.length
-    } else {
-      highlightIndex = (highlightIndex - 1 + filteredOptions.length) % filteredOptions.length
-    }
-  }
-
   function handleControlKeydown(event: KeyboardEvent) {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      moveHighlight('down')
+      if (!open) {
+        openPanel()
+        return
+      }
+      selection.move('down', filteredOptions.length)
+      revealActive()
+      flushSync()
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      moveHighlight('up')
+      if (!open) {
+        openPanel()
+        selection.move('last', filteredOptions.length)
+        return
+      }
+      selection.move('up', filteredOptions.length)
+      revealActive()
+      flushSync()
     } else if (event.key === 'Enter') {
       if (!open) {
         if (filterable) {
@@ -181,40 +194,33 @@
         return
       }
       event.preventDefault()
-      const option = filteredOptions[highlightIndex] ?? filteredOptions[0]
+      const option = filteredOptions[selection.index] ?? filteredOptions[0]
       if (option) {
         void select(option.value)
       }
     }
   }
-
-  $effect(() => {
-    if (!open) {
-      return
-    }
-    function handleKeydownCapture(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.stopImmediatePropagation()
-        event.preventDefault()
-        if (filterable && filterText && filterText !== buttonLabel) {
-          filterText = ''
-          return
-        }
-        close()
+  useDropdown(() => ({
+    isOpen: () => open,
+    container: () => containerRef,
+    onOutsideClick: () => close(),
+    onEscape: () => {
+      if (filterable && filterText && filterText !== buttonLabel) {
+        filterText = ''
+        return true
       }
-    }
-    window.addEventListener('keydown', handleKeydownCapture, true)
-    return () => {
-      window.removeEventListener('keydown', handleKeydownCapture, true)
-    }
-  })
+      close()
+    },
+    onScrollClose: () => close(),
+    panel: () => panelRef,
+  }))
 </script>
 
 <div
   class="relative"
   bind:this={containerRef}
   data-escape-capture={open ? '' : null}
-  use:clickOutside={{ enabled: open, handler: () => close(), include: [panelRef] }}>
+>
   {#if filterable}
     <div class="relative w-fit" bind:this={controlRef}>
       <input
@@ -226,8 +232,8 @@
         aria-autocomplete="list"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        aria-activedescendant={open && filteredOptions[highlightIndex]
-          ? `${panelId}-option-${highlightIndex}`
+        aria-activedescendant={open && filteredOptions[selection.index]
+          ? `${panelId}-option-${selection.index}`
           : undefined}
         onfocus={handleControlFocus}
         onclick={handleControlClick}
@@ -244,8 +250,8 @@
       aria-haspopup="listbox"
       aria-expanded={open}
       aria-controls={open ? panelId : undefined}
-      aria-activedescendant={open && filteredOptions[highlightIndex]
-        ? `${panelId}-option-${highlightIndex}`
+      aria-activedescendant={open && filteredOptions[selection.index]
+        ? `${panelId}-option-${selection.index}`
         : undefined}
       onclick={toggle}
       onkeydown={handleControlKeydown}
@@ -271,14 +277,14 @@
           aria-selected={option.value === activeValue}
           onpointerdown={event => event.preventDefault()}
           onclick={() => void select(option.value)}
-          onmouseenter={() => (highlightIndex = index)}
+          onmouseenter={() => selection.set(index)}
           class={`${optionRowClass} ${
-            index === highlightIndex
+            index === selection.index
               ? 'bg-slate-800 text-cyan-200'
               : option.value === activeValue
                 ? 'bg-cyan-500/15 text-cyan-200'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200'
-          }`}>
+           }`}>
           <span class="min-w-0 truncate">{option.label}</span>
         </button>
       {/each}

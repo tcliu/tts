@@ -40,6 +40,8 @@ function loadDevEnv() {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore vitest projects typed via vitest/config but checked via vite types
 export default defineConfig(async ({ command, mode }) => {
   if (command === 'serve' && mode === 'development') {
     loadDevEnv()
@@ -47,10 +49,43 @@ export default defineConfig(async ({ command, mode }) => {
   return {
     plugins: [sveltekit(), tailwindcss()],
     test: {
-      include: ['src/**/*.{test,spec}.{ts,js}'],
-      environment: 'jsdom',
-      globals: true,
-      setupFiles: ['./src/test/vitest-setup.ts'],
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: 'client',
+            include: ['src/**/*.{test,spec}.{ts,js}'],
+            exclude: [
+              'src/lib/server/**/*.test.ts',
+              'src/lib/server/**/*.spec.ts',
+              'src/lib/doc-route-drawer.test.ts',
+              'src/lib/tailwind-source.test.ts',
+              'src/lib/theme-parity.test.ts',
+              'src/lib/toolbar-ladder.test.ts',
+            ],
+            environment: 'jsdom',
+            globals: true,
+            setupFiles: ['./src/test/vitest-setup.ts'],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: 'server',
+            include: [
+              'src/lib/server/**/*.test.ts',
+              'src/lib/server/**/*.spec.ts',
+              'src/lib/doc-route-drawer.test.ts',
+              'src/lib/tailwind-source.test.ts',
+              'src/lib/theme-parity.test.ts',
+              'src/lib/speed-parity.test.ts',
+              'src/lib/toolbar-ladder.test.ts',
+            ],
+            environment: 'node',
+            globals: true,
+          },
+        },
+      ],
     },
   }
 })

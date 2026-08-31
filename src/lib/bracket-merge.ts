@@ -21,8 +21,7 @@ export function mergeBracketRanges<R extends HighlightRangeLike>(ranges: R[], te
       i += 1
     } else if (isClose && merged.length > 0) {
       const prev = merged[merged.length - 1]
-      // mutate last entry's end to include closing bracket
-      ;(prev as { end: number }).end = range.end
+      merged[merged.length - 1] = { ...prev, end: range.end } as R
     } else {
       merged.push({ ...range })
     }
@@ -55,8 +54,8 @@ export function mergeBracketBoundaries<B extends BoundaryLike>(boundaries: B[]):
       } as B)
       i += 1
     } else if (isClose && merged.length > 0) {
-      const prev = merged[merged.length - 1] as BoundaryLike
-      prev.text = `${prev.text ?? ''}${cur.text ?? ''}`
+      const prev = merged[merged.length - 1]
+      merged[merged.length - 1] = { ...prev, text: `${prev.text ?? ''}${cur.text ?? ''}` } as B
     } else {
       merged.push({ ...cur })
     }

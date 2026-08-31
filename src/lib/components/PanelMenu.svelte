@@ -56,7 +56,9 @@
     return `flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${
       state.disabled
         ? 'cursor-not-allowed text-slate-600'
-        : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
+        : state.active
+          ? 'bg-slate-800 text-cyan-200'
+          : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
     }`
   }
 </script>

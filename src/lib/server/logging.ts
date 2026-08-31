@@ -20,14 +20,14 @@ export function logEvent(input: { ip: string; action: string; details?: Record<s
   )
 }
 
-function getRequestIp(event: { request: Request; getClientAddress: () => string }): string {
-  const { request, getClientAddress } = event
+export function getRequestIp(event: { request: Request; getClientAddress: () => string }): string {
   try {
-    return getClientAddress()
+    return event.getClientAddress()
   } catch (error) {
-    const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? ''
+    const trustedProxy = process.env.VERCEL === '1' || process.env.TRUSTED_PROXY === '1'
+    const forwardedFor = trustedProxy ? (event.request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? '') : ''
     logEvent({
-      ip: forwardedFor,
+      ip: forwardedFor || 'unknown',
       action: 'client_ip_resolve_error',
       details: {
         error: error instanceof Error ? error.message : 'Unknown error',

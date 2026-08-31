@@ -28,7 +28,7 @@ describe('readTextFile', () => {
 
   it('reports unreadable files', async () => {
     const file = new File(['x'], 'x.txt')
-    file.text = () => Promise.reject(new Error('boom'))
+    ;(file as unknown as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer = () => Promise.reject(new Error('boom'))
     await expect(readTextFile(file)).resolves.toEqual({ ok: false, reason: 'read-failed' })
   })
 

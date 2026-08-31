@@ -55,8 +55,11 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
       return
     }
     const rect = trigger.getBoundingClientRect()
-    const panelWidth = node.offsetWidth
+    const maxWidth = window.innerWidth - VIEWPORT_MARGIN * 2
+    const panelWidth = Math.min(node.offsetWidth, maxWidth)
     const panelHeight = node.offsetHeight
+    if (panelWidth < node.offsetWidth) node.style.maxWidth = `${maxWidth}px`
+    else node.style.maxWidth = ''
     let left = align === 'right' ? rect.right - panelWidth : rect.left
     left = Math.max(VIEWPORT_MARGIN, Math.min(left, window.innerWidth - panelWidth - VIEWPORT_MARGIN))
     const spaceBelow = window.innerHeight - rect.bottom
@@ -83,6 +86,7 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
     node.style.transform = ''
     node.style.left = ''
     node.style.top = ''
+    node.style.maxWidth = ''
     restorePanelParent()
   }
 
@@ -95,6 +99,7 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
       node.style.transform = ''
       node.style.left = ''
       node.style.top = ''
+      node.style.maxWidth = ''
       restorePanelParent()
       return
     }
