@@ -154,6 +154,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
 
   let segmentMetaMap = $state<Record<number, SegmentMeta>>({})
   let sessionSegments: ReturnType<typeof splitTtsSegments> = []
+  let sessionGen = $state(0)
   let sessionOffset = 0
   let sessionSelectedRange: { from: number; to: number } | null = null
   let sessionSelectionScoped = false
@@ -389,6 +390,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let taskGeneration = new Map<number, number>()
 
   const totalDuration = $derived.by(() => {
+    void sessionGen
     let total = 0
     for (let i = 0; i < sessionSegments.length; i += 1) {
       total += scaledDurationAt(i)
@@ -397,6 +399,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   })
 
   const totalElapsed = $derived.by(() => {
+    void sessionGen
     if (sessionSegments.length === 0) return 0
     // Scaled elapsed = scaled completed + scaled current, using real wall time
     const curIdx = currentSegmentIndex > 0 ? currentSegmentIndex - 1 : resumeSegmentIndex
@@ -1415,7 +1418,8 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   ) {
     // A new split invalidates index-keyed overrides from the prior session;
     // keep them only when the reference array is the same object.
-    if (segments !== sessionSegments) {
+    const isSameRef = segments === sessionSegments
+    if (!isSameRef) {
       segmentLangOverrides = new Map()
       sessionVoiceSelections = new Map()
       sessionSpeed = null
@@ -1429,6 +1433,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     resumeSegmentIndex = 0
     resumeSegmentTime = 0
     totalSegments = segments.length
+    if (!isSameRef) sessionGen += 1
   }
 
   async function startPlayback() {
