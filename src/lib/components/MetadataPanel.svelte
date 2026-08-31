@@ -28,7 +28,8 @@
   let tableBodyRef = $state<HTMLDivElement | null>(null)
   let expandedRows = $state<Set<number>>(new Set())
   const wordContainers = new Map<number, HTMLDivElement>()
-  const WORD_COLS = ['w-6', 'w-12', 'w-20', 'w-20', ''] as const
+  const SENTENCE_COLS = ['w-6', 'w-6', 'w-10', 'w-14', 'w-12', ''] as const
+  const WORD_COLS = ['w-6', 'w-10', 'w-14', ''] as const
 
   function attachWordContainer(node: HTMLDivElement, sentenceIndex: number) {
     wordContainers.set(sentenceIndex, node)
@@ -159,20 +160,15 @@
       <div bind:this={tableBodyRef} class="min-h-0 flex-1 overflow-auto">
         <table class="w-full table-fixed border-collapse text-sm">
           <colgroup>
-            <col class="w-6" />
-            <col class="w-6" />
-            <col class="w-10" />
-            <col class="w-16" />
-            <col class="w-16" />
-            <col class="w-14" />
-            <col />
+            {#each SENTENCE_COLS as cls}
+              <col class={cls} />
+            {/each}
           </colgroup>
           <thead class="sticky top-0 z-10 bg-slate-950">
             <tr class="text-left text-xs text-slate-400">
               <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tableExpand}></th>
               <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
               <th scope="col" class="px-2 py-1 font-medium" aria-label={text.tableSentence}>{text.tableNumber}</th>
-              <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableLang}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
@@ -224,14 +220,13 @@
                   </button>
                 </td>
                 <td class="px-2 py-1 font-mono whitespace-nowrap">{row.sentenceIndex + 1}</td>
-                <td class="px-2 py-1 font-mono whitespace-nowrap">{row.at.toFixed(2)}s</td>
                 <td class="px-2 py-1 font-mono whitespace-nowrap">{row.offset}</td>
                 <td class="px-2 py-1 whitespace-nowrap">{row.lang}</td>
                 <td class="px-2 py-1 break-words">{row.text}</td>
               </tr>
               {#if isExpanded(row)}
                 <tr class="border-t border-slate-800 bg-slate-900/40">
-                  <td colspan="7" class="p-0">
+                  <td colspan="6" class="p-0">
                     {#if row.words.length === 0}
                       <p class="px-3 py-2 text-xs text-slate-500">{text.noWords}</p>
                     {:else}
@@ -246,7 +241,6 @@
                             <tr class="text-left text-slate-400">
                               <th scope="col" class="px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableWord}</th>
-                              <th scope="col" class="px-2 py-1 font-medium">{text.tableTime}</th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
                               <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
                             </tr>
@@ -289,7 +283,6 @@
                                   </button>
                                 </td>
                                 <td class="px-2 py-1 font-mono whitespace-nowrap">{wIdx + 1}</td>
-                                <td class="px-2 py-1 font-mono whitespace-nowrap">{word.at.toFixed(2)}s</td>
                                 <td class="px-2 py-1 font-mono whitespace-nowrap">{word.offset}</td>
                                 <td class="px-2 py-1 break-words">{word.text}</td>
                               </tr>

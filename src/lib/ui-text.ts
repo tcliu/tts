@@ -42,6 +42,7 @@ export interface UiText {
   voiceSwitching: string
   tableSentence: string
   tableNumber: string
+  /** @deprecated — Info panel Time column removed (see metadata-panel-time-column-removal) */
   tableTime: string
   tableOffset: string
   tableLang: string
