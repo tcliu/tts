@@ -21,7 +21,7 @@ const CACHE_DIR = path.join(TTS_DIR, 'cache');
 const CACHE_INDEX_PATH = path.join(CACHE_DIR, 'index.json');
 const CACHE_MAX = Number(process.env.TTS_CACHE_MAX) > 0 ? Number(process.env.TTS_CACHE_MAX) : 1000;
 const SELECTION_PATH = path.join(TTS_DIR, 'selection.json');
-const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3];
 
 const c = {
   reset: '\x1b[0m',

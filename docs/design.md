@@ -148,7 +148,7 @@
 - Languages with multiple spoken-language groups show a spoken-language
   dropdown and a voice-model dropdown.
 - The Speed tab shows the default speed field (`1` as the default, NumberInput
-  with `0.5–2` range and `0.25` step).
+  with `0.25–3` range and `0.25` step).
 - The Synthesis tab contains a Synthesis concurrency field that caps how many
   segments synthesize in parallel and a Cache entry showing how many segments
   have stored synthesis and the total size on disk, with a button to clear
