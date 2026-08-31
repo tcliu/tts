@@ -35,7 +35,6 @@ export interface UiText {
   voiceModel: string
   spokenLanguage: string
   defaultSpeed: string
-  languageMenuLabel: string
   ready: string
   playbackStopped: string
   playbackFinished: string
@@ -91,7 +90,6 @@ export interface UiText {
   voiceNotConfigured: string
   playbackFailed: string
   theme: string
-  themeMenuLabel: string
   themeDark: string
   themeLight: string
   themeEmber: string
@@ -191,7 +189,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     voiceModel: 'Voice model',
     spokenLanguage: 'Spoken language',
     defaultSpeed: 'Default speed',
-    languageMenuLabel: 'Interface language',
     ready: 'Ready to speak.',
     playbackStopped: 'Playback stopped.',
     playbackFinished: 'Playback finished.',
@@ -246,7 +243,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     voiceNotConfigured: 'No voice is configured for this language.',
     playbackFailed: 'Playback failed.',
     theme: 'Theme',
-    themeMenuLabel: 'Color theme',
     themeDark: 'Dark',
     themeLight: 'Light',
     themeEmber: 'Ember',
@@ -324,7 +320,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     voiceModel: '語音模型',
     spokenLanguage: '口語語言',
     defaultSpeed: '預設速度',
-    languageMenuLabel: '介面語言',
     ready: '可以開始播放。',
     playbackStopped: '已停止播放。',
     playbackFinished: '播放完成。',
@@ -379,7 +374,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     voiceNotConfigured: '此語言尚未設定語音。',
     playbackFailed: '播放失敗。',
     theme: '主題',
-    themeMenuLabel: '色彩主題',
     themeDark: '深色',
     themeLight: '淺色',
     themeEmber: '暮色',
@@ -457,7 +451,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     voiceModel: '语音模型',
     spokenLanguage: '口语语言',
     defaultSpeed: '默认速度',
-    languageMenuLabel: '界面语言',
     ready: '可以开始播放。',
     playbackStopped: '已停止播放。',
     playbackFinished: '播放完成。',
@@ -512,7 +505,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     voiceNotConfigured: '此语言尚未设置语音。',
     playbackFailed: '播放失败。',
     theme: '主题',
-    themeMenuLabel: '色彩主题',
     themeDark: '深色',
     themeLight: '浅色',
     themeEmber: '暮色',
