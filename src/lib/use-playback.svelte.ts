@@ -1826,16 +1826,22 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     }
     const editor = deps.getEditor()
     if (editor && sessionMatchesEditor(editor, content) && sessionSelectionScoped) {
-      playbackEnded = false
-      await runPlayback(sessionSegments, sessionOffset, resumeSegmentIndex, resumeSegmentTime)
-      return
+      if (sessionSegments.length === 1) {
+        playbackEnded = false
+        await runPlayback(sessionSegments, sessionOffset, resumeSegmentIndex, resumeSegmentTime)
+        return
+      }
+      const reusableForReuse = buildReusableScopedSegments(scoped, content)
+      if (
+        reusableForReuse &&
+        sessionSegments.length === reusableForReuse.length &&
+        sessionSegments.every((seg, idx) => seg.text === reusableForReuse[idx].text)
+      ) {
+        playbackEnded = false
+        await runPlayback(sessionSegments, sessionOffset, resumeSegmentIndex, resumeSegmentTime)
+        return
+      }
     }
-    const fullSegments = splitTtsSegments(content)
-    if (fullSegments.length === 0) {
-      return
-    }
-    primeSession(fullSegments, 0, range)
-    clearSegments()
     const lang = splitTtsSegments(scoped.text)[0]?.lang ?? splitTtsSegments(content)[0]?.lang ?? 'en'
     const voice = resolveEffectiveVoice(lang)
     if (!voice?.edge) {
