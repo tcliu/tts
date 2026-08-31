@@ -38,6 +38,7 @@
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
   import { REFERENCE_LANGUAGES, SPEED_OPTIONS, splitTtsSegments } from '$lib/tts-reference'
   import { synthesisCacheKey } from '$lib/tts-cache-key'
+  import { isScopeInvalidatedByClearedKeys } from '$lib/tts-cache-clear'
   import ChipDropdown from '$lib/components/ChipDropdown.svelte'
   import {
     clearSynthesisCache,
@@ -136,26 +137,31 @@
     }
   })
 
-  function isCaretInClearedSegment(clearedKeys: string[]): boolean {
+  function currentScopeSegment(segments?: ReturnType<typeof splitTtsSegments>) {
+    const content = settings.content
+    if (!content.trim()) return null
+    const playbackSegment = playback.currentSessionSegment
+    if (playbackSegment) {
+      return playbackSegment
+    }
+    const resolvedSegments = segments ?? splitTtsSegments(content)
     const caret =
       editorRef?.getCaretPosition?.() ?? editorRef?.getSelectionRange?.()?.from ?? null
-    if (caret == null) return false
-    const content = settings.content
-    if (!content.trim()) return false
-    const segments = splitTtsSegments(content)
-    const caretSeg = segments.find(seg => caret >= seg.indexStart && caret <= seg.indexEnd)
-    if (!caretSeg) return false
-    const clearedTexts = new Set(
-      cacheEntries.filter(entry => clearedKeys.includes(entry.key)).map(entry => entry.text),
-    )
-    if (clearedTexts.has(caretSeg.text)) return true
-    const voice = settings.resolveVoiceForSegment(caretSeg.lang)
-    if (!voice?.edge) return false
-    const candidateKeys = [
-      synthesisCacheKey(caretSeg.text, voice.edge, playback.effectiveSpeed),
-      synthesisCacheKey(caretSeg.text, voice.edge, settings.speed),
-    ]
-    return candidateKeys.some(key => clearedKeys.includes(key))
+    if (caret == null) return null
+    return resolvedSegments.find(seg => caret >= seg.indexStart && caret <= seg.indexEnd) ?? null
+  }
+
+  function currentScopeInvalidatedByClearedKeys(
+    clearedKeys: string[],
+    entries = cacheEntries,
+    segments?: ReturnType<typeof splitTtsSegments>,
+  ): boolean {
+    const scope = currentScopeSegment(segments)
+    return isScopeInvalidatedByClearedKeys(scope, clearedKeys, entries, {
+      effectiveSpeed: playback.effectiveSpeed,
+      defaultSpeed: settings.speed,
+      resolveVoiceEdge: lang => playback.effectiveVoiceEdge(lang),
+    })
   }
 
   async function clearClientSynthesisCache() {
@@ -166,17 +172,23 @@
         shouldReset = true
       } else {
         const segments = splitTtsSegments(content)
+        const effective = playback.effectiveSpeed
+        const fallback = settings.speed
         shouldReset = segments.some(seg => {
-          const voice = settings.resolveVoiceForSegment(seg.lang)
-          if (!voice?.edge) return false
+          const voiceEdge = settings.resolveVoiceForSegment(seg.lang)?.edge
+          if (!voiceEdge) return false
+          if (effective === fallback) return !!peekCachedSynthesis(seg.text, voiceEdge, effective)
           return (
-            !!peekCachedSynthesis(seg.text, voice.edge, playback.effectiveSpeed) ||
-            !!peekCachedSynthesis(seg.text, voice.edge, settings.speed)
+            !!peekCachedSynthesis(seg.text, voiceEdge, effective) ||
+            !!peekCachedSynthesis(seg.text, voiceEdge, fallback)
           )
         })
         if (!shouldReset) {
-          const allKeys = cacheEntries.map(entry => entry.key)
-          if (allKeys.length > 0) shouldReset = isCaretInClearedSegment(allKeys)
+          const snapshot = cacheEntries.length ? cacheEntries : await getSynthesisCacheEntries()
+          if (snapshot.length > 0) {
+            const allKeys = snapshot.map(entry => entry.key)
+            shouldReset = currentScopeInvalidatedByClearedKeys(allKeys, snapshot, segments)
+          }
         }
       }
     }
@@ -201,28 +213,7 @@
   }
 
   async function clearSelectedCacheEntries(keys: string[]) {
-    let shouldReset = keys.length > 0 && isCaretInClearedSegment(keys)
-    if (!shouldReset && keys.length > 0) {
-      const content = settings.content
-      if (content.trim()) {
-        const segments = splitTtsSegments(content)
-        const clearedTexts = new Set(
-          cacheEntries.filter(entry => keys.includes(entry.key)).map(entry => entry.text),
-        )
-        shouldReset = segments.some(seg => clearedTexts.has(seg.text))
-        if (!shouldReset) {
-          shouldReset = segments.some(seg => {
-            const voice = settings.resolveVoiceForSegment(seg.lang)
-            if (!voice?.edge) return false
-            const candidateKeys = [
-              synthesisCacheKey(seg.text, voice.edge, playback.effectiveSpeed),
-              synthesisCacheKey(seg.text, voice.edge, settings.speed),
-            ]
-            return candidateKeys.some(key => keys.includes(key))
-          })
-        }
-      }
-    }
+    const shouldReset = keys.length > 0 && currentScopeInvalidatedByClearedKeys(keys)
     await clearSynthesisCacheEntries(keys)
     const nextEntries = cacheEntries.filter(entry => !keys.includes(entry.key))
     cacheEntries = nextEntries

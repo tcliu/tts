@@ -154,6 +154,11 @@ coherent system instead of a new parallel one.
 - Each persisted entry is tagged with the document id, so the cache can be
   cleared for a single document (the Reset action clears the open document's
   cached audio) or for every document from the Settings Synthesis tab (Cache entry).
+- Clearing all client-side synthesis cache while the editor is open resets the
+  active playback session and metadata rows when the current document has any
+  surfaced playback/cache state; clearing selected cache entries resets them
+  only when the current playback/caret scope's segment is among the cleared
+  entries.
 
 ## Settings model
 
