@@ -159,30 +159,25 @@
   }
 
   async function clearClientSynthesisCache() {
-    const allKeys = cacheEntries.map(entry => entry.key)
     const content = settings.content
     let shouldReset = false
-    if (allKeys.length > 0 && content.trim()) {
-      const segments = splitTtsSegments(content)
-      const segmentTexts = new Set(segments.map(seg => seg.text))
-      const clearedTexts = new Set(
-        cacheEntries.filter(entry => allKeys.includes(entry.key)).map(entry => entry.text),
-      )
-      const hasOverlap =
-        [...segmentTexts].some(text => clearedTexts.has(text)) ||
-        segments.some(seg => {
+    if (content.trim()) {
+      if (playback.hasSession || playback.synthesizedCount > 0) {
+        shouldReset = true
+      } else {
+        const segments = splitTtsSegments(content)
+        shouldReset = segments.some(seg => {
           const voice = settings.resolveVoiceForSegment(seg.lang)
           if (!voice?.edge) return false
           return (
-            allKeys.includes(synthesisCacheKey(seg.text, voice.edge, playback.effectiveSpeed)) ||
-            allKeys.includes(synthesisCacheKey(seg.text, voice.edge, settings.speed)) ||
             !!peekCachedSynthesis(seg.text, voice.edge, playback.effectiveSpeed) ||
             !!peekCachedSynthesis(seg.text, voice.edge, settings.speed)
           )
         })
-      shouldReset = hasOverlap || isCaretInClearedSegment(allKeys)
-      if (!shouldReset && (playback.hasSession || playback.synthesizedCount > 0)) {
-        shouldReset = true
+        if (!shouldReset) {
+          const allKeys = cacheEntries.map(entry => entry.key)
+          if (allKeys.length > 0) shouldReset = isCaretInClearedSegment(allKeys)
+        }
       }
     }
     await clearSynthesisCache()
