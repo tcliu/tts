@@ -77,6 +77,7 @@ export interface PlaybackHandle {
   readonly positionVoiceName: string
   readonly positionVoiceGender: string
   readonly positionVoiceLocale: string
+  readonly positionVoiceEdge: string
   readonly positionSegmentLang: string
   readonly positionLanguageCode: string
   readonly positionSegmentText: string
@@ -364,8 +365,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     return segmentLangOverrides.get(index) ?? sessionSegments[index]?.lang ?? ''
   }
 
-  function resolveEffectiveVoice(segmentLang: string): TtsVoice | undefined {
-    const languageCode = toWrittenLang(segmentLang)
+  function resolveEffectiveVoiceForWrittenLang(languageCode: string): TtsVoice | undefined {
     const overrideEdge = sessionVoiceSelections.get(languageCode)
     if (overrideEdge) {
       const voice = REFERENCE_LANGUAGES.find(item => item.code === languageCode)?.voices.find(
@@ -373,7 +373,11 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       )
       if (voice) return voice
     }
-    return deps.settings.resolveVoiceForSegment(segmentLang)
+    return deps.settings.resolveVoiceForSegment(languageCode)
+  }
+
+  function resolveEffectiveVoice(segmentLang: string): TtsVoice | undefined {
+    return resolveEffectiveVoiceForWrittenLang(toWrittenLang(segmentLang))
   }
 
   // Plain Map (not $state) — only read imperatively in launch/resynthesize/
@@ -416,17 +420,14 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   const positionLocation = $derived(locatePlaybackPosition(totalElapsed))
   const positionSegmentIndex = $derived(positionLocation ? positionLocation.index : -1)
   const positionSegmentLang = $derived.by(() => effectiveSegmentLang(positionSegmentIndex))
-  const positionVoiceName = $derived.by(() =>
-    positionSegmentLang ? (resolveEffectiveVoice(positionSegmentLang)?.name ?? '') : '',
-  )
-  const positionVoiceGender = $derived.by(() =>
-    positionSegmentLang ? (resolveEffectiveVoice(positionSegmentLang)?.gender ?? '') : '',
-  )
-  const positionVoiceLocale = $derived.by(() => {
-    const voice = positionSegmentLang ? resolveEffectiveVoice(positionSegmentLang) : undefined
-    return voice ? voice.edge.split('-').slice(0, 2).join('-') : ''
-  })
   const positionLanguageCode = $derived(toWrittenLang(positionSegmentLang))
+  const positionVoice = $derived.by(() =>
+    positionLanguageCode ? resolveEffectiveVoiceForWrittenLang(positionLanguageCode) : undefined,
+  )
+  const positionVoiceName = $derived(positionVoice?.name ?? '')
+  const positionVoiceGender = $derived(positionVoice?.gender ?? '')
+  const positionVoiceLocale = $derived(positionVoice ? positionVoice.edge.split('-').slice(0, 2).join('-') : '')
+  const positionVoiceEdge = $derived(positionVoice?.edge ?? '')
   const positionSegmentText = $derived.by(() => {
     const segment = positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] : undefined
     return segment?.text ?? ''
@@ -2342,6 +2343,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     },
     get positionVoiceLocale() {
       return positionVoiceLocale
+    },
+    get positionVoiceEdge() {
+      return positionVoiceEdge
     },
     get positionSegmentLang() {
       return positionSegmentLang

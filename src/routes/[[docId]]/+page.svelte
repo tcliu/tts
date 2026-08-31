@@ -240,11 +240,7 @@
     voiceChipOptions.map(voice => ({ value: voice.edge, label: chipVoiceLabel(voice) })),
   )
 
-  const activeChipVoiceEdge = $derived.by(() => {
-    const lang = playback.positionSegmentLang
-    if (!lang) return ''
-    return playback.effectiveVoiceEdge(lang)
-  })
+  const activeChipVoiceEdge = $derived(playback.positionVoiceEdge)
 
   function chipVoiceLabel(voice: { name: string; gender: string; edge: string; group?: string }): string {
     const locale = voice.edge.split('-').slice(0, 2).join('-')
