@@ -962,7 +962,7 @@
                   {statusMessage}
                 </span>
               {/if}
-              {#if playback.synthesizedCount > 0 && playback.positionSegmentIndex >= 0}
+              {#if playback.segments[playback.positionSegmentIndex]}
                 <div class="flex min-w-0 flex-wrap items-center gap-2">
                   <ChipDropdown
                     label={writtenLabel}
@@ -1009,7 +1009,7 @@
                 </div>
               {/if}
             </div>
-            {#if playback.synthesizedCount > 0}
+            {#if playback.segments[playback.positionSegmentIndex]}
               <PlaybackSlider
                 displayValue={playbackSliderDisplayValue}
                 totalDuration={playback.totalDuration}
