@@ -19,14 +19,14 @@ export function clickOutside(node: HTMLElement, options: ClickOutsideOptions | (
     handler(event)
   }
 
-  document.addEventListener('mousedown', handlePointerDown, true)
+  document.addEventListener('pointerdown', handlePointerDown, true)
 
   return {
     update(newOptions: ClickOutsideOptions | (() => void)) {
       options = newOptions
     },
     destroy() {
-      document.removeEventListener('mousedown', handlePointerDown, true)
+      document.removeEventListener('pointerdown', handlePointerDown, true)
     },
   }
 }

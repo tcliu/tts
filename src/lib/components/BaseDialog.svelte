@@ -41,7 +41,10 @@
     titleId = `tts-dialog-title-${dialogIndex}`
     previouslyFocused = document.activeElement
     void tick().then(() => {
-      dialogRef?.focus()
+      const firstInput = dialogRef?.querySelector<HTMLElement>(
+        'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [autofocus]',
+      )
+      ;(firstInput ?? dialogRef)?.focus()
     })
   })
 
@@ -109,20 +112,21 @@
   })
 </script>
 
-<div class="fixed inset-0 z-40 @container">
+<div class="fixed inset-0 z-40 @container tts-dialog">
   <button
     type="button"
     aria-label={closeLabel}
+    tabindex="-1"
     class="absolute inset-0 bg-slate-950/80 outline-none"
     onclick={handleCancelRequest}></button>
-  <div class="relative flex min-h-full items-center justify-center px-3 py-4 @max-md:p-0">
+  <div class="relative flex min-h-full items-center justify-center px-3 py-4 @max-[28rem]:p-0">
     <div
       bind:this={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? titleId : undefined}
       tabindex="-1"
-      class={`relative flex max-h-[90vh] flex-col overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/95 p-4 shadow-2xl shadow-slate-950/60 outline-none backdrop-blur @max-md:h-dvh @max-md:max-h-full @max-md:w-full @max-md:max-w-none @max-md:rounded-none @max-md:border-x-0 ${sizeClass} ${className}`}>
+      class={`relative flex max-h-[90vh] flex-col overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/95 p-4 shadow-2xl shadow-slate-950/60 outline-none backdrop-blur @max-[28rem]:h-dvh @max-[28rem]:max-h-full @max-[28rem]:w-full @max-[28rem]:max-w-none @max-[28rem]:rounded-none @max-[28rem]:border-x-0 ${sizeClass} ${className}`}>
       <button
         type="button"
         aria-label={closeLabel}
