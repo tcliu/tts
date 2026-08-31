@@ -1309,6 +1309,71 @@ describe('usePlayback stop', () => {
     dispose()
   })
 
+  it('exposes the active scoped cached segment even when the caret moves elsewhere', () => {
+    const content = 'First paragraph here.\n\nSecond paragraph here.'
+    const fullSegments = splitTtsSegments(content)
+    const scopedStart = content.indexOf('Second')
+    const scopedEnd = scopedStart + 'Second paragraph here.'.length
+    let selection: { from: number; to: number } | null = { from: scopedStart, to: scopedEnd }
+    let caret = 0
+    const editor: CodeEditorHandle = {
+      getSelectionText: () => (selection ? content.slice(selection.from, selection.to) : ''),
+      getSelectionRange: () => selection,
+      getCaretPosition: () => caret,
+      setSelection: () => false,
+      clearSelection: () => {},
+      setPlaybackHighlight: () => {},
+      setPlaybackHighlightSelected: () => {},
+      clearPlaybackHighlight: () => {},
+      focus: () => {},
+      hasFocus: () => false,
+    }
+
+    vi.mocked(peekCachedSynthesis).mockImplementation((text) => {
+      if (text === fullSegments[1].text || text === 'Second paragraph here.') {
+        return {
+          blob: new Blob(['audio'], { type: 'audio/mpeg' }),
+          boundaries: [{ offset: 0, at: 0, text: 'Second paragraph here.' }],
+          wordBoundaries: [
+            { offset: 0, at: 0, text: 'Second' },
+            { offset: 7, at: 0.6, text: 'paragraph' },
+            { offset: 17, at: 0.9, text: 'here.' },
+          ],
+          spokenStart: 0,
+          spokenEnd: 1.2,
+        }
+      }
+      return null
+    })
+
+    const { playback, dispose } = createPlaybackHost(createDeps(content, editor))
+
+    playback.warmFromCache()
+    playback.syncSelectionStart(selection)
+    flushSync()
+
+    expect(playback.positionSegmentText).toBe('Second paragraph here.')
+    expect(playback.currentSessionSegment).toEqual({
+      text: 'Second paragraph here.',
+      lang: 'en',
+      indexStart: scopedStart,
+      indexEnd: scopedEnd - 1,
+    })
+
+    selection = null
+    caret = 0
+
+    expect(playback.currentSessionSegment).toEqual({
+      text: 'Second paragraph here.',
+      lang: 'en',
+      indexStart: scopedStart,
+      indexEnd: scopedEnd - 1,
+    })
+
+    vi.mocked(peekCachedSynthesis).mockReset()
+    dispose()
+  })
+
   it('synthesizes segments ahead of playback, not just on demand', async () => {
     const content = 'First paragraph here.\n\nSecond paragraph here.'
     const segments = splitTtsSegments(content)

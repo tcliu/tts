@@ -38,6 +38,7 @@
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
   import { REFERENCE_LANGUAGES, SPEED_OPTIONS, splitTtsSegments } from '$lib/tts-reference'
   import { synthesisCacheKey } from '$lib/tts-cache-key'
+  import { isScopeInvalidatedByClearedKeys } from '$lib/tts-cache-clear'
   import ChipDropdown from '$lib/components/ChipDropdown.svelte'
   import {
     clearSynthesisCache,
@@ -45,6 +46,7 @@
     clearDocumentSynthesisCache,
     getSynthesisCacheEntries,
     getSynthesisCacheStats,
+    peekCachedSynthesis,
     type SynthesisCacheEntry,
     type SynthesisCacheStats,
   } from '$lib/tts-client'
@@ -135,10 +137,65 @@
     }
   })
 
+  function currentScopeSegment(segments?: ReturnType<typeof splitTtsSegments>) {
+    const content = settings.content
+    if (!content.trim()) return null
+    const playbackSegment = playback.currentSessionSegment
+    if (playbackSegment) {
+      return playbackSegment
+    }
+    const resolvedSegments = segments ?? splitTtsSegments(content)
+    const caret =
+      editorRef?.getCaretPosition?.() ?? editorRef?.getSelectionRange?.()?.from ?? null
+    if (caret == null) return null
+    return resolvedSegments.find(seg => caret >= seg.indexStart && caret <= seg.indexEnd) ?? null
+  }
+
+  function currentScopeInvalidatedByClearedKeys(
+    clearedKeys: string[],
+    entries = cacheEntries,
+    segments?: ReturnType<typeof splitTtsSegments>,
+  ): boolean {
+    const scope = currentScopeSegment(segments)
+    return isScopeInvalidatedByClearedKeys(scope, clearedKeys, entries, {
+      effectiveSpeed: playback.effectiveSpeed,
+      defaultSpeed: settings.speed,
+      resolveVoiceEdge: lang => playback.effectiveVoiceEdge(lang),
+    })
+  }
+
   async function clearClientSynthesisCache() {
+    const content = settings.content
+    let shouldReset = false
+    if (content.trim()) {
+      if (playback.hasSession || playback.synthesizedCount > 0) {
+        shouldReset = true
+      } else {
+        const segments = splitTtsSegments(content)
+        const effective = playback.effectiveSpeed
+        const fallback = settings.speed
+        shouldReset = segments.some(seg => {
+          const voiceEdge = settings.resolveVoiceForSegment(seg.lang)?.edge
+          if (!voiceEdge) return false
+          if (effective === fallback) return !!peekCachedSynthesis(seg.text, voiceEdge, effective)
+          return (
+            !!peekCachedSynthesis(seg.text, voiceEdge, effective) ||
+            !!peekCachedSynthesis(seg.text, voiceEdge, fallback)
+          )
+        })
+        if (!shouldReset) {
+          const snapshot = cacheEntries.length ? cacheEntries : await getSynthesisCacheEntries()
+          if (snapshot.length > 0) {
+            const allKeys = snapshot.map(entry => entry.key)
+            shouldReset = currentScopeInvalidatedByClearedKeys(allKeys, snapshot, segments)
+          }
+        }
+      }
+    }
     await clearSynthesisCache()
     cacheStats = { segments: 0, bytes: 0 }
     cacheEntries = []
+    if (shouldReset) playback.resetSession()
   }
 
   async function loadCacheEntries() {
@@ -156,6 +213,7 @@
   }
 
   async function clearSelectedCacheEntries(keys: string[]) {
+    const shouldReset = keys.length > 0 && currentScopeInvalidatedByClearedKeys(keys)
     await clearSynthesisCacheEntries(keys)
     const nextEntries = cacheEntries.filter(entry => !keys.includes(entry.key))
     cacheEntries = nextEntries
@@ -163,6 +221,7 @@
       segments: nextEntries.length,
       bytes: nextEntries.reduce((total, entry) => total + entry.bytes, 0),
     }
+    if (shouldReset) playback.resetSession()
   }
 
   // Cache keys for every segment of the current document that has a voice;
@@ -927,7 +986,7 @@
                   {statusMessage}
                 </span>
               {/if}
-              {#if playback.synthesizedCount > 0 && playback.positionSegmentIndex >= 0}
+              {#if playback.segments[playback.positionSegmentIndex]}
                 <div class="flex min-w-0 flex-wrap items-center gap-2">
                   <ChipDropdown
                     label={writtenLabel}
@@ -974,7 +1033,7 @@
                 </div>
               {/if}
             </div>
-            {#if playback.synthesizedCount > 0}
+            {#if playback.segments[playback.positionSegmentIndex]}
               <PlaybackSlider
                 displayValue={playbackSliderDisplayValue}
                 totalDuration={playback.totalDuration}

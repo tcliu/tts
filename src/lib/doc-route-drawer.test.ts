@@ -27,4 +27,11 @@ describe('doc route drawer layout contract', () => {
     expect(pageSource).toContain('const overlayDrawerOpen = $derived(!isDocked && drawer.drawerOpen)')
     expect(pageSource).toContain('if (!overlayDrawerOpen) {')
   })
+
+  it('invalidates cache clears by the current scope segment instead of any document segment', () => {
+    expect(pageSource).toContain('function currentScopeSegment(')
+    expect(pageSource).toContain('const playbackSegment = playback.currentSessionSegment')
+    expect(pageSource).toContain('function currentScopeInvalidatedByClearedKeys(')
+    expect(pageSource).toContain('const shouldReset = keys.length > 0 && currentScopeInvalidatedByClearedKeys(keys)')
+  })
 })
