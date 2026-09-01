@@ -59,6 +59,7 @@ export default defineConfig(async ({ command, mode }) => {
               'src/lib/server/**/*.test.ts',
               'src/lib/server/**/*.spec.ts',
               'src/lib/doc-route-drawer.test.ts',
+              'src/lib/speed-parity.test.ts',
               'src/lib/tailwind-source.test.ts',
               'src/lib/theme-parity.test.ts',
               'src/lib/toolbar-ladder.test.ts',
