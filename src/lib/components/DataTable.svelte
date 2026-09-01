@@ -288,7 +288,7 @@
     placeholder={resolvedSearchPlaceholder}
     wrapperClass={fillHeight ? 'shrink-0' : ''} />
 
-  <div class={fillHeight ? FILL_CONTAINER_CLASS : containerClass} bind:this={tableContainer}>
+  <div tabindex="-1" class={`${fillHeight ? FILL_CONTAINER_CLASS : containerClass} outline-none`} bind:this={tableContainer}>
     <table
       class="border-separate border-spacing-0 text-sm [&_tr:last-child_td]:border-b-0 {managedWidths ? '' : `w-full ${tableClass}`}"
       style={managedWidths ? `table-layout:fixed;width:${totalWidth}px;` : ''}>

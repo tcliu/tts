@@ -91,15 +91,16 @@
 {#snippet voicesContent()}
   <div class="flex min-h-0 flex-1 flex-col gap-3">
     <SearchInput bind:value={voiceSearch} ariaLabel={text.voiceSearch} placeholder={text.voiceSearch} wrapperClass="shrink-0" />
-    <div class="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50">
+    <div tabindex="-1" class="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 outline-none">
       {#if filteredLanguages.length === 0}
         <p class="p-3 text-sm text-slate-500">{text.noMatchingVoices}</p>
       {:else}
         {#each filteredLanguages as language, i}
           {@const validGroups = voiceGroups(language.code)}
           {@const group = validGroups.includes(groupSelections[language.code]) ? groupSelections[language.code] : validGroups[0] ?? ''}
-          <section aria-label={language.name} class="flex flex-col gap-y-2.5 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 {i > 0 ? 'border-t border-slate-800' : ''}">
-            <h3 class="w-full truncate text-left text-sm font-semibold text-slate-100 sm:w-32 sm:shrink-0">{language.name}</h3>
+          {@const languageHeadingId = `voice-language-${language.code}`}
+          <section aria-labelledby={languageHeadingId} class="flex flex-col gap-y-2.5 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 {i > 0 ? 'border-t border-slate-800' : ''}">
+            <h3 id={languageHeadingId} class="w-full truncate text-left text-sm font-semibold text-slate-100 sm:w-32 sm:shrink-0">{language.name}</h3>
             <div class="flex w-full min-w-0 flex-1 flex-wrap items-center gap-2.5 text-sm text-slate-300 sm:w-auto">
               {#if validGroups.length > 1}
                 <SelectDropdown

@@ -52,6 +52,7 @@ Project-specific development conventions for the TTS web app.
   mobile and desktop.
 - Keep all focusable controls keyboard reachable, with explicit focus styles and
   accessible names for icon-only buttons.
+- Keep non-interactive scroll wrappers out of the tab order (`tabindex="-1"` on overflow containers in dialogs, drawers, tables) so Tab lands only on interactive controls.
 - Playback state must visibly highlight the current spoken word or segment in
   the editor while audio is active (`--cm-playbackHighlight` light-blue, `--cm-playbackHighlightSelected` emerald green when inside a manual text selection), but keep any pre-existing native text selection intact under the playback overlay; pointer range selection is collapsed to caret during playback so the native selection cannot drift while caret movement remains enabled to seek. The Info panel active row stays light-blue (cyan) in both modes.
 - A cached manual text selection may scope the controls and Info panel before
@@ -76,6 +77,7 @@ Project-specific development conventions for the TTS web app.
 - Settings dialog keeps the same outer size across all tabs, anchored to the
   Voices tab (largest content); Speed and Synthesis tabs must not shrink the
   dialog — fix the outer height and scroll the Voices list internally.
+- Keyboard focus in text/number inputs should use a single custom `focus-visible` treatment (no double ring or orange native outline); when Tab focuses a number input, place the caret at the end instead of selecting the whole value.
 - BaseDialog spans full screen (sheet) only on phone-class viewports: the fixed
   scrim carries `@container` (its width equals the viewport) and the padded
   centering row plus panel use `@max-md:*` — the default Tailwind *container*
@@ -97,7 +99,7 @@ Project-specific development conventions for the TTS web app.
 - Icon-only `Button` uses uniform padding (`p-1.5` for `sm`, `p-2.5` for `md`) so vertical/horizontal match; text buttons keep `px`/`py` distinction.
 - Dropdown/menu option panels show at most one highlighted row at a time, shared by mouse hover and keyboard (`ArrowUp/Down`, `Home/End`). The highlight follows `useListSelection` index via `onmouseenter` and `selection.move`; the selected value is `aria-selected`/`aria-checked` + checkmark only, not a second background.
 - Option panels hide only when their trigger is clipped or out of viewport after scroll (via `useDropdown` `isHostHidden` check), not on any ancestor scroll; scrolling the panel's own list never dismisses.
-- Synthesis cache dialog's table spans the dialog width (`w-full`), caps body at `max-h-[min(50vh,32rem)]` with `overflow-auto` so the dialog itself never vertically scrolls; pagination handles overflow. The table is the shared `DataTable` (`containerClass`/`tableClass` `w-full`, `resizable` via `use-column-resize`, `storageKey` `synthesis-cache`).
+- Synthesis cache dialog's table spans the dialog width (`w-full`), uses `DataTable` `fillHeight` (`min-h-0 overflow-auto`) inside the `BaseDialog` `max-h-[min(84vh,760px)] flex-col` shell so the dialog itself never vertically scrolls; pagination handles overflow. The table is the shared `DataTable` (`tableClass` `w-full`, `resizable` via `use-column-resize`, `storageKey` `synthesis-cache`) following the admin Users table (`src/lib/components/AdminUsersView.svelte` in `../share-text`).
 
 ## Theming
 

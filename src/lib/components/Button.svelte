@@ -45,21 +45,21 @@
   }: Props = $props()
 
   const primaryClasses: Record<string, string> = {
-    cyan: 'bg-cyan-500 text-onaccent hover:bg-cyan-400 focus:bg-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
-    emerald: 'bg-emerald-500 text-onaccent hover:bg-emerald-400 focus:bg-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
-    amber: 'bg-amber-500 text-onaccent hover:bg-amber-400 focus:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
-    violet: 'bg-violet-500 text-onaccent hover:bg-violet-400 focus:bg-violet-400 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
-    rose: 'bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+    cyan: 'bg-cyan-500 text-onaccent hover:bg-cyan-400 focus:bg-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-500',
+    emerald: 'bg-emerald-500 text-onaccent hover:bg-emerald-400 focus:bg-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-500',
+    amber: 'bg-amber-500 text-onaccent hover:bg-amber-400 focus:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-500',
+    violet: 'bg-violet-500 text-onaccent hover:bg-violet-400 focus:bg-violet-400 focus-visible:ring-2 focus-visible:ring-violet-500',
+    rose: 'bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400 focus-visible:ring-2 focus-visible:ring-rose-500',
   }
 
   const outlineClasses: Record<string, string> = {
-    cyan: 'border border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:border-cyan-400 hover:text-cyan-100 focus:border-cyan-400 focus:text-cyan-100 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+    cyan: 'border border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:border-cyan-400 hover:text-cyan-100 focus:border-cyan-400 focus:text-cyan-100 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-cyan-500',
     emerald:
-      'border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400 hover:text-emerald-100 focus:border-emerald-400 focus:text-emerald-100 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
-    amber: 'border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:border-amber-400 hover:text-amber-100 focus:border-amber-400 focus:text-amber-100 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+      'border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400 hover:text-emerald-100 focus:border-emerald-400 focus:text-emerald-100 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-emerald-500',
+    amber: 'border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:border-amber-400 hover:text-amber-100 focus:border-amber-400 focus:text-amber-100 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-amber-500',
     violet:
-      'border border-violet-500/40 bg-violet-500/10 text-violet-200 hover:border-violet-400 hover:text-violet-100 focus:border-violet-400 focus:text-violet-100 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
-    rose: 'border border-rose-500/40 bg-rose-500/10 text-rose-200 hover:border-rose-400 hover:text-rose-100 focus:border-rose-400 focus:text-rose-100 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+      'border border-violet-500/40 bg-violet-500/10 text-violet-200 hover:border-violet-400 hover:text-violet-100 focus:border-violet-400 focus:text-violet-100 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-violet-500',
+    rose: 'border border-rose-500/40 bg-rose-500/10 text-rose-200 hover:border-rose-400 hover:text-rose-100 focus:border-rose-400 focus:text-rose-100 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-rose-500',
   }
 
   const iconSizeClass = $derived(size === 'sm' ? 'h-4 w-4' : 'h-5 w-5')
@@ -76,18 +76,18 @@
       return `${common} ${primaryClasses[accent]}`
     }
     if (variant === 'danger') {
-      return `${common} bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950`
+      return `${common} bg-rose-500 text-onaccent hover:bg-rose-400 focus:bg-rose-400 focus-visible:ring-2 focus-visible:ring-rose-500`
     }
     if (variant === 'outline') {
       return `${common} ${outlineClasses[accent]}`
     }
     if (variant === 'ghost') {
-      return `${common} text-slate-400 hover:text-cyan-300 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950`
+      return `${common} text-slate-400 hover:text-cyan-300 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500`
     }
     if (size === 'sm') {
-      return `${common} border border-slate-700 bg-slate-950 text-slate-200 hover:border-cyan-500 hover:text-cyan-300 focus:border-cyan-500 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950`
+      return `${common} border border-slate-700 bg-slate-950 text-slate-200 hover:border-cyan-500 hover:text-cyan-300 focus:border-cyan-500 focus:text-cyan-300 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-cyan-500`
     }
-    return `${common} border border-slate-700 bg-slate-950 hover:border-slate-500 hover:text-slate-100 focus:border-slate-500 focus:text-slate-100 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950`
+    return `${common} border border-slate-700 bg-slate-950 hover:border-slate-500 hover:text-slate-100 focus:border-slate-500 focus:text-slate-100 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-cyan-500`
   })
 
   function handlePreventFocusSteal(event: PointerEvent) {

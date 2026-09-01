@@ -55,7 +55,7 @@
     onchange={event => onChange?.((event.currentTarget as HTMLInputElement).checked)} />
   <span
     aria-hidden="true"
-    class={`inline-flex h-5 w-5 items-center justify-center rounded-md border transition peer-focus-visible:ring-2 peer-focus-visible:ring-cyan-500/70 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-slate-900 ${checked ? 'border-cyan-500 bg-cyan-300 text-slate-950' : 'border-slate-700 bg-slate-950 text-transparent'} ${boxClass}`}>
+    class={`inline-flex h-5 w-5 items-center justify-center rounded-md border transition peer-focus-visible:border-transparent peer-focus-visible:ring-2 peer-focus-visible:ring-cyan-500/70 ${checked ? 'border-cyan-500 bg-cyan-300 text-slate-950' : 'border-slate-700 bg-slate-950 text-transparent'} ${boxClass}`}>
     <CheckIcon className="h-3.5 w-3.5" />
   </span>
   {#if label}

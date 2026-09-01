@@ -1,5 +1,6 @@
 <script lang="ts">
   import { flushSync, tick } from 'svelte'
+  import { createFocusoutClose } from '$lib/actions/use-focusout-close'
   import { useDropdown } from '$lib/actions/use-dropdown.svelte'
   import { useListSelection, revealInScrollport } from '$lib/actions/use-list-selection.svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
@@ -56,16 +57,16 @@
   }
 
   const VARIANT_CHIP: Record<string, string> = {
-    sky: 'border-sky-500/30 bg-sky-500/10 text-sky-200 hover:border-sky-400 hover:text-sky-100 focus-visible:ring-sky-500',
-    violet: 'border-violet-500/30 bg-violet-500/10 text-violet-200 hover:border-violet-400 hover:text-violet-100 focus-visible:ring-violet-500',
-    amber: 'border-amber-500/30 bg-amber-500/10 text-amber-200 hover:border-amber-400 hover:text-amber-100 focus-visible:ring-amber-500',
-    fuchsia: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200 hover:border-fuchsia-400 hover:text-fuchsia-100 focus-visible:ring-fuchsia-500',
-    emerald: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400 hover:text-emerald-100 focus-visible:ring-emerald-500',
+    sky: 'border-sky-500/30 bg-sky-500/10 text-sky-200 hover:border-sky-400 hover:text-sky-100 focus-visible:border-sky-400 focus-visible:text-sky-100',
+    violet: 'border-violet-500/30 bg-violet-500/10 text-violet-200 hover:border-violet-400 hover:text-violet-100 focus-visible:border-violet-400 focus-visible:text-violet-100',
+    amber: 'border-amber-500/30 bg-amber-500/10 text-amber-200 hover:border-amber-400 hover:text-amber-100 focus-visible:border-amber-400 focus-visible:text-amber-100',
+    fuchsia: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200 hover:border-fuchsia-400 hover:text-fuchsia-100 focus-visible:border-fuchsia-400 focus-visible:text-fuchsia-100',
+    emerald: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400 hover:text-emerald-100 focus-visible:border-emerald-400 focus-visible:text-emerald-100',
   }
 
   const resolvedButtonClass = $derived(
     buttonClass ??
-      `inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-50 ${VARIANT_CHIP[variant] ?? VARIANT_CHIP.violet}`,
+      `inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium outline-none transition disabled:cursor-not-allowed disabled:opacity-50 ${VARIANT_CHIP[variant] ?? VARIANT_CHIP.violet}`,
   )
 
   // Filterable layout is a fixed header + scrolling list contract
@@ -130,7 +131,7 @@
   // panel: the option never receives focus (aria-activedescendant pattern),
   // so the browser would otherwise let it drift out of the scrollport.
   function revealActive() {
-    revealInScrollport(panelRef?.querySelector<HTMLButtonElement>(`[id="${panelId}-option-${selection.index}"]`))
+    revealInScrollport(panelRef?.querySelector<HTMLButtonElement>(`[id="${panelId}-option-${selection.peek()}"]`))
   }
 
   function toggle() {
@@ -156,16 +157,19 @@
   function moveHighlight(direction: 'down' | 'up') {
     if (filteredOptions.length === 0) return
     if (!open) {
-      openPanel()
-      if (direction === 'up') selection.move('last', filteredOptions.length)
+      flushSync(() => {
+        openPanel()
+        if (direction === 'up') selection.move('last', filteredOptions.length)
+      })
       return
     }
-    selection.move(direction, filteredOptions.length)
-    revealActive()
     // OS key auto-repeat fires back-to-back keydowns; Svelte batches $state
     // until the next microtask, so the active highlight would only appear
     // on keyup. Flush synchronously so each repeat paints immediately.
-    flushSync()
+    flushSync(() => {
+      selection.move(direction, filteredOptions.length)
+      revealActive()
+    })
   }
 
   function handleButtonKeydown(event: KeyboardEvent) {
@@ -178,16 +182,18 @@
     } else if (event.key === 'Home') {
       if (open && filteredOptions.length > 0) {
         event.preventDefault()
-        selection.move('first', filteredOptions.length)
-        revealActive()
-        flushSync()
+        flushSync(() => {
+          selection.move('first', filteredOptions.length)
+          revealActive()
+        })
       }
     } else if (event.key === 'End') {
       if (open && filteredOptions.length > 0) {
         event.preventDefault()
-        selection.move('last', filteredOptions.length)
-        revealActive()
-        flushSync()
+        flushSync(() => {
+          selection.move('last', filteredOptions.length)
+          revealActive()
+        })
       }
     } else if (event.key === 'Enter' || event.key === ' ') {
       if (!open) {
@@ -210,23 +216,24 @@
       moveHighlight('up')
     } else if (event.key === 'Home') {
       event.preventDefault()
-      selection.move('first', filteredOptions.length)
-      revealActive()
-      flushSync()
+      flushSync(() => {
+        selection.move('first', filteredOptions.length)
+        revealActive()
+      })
     } else if (event.key === 'End') {
       event.preventDefault()
-      selection.move('last', filteredOptions.length)
-      revealActive()
-      flushSync()
+      flushSync(() => {
+        selection.move('last', filteredOptions.length)
+        revealActive()
+      })
     } else if (event.key === 'Enter') {
       event.preventDefault()
       const option = filteredOptions[selection.index] ?? filteredOptions[0]
       if (option) select(option.value)
     } else if (event.key === 'Tab') {
-      // Close on Tab so focus never sits outside an open listbox (APG combobox).
-      event.preventDefault()
+      // Close on Tab so the listbox does not linger while focus continues
+      // through the natural tab order.
       close()
-      buttonRef?.focus()
     } else if (event.key === 'Escape') {
       if (filterText) {
         event.preventDefault()
@@ -236,6 +243,12 @@
       }
     }
   }
+
+  const handleFocusOut = createFocusoutClose(
+    () => open,
+    () => ({ container: containerRef, panel: panelRef }),
+    () => close(),
+  )
 
   useDropdown(() => ({
     isOpen: () => open,
@@ -263,8 +276,9 @@
       aria-selected={option.value === activeValue}
       onpointerdown={(event) => event.preventDefault()}
       onclick={() => select(option.value)}
+      onfocus={() => selection.set(index)}
       onmouseenter={() => selection.set(index)}
-      class={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-xs outline-none transition ${index === selection.index ? 'bg-slate-800 text-slate-100' : 'text-slate-300'}`}>
+      class={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-xs outline-none transition-none ${index === selection.index ? 'bg-slate-800 text-slate-100' : 'text-slate-300'}`}>
       <span class="min-w-0 truncate">{option.label}</span>
       {#if option.value === activeValue}
         <CheckIcon className="h-3 w-3 shrink-0 opacity-70" />
@@ -279,6 +293,7 @@
   class="relative inline-flex"
   bind:this={containerRef}
   data-escape-capture={open ? '' : null}
+  onfocusout={handleFocusOut}
 >
   <button
     type="button"
@@ -316,7 +331,7 @@
             aria-controls={open ? panelId : undefined}
             aria-activedescendant={open && filteredOptions[selection.index] ? `${panelId}-option-${selection.index}` : undefined}
             onkeydown={handleFilterKeydown}
-            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/50" />
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus-visible:border-sky-500" />
         </div>
         <div id={panelId} role="listbox" aria-label={ariaLabel} class="min-h-0 flex-1 overflow-y-auto p-1">
           {@render optionList()}

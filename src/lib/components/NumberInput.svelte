@@ -39,9 +39,23 @@
   }: Props = $props()
 
   let inputEl = $state<HTMLInputElement | null>(null)
+  let pointerFocused = false
 
   export function focus() {
     inputEl?.focus()
+  }
+
+  function moveCaretToEndIfKeyboardFocus(event: FocusEvent) {
+    const input = event.currentTarget as HTMLInputElement
+    if (pointerFocused) {
+      pointerFocused = false
+      return
+    }
+    queueMicrotask(() => {
+      if (document.activeElement !== input) return
+      const end = input.value.length
+      input.setSelectionRange(end, end)
+    })
   }
 
   const currentValue = $derived(Number.parseFloat(value))
@@ -164,13 +178,25 @@
     {disabled}
     aria-label={ariaLabel}
     {value}
+    onpointerdown={() => {
+      pointerFocused = true
+    }}
+    onpointerup={() => {
+      queueMicrotask(() => {
+        pointerFocused = false
+      })
+    }}
+    onpointercancel={() => {
+      pointerFocused = false
+    }}
+    onfocus={moveCaretToEndIfKeyboardFocus}
     oninput={e => {
       handleInput(e)
       oninput?.(e)
     }}
     onblur={handleBlur}
     onkeydown={handleKeydown}
-    class={`flex-1 px-3 py-2 text-sm text-slate-100 outline-none transition motion-reduce:transition-none focus:border-cyan-500 disabled:opacity-40 ${showControls ? 'min-w-0 border-0 bg-transparent' : ''} ${className}`} />
+    class={`flex-1 px-3 py-2 text-sm text-slate-100 outline-none transition motion-reduce:transition-none disabled:opacity-40 ${showControls ? 'min-w-0 border-0 bg-transparent' : ''} ${className}`} />
   {#if showControls}
     <div class="flex flex-col">
       <button

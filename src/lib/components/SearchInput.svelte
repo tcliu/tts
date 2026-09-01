@@ -17,7 +17,7 @@
     ariaLabel,
     placeholder = 'Search...',
     wrapperClass = '',
-    inputClass = 'w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 pl-7 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 motion-reduce:transition-none',
+    inputClass = 'w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 pl-7 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus-visible:border-cyan-500 motion-reduce:transition-none',
     inputRef = $bindable(null),
     oninput,
     onkeydown,

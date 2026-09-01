@@ -170,7 +170,7 @@
         onkeydown={handlePageInputKeydown}
         ariaLabel={currentPageLabel}
         showControls={false}
-        className={`inline-flex ${SIZE_CLASS[size].pageInput} items-center justify-center rounded-md border border-cyan-500 bg-slate-950 text-center ${SIZE_CLASS[size].text} font-semibold text-cyan-300 outline-none focus:border-2`} />
+        className={`inline-flex ${SIZE_CLASS[size].pageInput} items-center justify-center rounded-md border border-cyan-500 bg-slate-950 text-center ${SIZE_CLASS[size].text} font-semibold text-cyan-300 outline-none focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-500/40`} />
     {:else}
       <button type="button" onclick={() => goToPage(pageNum)} class={pageButtonClass}>{pageNum}</button>
     {/if}

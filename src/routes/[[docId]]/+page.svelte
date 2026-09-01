@@ -738,7 +738,7 @@
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.locale}
         itemClass={(option, state) =>
-          `flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${
+          `flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition-none ${
             state.disabled
               ? 'cursor-not-allowed text-slate-600'
               : state.active
@@ -766,7 +766,7 @@
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.theme}
         itemClass={(option, state) =>
-          `flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${
+          `flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition-none ${
             state.disabled
               ? 'cursor-not-allowed text-slate-600'
               : state.active

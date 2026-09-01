@@ -137,7 +137,7 @@
       {#if title}
         <h2 id={titleId} class="pr-8 text-lg font-semibold tracking-tight text-slate-100">{title}</h2>
       {/if}
-      <div class="mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div tabindex="-1" class="mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto outline-none">
         {@render children?.()}
       </div>
     </div>

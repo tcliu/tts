@@ -10,6 +10,7 @@
 
 <script lang="ts" generics="T">
   import { positionPanel } from '$lib/position-panel.svelte'
+  import { createFocusoutClose } from '$lib/actions/use-focusout-close'
   import { useDropdown } from '$lib/actions/use-dropdown.svelte'
   import { useListSelection } from '$lib/actions/use-list-selection.svelte'
   import { flushSync, tick } from 'svelte'
@@ -72,12 +73,27 @@
     }
   }
 
-  function toggle() {
-    open = !open
+  function openWithSelection(index: number) {
+    selection.set(index >= 0 ? index : 0)
+    open = true
   }
 
-  function openFromTrigger() {
-    if (!open) open = true
+  function toggle() {
+    if (open) {
+      open = false
+      return
+    }
+    openWithSelection(initialActiveIndex())
+  }
+
+  function openFromTrigger(direction: 'down' | 'up') {
+    if (open) {
+      moveFocus(direction)
+      return
+    }
+    flushSync(() => {
+      openWithSelection(direction === 'up' ? lastEnabledIndex() : initialActiveIndex())
+    })
   }
 
   function firstEnabledIndex(): number {
@@ -106,15 +122,19 @@
     if (direction === 'first') {
       const index = firstEnabledIndex()
       if (index === -1) return
-      selection.set(index)
-      itemRefs[index]?.focus()
+      flushSync(() => {
+        selection.set(index)
+        itemRefs[index]?.focus()
+      })
       return
     }
     if (direction === 'last') {
       const index = lastEnabledIndex()
       if (index === -1) return
-      selection.set(index)
-      itemRefs[index]?.focus()
+      flushSync(() => {
+        selection.set(index)
+        itemRefs[index]?.focus()
+      })
       return
     }
     const delta = direction === 'down' ? 1 : -1
@@ -122,13 +142,14 @@
     for (let step = 0; step < count; step++) {
       idx = (idx + delta + count) % count
       if (!isDisabled(items[idx])) {
-        selection.set(idx)
-        itemRefs[idx]?.focus()
         // OS key auto-repeat fires back-to-back keydowns; Svelte batches
         // $state until the next microtask, so the active highlight would
         // only appear on keyup. Flush synchronously so each repeat paints
         // the newly active item immediately.
-        flushSync()
+        flushSync(() => {
+          selection.set(idx)
+          itemRefs[idx]?.focus()
+        })
         return
       }
     }
@@ -142,7 +163,7 @@
   function handleTriggerKeydown(event: KeyboardEvent) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
-      openFromTrigger()
+      openFromTrigger(event.key === 'ArrowDown' ? 'down' : 'up')
     }
   }
 
@@ -171,7 +192,6 @@
   $effect(() => {
     if (open) {
       tick().then(() => {
-        selection.set(initialActiveIndex())
         itemRefs[selection.index]?.focus()
       })
     }
@@ -181,6 +201,12 @@
     if (!open) return
     selection.clamp(items.length)
   })
+
+  const handleFocusOut = createFocusoutClose(
+    () => open,
+    () => ({ container: containerRef, panel: panelRef }),
+    () => close(false),
+  )
 
   useDropdown(() => ({
     isOpen: () => open,
@@ -204,7 +230,7 @@
     aria-controls={open ? menuId : undefined}
     onclick={toggle}
     onkeydown={handleTriggerKeydown}
-    class={`inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950 text-slate-200 outline-none transition motion-reduce:transition-none hover:border-cyan-500 hover:text-cyan-300 focus:border-cyan-500 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${triggerClass}`}>
+    class={`inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950 text-slate-200 outline-none transition motion-reduce:transition-none hover:border-cyan-500 hover:text-cyan-300 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-cyan-500 ${triggerClass}`}>
     {@render icon()}
   </button>
 {/snippet}
@@ -212,7 +238,8 @@
 <div
   class="relative inline-flex"
   bind:this={containerRef}
-  data-escape-capture={open ? '' : null}>
+  data-escape-capture={open ? '' : null}
+  onfocusout={handleFocusOut}>
   {#if triggerTooltip}
     <span class="group relative inline-flex">
       {@render triggerButton()}
@@ -228,6 +255,7 @@
       role="menu"
       tabindex="-1"
       aria-label={ariaLabel}
+      onfocusout={handleFocusOut}
       onkeydown={handlePanelKeydown}
       use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, align, autoPlace })}
       class={`fixed left-0 top-0 z-40 will-change-transform overflow-hidden rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur ${panelClass}`}>
@@ -240,6 +268,7 @@
           bind:this={itemRefs[index]}
           tabindex={index === selection.index ? 0 : -1}
           onclick={() => handleItemClick(index)}
+          onfocus={() => selection.set(index)}
           onmouseenter={() => setActive(index)}
           disabled={state.disabled}
           class={itemClass ? itemClass(itemValue, state) : undefined}>

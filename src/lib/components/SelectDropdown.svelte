@@ -1,5 +1,6 @@
 <script lang="ts">
   import { flushSync, tick } from 'svelte'
+  import { createFocusoutClose } from '$lib/actions/use-focusout-close'
   import { useDropdown } from '$lib/actions/use-dropdown.svelte'
   import { useListSelection, revealInScrollport } from '$lib/actions/use-list-selection.svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
@@ -53,17 +54,17 @@
 
   const resolvedButtonClass = $derived(
     buttonClass ??
-      `inline-flex ${SIZE_CLASS[size].minW} cursor-pointer items-center justify-between gap-2 rounded-md border border-slate-700 bg-slate-950 px-3 text-slate-100 outline-none transition motion-reduce:transition-none hover:border-cyan-500 focus:border-cyan-500 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
+      `inline-flex ${SIZE_CLASS[size].minW} cursor-pointer items-center justify-between gap-2 rounded-md border border-slate-700 bg-slate-950 px-3 text-slate-100 outline-none transition motion-reduce:transition-none hover:border-cyan-500 focus-visible:border-cyan-500 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
   const resolvedControlClass = $derived(
     controlClass ??
-      `${SIZE_CLASS[size].minW} field-sizing-content cursor-pointer rounded-md border border-slate-700 bg-slate-950 pl-3 pr-8 text-slate-100 outline-none transition motion-reduce:transition-none hover:border-cyan-500 focus:border-cyan-500 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
+      `${SIZE_CLASS[size].minW} field-sizing-content cursor-pointer rounded-md border border-slate-700 bg-slate-950 pl-3 pr-8 text-slate-100 outline-none transition motion-reduce:transition-none hover:border-cyan-500 focus-visible:border-cyan-500 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
   const optionRowClass = $derived(
     optionClass ??
-      `flex w-full cursor-pointer items-center justify-between rounded-md px-3 text-left outline-none transition motion-reduce:transition-none ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
+      `flex w-full cursor-pointer items-center justify-between rounded-md px-3 text-left outline-none transition-none ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
   let open = $state(false)
@@ -120,7 +121,7 @@
   // panel: the option never receives focus (aria-activedescendant pattern),
   // so the browser would otherwise let it drift out of the scrollport.
   function revealActive() {
-    revealInScrollport(panelRef?.querySelector<HTMLButtonElement>(`[id="${panelId}-option-${selection.index}"]`))
+    revealInScrollport(panelRef?.querySelector<HTMLButtonElement>(`[id="${panelId}-option-${selection.peek()}"]`))
   }
 
   function toggle() {
@@ -170,22 +171,28 @@
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       if (!open) {
-        openPanel()
+        flushSync(() => {
+          openPanel()
+        })
         return
       }
-      selection.move('down', filteredOptions.length)
-      revealActive()
-      flushSync()
+      flushSync(() => {
+        selection.move('down', filteredOptions.length)
+        revealActive()
+      })
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       if (!open) {
-        openPanel()
-        selection.move('last', filteredOptions.length)
+        flushSync(() => {
+          openPanel()
+          selection.move('last', filteredOptions.length)
+        })
         return
       }
-      selection.move('up', filteredOptions.length)
-      revealActive()
-      flushSync()
+      flushSync(() => {
+        selection.move('up', filteredOptions.length)
+        revealActive()
+      })
     } else if (event.key === 'Enter') {
       if (!open) {
         if (filterable) {
@@ -200,6 +207,12 @@
       }
     }
   }
+  const handleFocusOut = createFocusoutClose(
+    () => open,
+    () => ({ container: containerRef, panel: panelRef }),
+    () => close(),
+  )
+
   useDropdown(() => ({
     isOpen: () => open,
     container: () => containerRef,
@@ -220,6 +233,7 @@
   class="relative"
   bind:this={containerRef}
   data-escape-capture={open ? '' : null}
+  onfocusout={handleFocusOut}
 >
   {#if filterable}
     <div class="relative w-fit" bind:this={controlRef}>
@@ -277,6 +291,7 @@
           aria-selected={option.value === activeValue}
           onpointerdown={event => event.preventDefault()}
           onclick={() => void select(option.value)}
+          onfocus={() => selection.set(index)}
           onmouseenter={() => selection.set(index)}
           class={`${optionRowClass} ${index === selection.index ? 'bg-slate-800 text-cyan-200' : 'text-slate-300'}`}>
           <span class="min-w-0 truncate">{option.label}</span>

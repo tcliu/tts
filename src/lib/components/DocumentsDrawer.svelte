@@ -97,7 +97,7 @@
     </Button>
     <SearchInput bind:value={search} bind:inputRef={inputRef} ariaLabel={text.documentSearch} placeholder={text.documentSearch} />
   </div>
-  <div class="min-h-0 flex-1 overflow-y-auto px-3">
+  <div tabindex="-1" class="min-h-0 flex-1 overflow-y-auto px-3 outline-none">
     {#if documents.length === 0}
       <p class="text-xs text-slate-500">{search.trim() ? text.noMatchingDocuments : text.noSavedDocuments}</p>
     {:else}

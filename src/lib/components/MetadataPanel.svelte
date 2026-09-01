@@ -94,7 +94,7 @@
           bind:value={() => metadata.search, v => metadata.setSearch(v)}
           placeholder={text.metadataSearch}
           aria-label={text.metadataSearch}
-          class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition motion-reduce:transition-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50" />
+          class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition motion-reduce:transition-none focus-visible:border-cyan-500" />
       </label>
       <Button
         variant="ghost"
@@ -157,7 +157,7 @@
     {#if metadata.rows.length === 0}
       <p class="text-xs text-slate-500">{metadata.search.trim() ? text.metadataNoResults : text.noMetadata}</p>
     {:else}
-      <div bind:this={tableBodyRef} class="min-h-0 flex-1 overflow-auto">
+      <div bind:this={tableBodyRef} tabindex="-1" class="min-h-0 flex-1 overflow-auto outline-none">
         <table class="w-full table-fixed border-collapse text-sm">
           <colgroup>
             {#each SENTENCE_COLS as cls}
@@ -247,7 +247,7 @@
                           </thead>
                         </table>
                       </div>
-                      <div class="max-h-64 overflow-auto" use:attachWordContainer={row.sentenceIndex}>
+                      <div tabindex="-1" class="max-h-64 overflow-auto outline-none" use:attachWordContainer={row.sentenceIndex}>
                         <table class="w-full table-fixed border-collapse text-xs">
                           <colgroup>
                             {#each WORD_COLS as cls}
