@@ -66,8 +66,12 @@
 
   const disabledState = $derived(disabled || pending)
 
+  const isIconOnly = $derived(!!icon && !children)
+
   const baseClass = $derived.by(() => {
-    const common = `${size === 'sm' ? 'px-2.5 py-1.5 text-sm relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-[\'\']' : 'inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
+    const common = isIconOnly
+      ? `${size === 'sm' ? 'p-1.5 relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-[\'\']' : 'inline-flex items-center justify-center rounded-lg p-2.5'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
+      : `${size === 'sm' ? 'px-2.5 py-1.5 text-sm relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-[\'\']' : 'inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
     if (variant === 'primary') {
       return `${common} ${primaryClasses[accent]}`
     }
