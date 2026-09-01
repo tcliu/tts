@@ -2,8 +2,7 @@
   import { onDestroy } from 'svelte'
   import BaseDialog from '$lib/components/BaseDialog.svelte'
   import Button from '$lib/components/Button.svelte'
-  import Checkbox from '$lib/components/Checkbox.svelte'
-  import SearchInput from '$lib/components/SearchInput.svelte'
+  import DataTable, { type DataTableColumn } from '$lib/components/DataTable.svelte'
   import { REFERENCE_LANGUAGES } from '$lib/tts-reference'
   import { UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
   import { formatBytes } from '$lib/format-bytes'
@@ -35,6 +34,11 @@
   let currentAudio = $state<HTMLAudioElement | null>(null)
   let currentAudioUrl = $state('')
   let playGeneration = 0
+
+  let page = $state(1)
+  let pageSize = $state(10)
+  let sortKey = $state<string | null>(null)
+  let sortDir = $state<'asc' | 'desc'>('asc')
 
   const voiceLookup = new Map(
     REFERENCE_LANGUAGES.flatMap(language =>
@@ -72,12 +76,107 @@
     })
   })
 
+  const sortedEntries = $derived.by(() => {
+    if (!sortKey) return filteredEntries
+    const copy = [...filteredEntries]
+    copy.sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case 'lang': {
+          cmp = languageLabel(a).localeCompare(languageLabel(b))
+          break
+        }
+        case 'voice': {
+          cmp = voiceLabel(a).localeCompare(voiceLabel(b))
+          break
+        }
+        case 'text': {
+          cmp = a.text.localeCompare(b.text)
+          break
+        }
+        case 'size': {
+          cmp = a.bytes - b.bytes
+          break
+        }
+        case 'saved': {
+          cmp = a.savedAt - b.savedAt
+          break
+        }
+        default:
+          cmp = 0
+      }
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return copy
+  })
+
+  const total = $derived(sortedEntries.length)
+  const totalPages = $derived(Math.max(1, Math.ceil(total / pageSize)))
+  const paginatedEntries = $derived(sortedEntries.slice((page - 1) * pageSize, page * pageSize))
+
+  $effect(() => {
+    void total
+    void pageSize
+    if (page > totalPages) page = totalPages
+  })
+  $effect(() => {
+    void query
+    void sortKey
+    void sortDir
+    page = 1
+  })
+
   const selectedEntries = $derived(entries.filter(entry => selectedKeys.has(entry.key)))
-  const visibleSelectedCount = $derived(filteredEntries.filter(entry => selectedKeys.has(entry.key)).length)
-  const allVisibleSelected = $derived(filteredEntries.length > 0 && visibleSelectedCount === filteredEntries.length)
+  const visibleSelectedCount = $derived(paginatedEntries.filter(entry => selectedKeys.has(entry.key)).length)
+  const allVisibleSelected = $derived(paginatedEntries.length > 0 && visibleSelectedCount === paginatedEntries.length)
   const someVisibleSelected = $derived(visibleSelectedCount > 0 && !allVisibleSelected)
   const hasSelection = $derived(selectedKeys.size > 0)
   const totalBytes = $derived(entries.reduce((sum, entry) => sum + entry.bytes, 0))
+
+  const columns = $derived.by<DataTableColumn<SynthesisCacheEntry>[]>(() => [
+    {
+      key: 'lang',
+      header: text.tableLang,
+      width: '14%',
+      minWidth: 120,
+      sortable: true,
+      searchable: true,
+      cell: langCell,
+    },
+    {
+      key: 'voice',
+      header: text.tableVoice,
+      width: '20%',
+      minWidth: 160,
+      sortable: true,
+      searchable: true,
+      cell: voiceCell,
+    },
+    {
+      key: 'text',
+      header: text.tableText,
+      width: '36%',
+      minWidth: 200,
+      searchable: true,
+      cell: textCell,
+    },
+    {
+      key: 'size',
+      header: text.tableSize,
+      width: '12%',
+      minWidth: 90,
+      sortable: true,
+      cell: sizeCell,
+    },
+    {
+      key: 'saved',
+      header: text.tableSaved,
+      width: '18%',
+      minWidth: 140,
+      sortable: true,
+      cell: savedCell,
+    },
+  ])
 
   $effect(() => {
     const liveKeys = new Set(entries.map(entry => entry.key))
@@ -150,15 +249,30 @@
   function toggleAllVisible() {
     const next = new Set(selectedKeys)
     if (allVisibleSelected) {
-      for (const entry of filteredEntries) {
+      for (const entry of paginatedEntries) {
         next.delete(entry.key)
       }
     } else {
-      for (const entry of filteredEntries) {
+      for (const entry of paginatedEntries) {
         next.add(entry.key)
       }
     }
     selectedKeys = next
+  }
+
+  function handleSort(key: string, direction: 'asc' | 'desc') {
+    sortKey = key
+    sortDir = direction
+  }
+
+  function handlePageChange(next: number) {
+    if (next < 1 || next > totalPages || next === page) return
+    page = next
+  }
+
+  function handlePageSizeChange(size: number) {
+    pageSize = size
+    page = 1
   }
 
   async function clearSelected() {
@@ -239,8 +353,8 @@
   }
 </script>
 
-<BaseDialog title={text.synthesisCacheDetailsTitle} maxWidth="7xl" closeLabel={text.close} onCancel={onCancel} className="flex h-[min(84vh,760px)] min-h-[520px] flex-col">
-  <div class="flex min-h-0 flex-1 flex-col gap-3">
+<BaseDialog title={text.synthesisCacheDetailsTitle} maxWidth="7xl" closeLabel={text.close} onCancel={onCancel} className="flex max-h-[min(84vh,760px)] flex-col">
+  <div class="flex flex-col gap-1.5">
     <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
       <div class="min-w-0 flex-1">
         <p class="text-sm font-medium text-slate-100">{text.synthesisCache}</p>
@@ -262,66 +376,64 @@
       </div>
     </div>
 
-    <SearchInput bind:value={search} ariaLabel={text.cacheSearch} placeholder={text.cacheSearch} wrapperClass="shrink-0" />
-
-    <div class="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-800 bg-slate-950/50 contain-layout">
-      <table class="min-w-[66rem] border-separate border-spacing-0 text-sm">
-        <thead>
-          <tr class="text-left text-sm font-medium text-slate-400">
-            <th scope="col" class="sticky top-0 z-10 w-10 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur">
-              <Checkbox
-                checked={allVisibleSelected}
-                indeterminate={someVisibleSelected}
-                ariaLabel={text.selectAllCacheEntries}
-                disabled={filteredEntries.length === 0}
-                onChange={toggleAllVisible} />
-            </th>
-            <th scope="col" class="sticky top-0 z-10 min-w-24 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur">{text.tableLang}</th>
-            <th scope="col" class="sticky top-0 z-10 min-w-44 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur">{text.tableVoice}</th>
-            <th scope="col" class="sticky top-0 z-10 min-w-96 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur">{text.tableText}</th>
-            <th scope="col" class="sticky top-0 z-10 min-w-24 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur">{text.tableRate}</th>
-            <th scope="col" class="sticky top-0 z-10 min-w-28 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur">{text.tableSize}</th>
-            <th scope="col" class="sticky top-0 z-10 min-w-32 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur">{text.tableDocument}</th>
-            <th scope="col" class="sticky top-0 z-10 min-w-40 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur">{text.tableSaved}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#if loading}
-            <tr>
-              <td colspan={8} class="px-3 py-10 text-center text-sm text-slate-400">{text.loadingCacheEntries}</td>
-            </tr>
-          {:else if filteredEntries.length === 0}
-            <tr>
-              <td colspan={8} class="px-3 py-10 text-center text-sm text-slate-400">{search.trim() ? text.noMatchingCacheEntries : text.cachedSegmentsNone}</td>
-            </tr>
-          {:else}
-            {#each filteredEntries as entry (entry.key)}
-              <tr class="hover:bg-slate-900/40">
-                <td class="border-b border-slate-800/50 px-3 py-2 align-top">
-                  <Checkbox
-                    checked={selectedKeys.has(entry.key)}
-                    ariaLabel={text.selectCacheEntry}
-                    onChange={checked => toggleSelection(entry.key, checked)} />
-                </td>
-                <td class="border-b border-slate-800/50 px-3 py-2 align-top text-slate-400">{languageLabel(entry)}</td>
-                <td class="max-w-0 border-b border-slate-800/50 px-3 py-2 align-top text-slate-300">
-                  <div class="truncate">{voiceLabel(entry)}</div>
-                  {#if entry.voiceId}
-                    <div class="mt-1 truncate text-xs text-slate-500">{entry.voiceId}</div>
-                  {/if}
-                </td>
-                <td class="max-w-0 border-b border-slate-800/50 px-3 py-2 align-top">
-                  <div class="whitespace-pre-wrap break-words text-slate-200">{snippet(entry.text)}</div>
-                </td>
-                <td class="border-b border-slate-800/50 px-3 py-2 align-top text-slate-400">{entry.rate === null ? '\u2014' : `${entry.rate}x`}</td>
-                <td class="border-b border-slate-800/50 px-3 py-2 align-top text-slate-400">{formatBytes(entry.bytes)}</td>
-                <td class="border-b border-slate-800/50 px-3 py-2 align-top font-mono text-xs text-slate-500">{entry.docId || '\u2014'}</td>
-                <td class="border-b border-slate-800/50 px-3 py-2 align-top text-slate-400">{formatSavedAt(entry.savedAt)}</td>
-              </tr>
-            {/each}
-          {/if}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      rows={paginatedEntries}
+      rowId={entry => entry.key}
+      {columns}
+      loading={loading}
+      emptyMessage={search.trim() ? text.noMatchingCacheEntries : text.cachedSegmentsNone}
+      bind:searchValue={search}
+      searchAriaLabel={text.cacheSearch}
+      searchPlaceholder={text.cacheSearch}
+      selectable
+      selectedIds={selectedKeys}
+      onToggleSelection={toggleSelection}
+      onToggleAll={toggleAllVisible}
+      allSelected={allVisibleSelected}
+      someSelected={someVisibleSelected}
+      selectAllAriaLabel={text.selectAllCacheEntries}
+      rowSelectAriaLabel={() => text.selectCacheEntry}
+      total={total}
+      pageSize={pageSize}
+      currentPage={page}
+      onPageChange={handlePageChange}
+      onPageSizeChange={handlePageSizeChange}
+      bind:sortKey={sortKey}
+      bind:sortDirection={sortDir}
+      onSort={handleSort}
+      sortAriaLabel={(col, dir) => (dir === 'asc' ? text.tableSortAsc : text.tableSortDesc).replace('{name}', col.header)}
+      resizeAriaLabel={col => text.tableResize.replace('{name}', col.header)}
+      paginationPreviousLabel={text.paginationPrevious}
+      paginationNextLabel={text.paginationNext}
+      paginationPageSizeLabel={text.paginationPageSize}
+      paginationCurrentLabel={text.paginationPage}
+      paginationLabel={text.paginationPage}
+      containerClass="max-h-[min(50vh,32rem)] overflow-auto rounded-xl border border-slate-800 bg-slate-950/50 contain-layout"
+      tableClass="w-full"
+      resizable
+      storageKey="synthesis-cache" />
   </div>
 </BaseDialog>
+
+{#snippet langCell(entry: SynthesisCacheEntry)}
+  <span class="text-slate-400">{languageLabel(entry)}</span>
+{/snippet}
+
+{#snippet voiceCell(entry: SynthesisCacheEntry)}
+  <div class="truncate text-slate-300">{voiceLabel(entry)}</div>
+  {#if entry.voiceId}
+    <div class="mt-1 truncate text-xs text-slate-500">{entry.voiceId}</div>
+  {/if}
+{/snippet}
+
+{#snippet textCell(entry: SynthesisCacheEntry)}
+  <div class="whitespace-pre-wrap break-words text-slate-200">{snippet(entry.text)}</div>
+{/snippet}
+
+{#snippet sizeCell(entry: SynthesisCacheEntry)}
+  <span class="text-slate-400">{formatBytes(entry.bytes)}</span>
+{/snippet}
+
+{#snippet savedCell(entry: SynthesisCacheEntry)}
+  <span class="text-slate-400">{formatSavedAt(entry.savedAt)}</span>
+{/snippet}

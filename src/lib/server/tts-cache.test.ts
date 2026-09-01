@@ -42,6 +42,12 @@ describe('tts-cache', () => {
     expect(result?.etag).toBe(synthesisEtag(value))
   })
 
+  it('uses the same server cache key across playback rates', () => {
+    expect(synthesisCacheKey('Hello', 'en-US-AriaNeural', 1)).toBe(
+      synthesisCacheKey('Hello', 'en-US-AriaNeural', 3),
+    )
+  })
+
   it('returns the computed etag from setCachedSynthesis so callers avoid rehashing', async () => {
     const key = synthesisCacheKey('Hello', 'en-US-AriaNeural', 1)
     const value = { audio: 'QUJD', boundaries: [{ offset: 0, at: 0.1 }] }

@@ -47,6 +47,9 @@ function cacheDir(): string {
 }
 
 export function synthesisCacheKey(text: string, voice: string, rate: number): string {
+  // buildSynthesisCacheKey is canonical at 1×; legacy rate-keyed files
+  // (hash of [text,voice,rate≠1]) are orphaned and age out via TTL/size
+  // prune below without eager migration.
   return createHash('sha256').update(buildSynthesisCacheKey(text, voice, rate)).digest('hex')
 }
 

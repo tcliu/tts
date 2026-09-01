@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { synthesisCacheKey } from './tts-cache-key'
+import { CANONICAL_SYNTHESIS_RATE, synthesisCacheKey } from './tts-cache-key'
 import type { SynthesizedSegment } from './tts-client'
 
 const idb = vi.hoisted(() => ({
@@ -19,6 +19,7 @@ const idb = vi.hoisted(() => ({
     spokenStart: record.spokenStart,
     spokenEnd: record.spokenEnd,
     etag: record.etag,
+    rate: record.rate,
   })),
 }))
 
@@ -96,9 +97,25 @@ describe('tts-client', () => {
       docId: 'doc-a',
       text: TEXT,
       voiceId: VOICE,
-      rate: RATE,
+      rate: CANONICAL_SYNTHESIS_RATE,
     })
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({ 'Content-Type': 'application/json' })
+  })
+
+  it('requests the selected playback rate while reusing the canonical cache key', async () => {
+    fetchMock.mockResolvedValue(okResponse(serverPayload(), 'etag-fast'))
+    const client = await loadFresh()
+
+    const result = await client.getCachedSynthesis(TEXT, VOICE, 2, undefined, 'doc-a')
+
+    expect(result.rate).toBe(CANONICAL_SYNTHESIS_RATE)
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ text: TEXT, voice: VOICE, rate: 2 }))
+    expect(idb.putPersistedSegment).toHaveBeenCalledWith(synthesisCacheKey(TEXT, VOICE, 2), result, {
+      docId: 'doc-a',
+      text: TEXT,
+      voiceId: VOICE,
+      rate: CANONICAL_SYNTHESIS_RATE,
+    })
   })
 
   it('reuses the local blob on a matching 304 without re-persisting it', async () => {
@@ -108,13 +125,24 @@ describe('tts-client', () => {
     const client = await loadFresh()
 
     const result = await client.getCachedSynthesis(TEXT, VOICE, RATE, undefined, 'doc-a')
-    expect(result).toBe(local)
+    expect(result).toEqual({ ...local, rate: CANONICAL_SYNTHESIS_RATE })
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
       'If-None-Match': '"local-etag"',
       'Content-Type': 'application/json',
     })
     expect(idb.putPersistedSegment).not.toHaveBeenCalled()
-    expect(client.peekCachedSynthesis(TEXT, VOICE, RATE)).toBe(local)
+    expect(client.peekCachedSynthesis(TEXT, VOICE)).toEqual({ ...local, rate: CANONICAL_SYNTHESIS_RATE })
+  })
+
+  it('reuses a 1x cached entry for other playback rates', async () => {
+    fetchMock.mockResolvedValue(okResponse(serverPayload(), 'etag-1x'))
+    const client = await loadFresh()
+
+    const first = await client.getCachedSynthesis(TEXT, VOICE, 1, undefined, 'doc-a')
+    const second = await client.getCachedSynthesis(TEXT, VOICE, 3, undefined, 'doc-a')
+
+    expect(second).toEqual(first)
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 
   it('replaces a stale local copy with fresh audio and re-persists it', async () => {
@@ -150,7 +178,7 @@ describe('tts-client', () => {
 
     await client.hydrateSynthesisCache()
     expect(client.isSynthesisCacheHydrated()).toBe(true)
-    expect(client.peekCachedSynthesis(TEXT, VOICE, RATE)).toBeNull()
+    expect(client.peekCachedSynthesis(TEXT, VOICE)).toBeNull()
 
     const result = await client.getCachedSynthesis(TEXT, VOICE, RATE)
     expect(result.etag).toBe('recovers')
@@ -214,11 +242,11 @@ describe('tts-client', () => {
     fetchMock.mockResolvedValue(okResponse(serverPayload()))
     const client = await loadFresh()
     await client.getCachedSynthesis(TEXT, VOICE, RATE, undefined, 'doc-a')
-    expect(client.peekCachedSynthesis(TEXT, VOICE, RATE)).not.toBeNull()
+    expect(client.peekCachedSynthesis(TEXT, VOICE)).not.toBeNull()
 
     await client.clearSynthesisCache()
 
-    expect(client.peekCachedSynthesis(TEXT, VOICE, RATE)).toBeNull()
+    expect(client.peekCachedSynthesis(TEXT, VOICE)).toBeNull()
     expect(idb.clearPersistedSegments).toHaveBeenCalledOnce()
   })
 
@@ -228,13 +256,13 @@ describe('tts-client', () => {
     const client = await loadFresh()
     await client.getCachedSynthesis(TEXT, VOICE, RATE, undefined, 'doc-a')
     await client.getCachedSynthesis(textB, VOICE, RATE, undefined, 'doc-b')
-    expect(client.peekCachedSynthesis(TEXT, VOICE, RATE)).not.toBeNull()
-    expect(client.peekCachedSynthesis(textB, VOICE, RATE)).not.toBeNull()
+    expect(client.peekCachedSynthesis(TEXT, VOICE)).not.toBeNull()
+    expect(client.peekCachedSynthesis(textB, VOICE)).not.toBeNull()
 
     await client.clearDocumentSynthesisCache('doc-a', [synthesisCacheKey(TEXT, VOICE, RATE)])
 
-    expect(client.peekCachedSynthesis(TEXT, VOICE, RATE)).toBeNull()
-    expect(client.peekCachedSynthesis(textB, VOICE, RATE)).not.toBeNull()
+    expect(client.peekCachedSynthesis(TEXT, VOICE)).toBeNull()
+    expect(client.peekCachedSynthesis(textB, VOICE)).not.toBeNull()
     expect(idb.deletePersistedSegmentsByDocId).toHaveBeenCalledWith('doc-a')
   })
 
@@ -247,8 +275,8 @@ describe('tts-client', () => {
 
     await client.clearSynthesisCacheEntries([synthesisCacheKey(TEXT, VOICE, RATE)])
 
-    expect(client.peekCachedSynthesis(TEXT, VOICE, RATE)).toBeNull()
-    expect(client.peekCachedSynthesis(textB, VOICE, RATE)).not.toBeNull()
+    expect(client.peekCachedSynthesis(TEXT, VOICE)).toBeNull()
+    expect(client.peekCachedSynthesis(textB, VOICE)).not.toBeNull()
     expect(idb.deletePersistedSegments).toHaveBeenCalledWith([synthesisCacheKey(TEXT, VOICE, RATE)])
   })
 })

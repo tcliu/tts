@@ -137,6 +137,15 @@ export interface UiText {
   tableExpand: string
   tablePlay: string
   tableWord: string
+  paginationPrevious: string
+  paginationNext: string
+  paginationPageSize: string
+  paginationRows: string
+  paginationTotal: string
+  paginationPage: string
+  tableSortAsc: string
+  tableSortDesc: string
+  tableResize: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [
@@ -286,6 +295,15 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     tableExpand: '',
     tablePlay: '',
     tableWord: 'Word',
+    paginationPrevious: 'Previous page',
+    paginationNext: 'Next page',
+    paginationPageSize: 'Page size',
+    paginationRows: 'Rows',
+    paginationTotal: 'total',
+    paginationPage: 'Page',
+    tableSortAsc: 'Sort {name} ascending',
+    tableSortDesc: 'Sort {name} descending',
+    tableResize: 'Resize {name}',
   },
   'zh-TW': {
     language: '語言',
@@ -417,6 +435,15 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     tableExpand: '',
     tablePlay: '',
     tableWord: '詞',
+    paginationPrevious: '上一頁',
+    paginationNext: '下一頁',
+    paginationPageSize: '每頁列數',
+    paginationRows: '列',
+    paginationTotal: '總計',
+    paginationPage: '頁',
+    tableSortAsc: '按 {name} 升冪排序',
+    tableSortDesc: '按 {name} 降冪排序',
+    tableResize: '調整 {name} 欄寬',
   },
   'zh-CN': {
     language: '语言',
@@ -548,5 +575,14 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     tableExpand: '',
     tablePlay: '',
     tableWord: '词汇',
+    paginationPrevious: '上一页',
+    paginationNext: '下一页',
+    paginationPageSize: '每页行数',
+    paginationRows: '行',
+    paginationTotal: '总计',
+    paginationPage: '页',
+    tableSortAsc: '按 {name} 升序排序',
+    tableSortDesc: '按 {name} 降序排序',
+    tableResize: '调整 {name} 列宽',
   },
 }

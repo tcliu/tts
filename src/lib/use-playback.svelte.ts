@@ -16,6 +16,7 @@ import {
   onSynthesisCacheHydrated,
   peekCachedSynthesis,
 } from './tts-client'
+import { CANONICAL_SYNTHESIS_RATE } from './tts-cache-key'
 import { UI_TEXT, segmentLanguageName, type UiLocale } from './ui-text'
 import type { SettingsHandle } from './use-settings.svelte'
 import {
@@ -82,6 +83,7 @@ export interface PlaybackHandle {
   readonly positionSegmentLang: string
   readonly positionLanguageCode: string
   readonly positionSegmentText: string
+  /** @deprecated — always 1; synthesis is canonical at 1×, speed via playbackRate */
   readonly currentSynthesisRate: number
   readonly playbackElapsed: number
   readonly playbackDuration: number
@@ -139,7 +141,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let synthesizedCount = $state(0)
   let playedDuration = $state(0)
   let measuredTotal = $state(0)
-  let currentSynthesisRate = $state(1)
   let playbackElapsed = $state(0)
   let playbackDuration = $state(0)
   let statusMessage = $state(UI_TEXT[deps.settings.locale].ready)
@@ -286,7 +287,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     for (const seg of covering) {
       const voice = resolveEffectiveVoice(seg.lang)
       if (!voice?.edge) return null
-      const cached = peekCachedSynthesis(seg.text, voice.edge, effectiveSpeed)
+      const cached = peekCachedSynthesis(seg.text, voice.edge)
       if (!cached) return null
       const sourceWordBoundaries = cached.wordBoundaries ?? []
       const sourceBoundaries = sourceWordBoundaries.length > 0 ? sourceWordBoundaries : cached.boundaries
@@ -463,7 +464,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   $effect(() => {
     if (isPlaying && currentAudio) {
       const idx = currentSegmentIndex - 1
-      const segRate = segmentMetaMap[idx]?.rate ?? effectiveSpeed
+      const segRate = segmentMetaMap[idx]?.rate ?? CANONICAL_SYNTHESIS_RATE
       currentAudio.playbackRate = effectiveSpeed / segRate
     }
   })
@@ -1162,7 +1163,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           // Re-read after queue wait; an override may have landed while queued.
           const effectiveLang = effectiveSegmentLang(index)
           const voice = resolveEffectiveVoice(effectiveLang)
-          const rate = effectiveSpeed
+          const rate = CANONICAL_SYNTHESIS_RATE
           const generation = taskGeneration.get(index) ?? generationAtQueue
           try {
             if (!voice?.edge) {
@@ -1263,7 +1264,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           result = await launch(index)
         }
         if (controller.cancelled) return
-        currentSynthesisRate = result.rate
         metadataAvailable = result.boundaries.length > 0 || result.wordBoundaries.length > 0
         playbackDuration = result.duration
 
@@ -1390,7 +1390,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       if (!voice?.edge) {
         continue
       }
-      const cached = peekCachedSynthesis(segment.text, voice.edge, effectiveSpeed)
+      const cached = peekCachedSynthesis(segment.text, voice.edge)
       if (!cached) {
         continue
       }
@@ -1404,7 +1404,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
             wordBoundaries: cached.wordBoundaries,
             spokenStart: cached.spokenStart,
             spokenEnd: cached.spokenEnd,
-            rate: effectiveSpeed,
+            rate: cached.rate ?? CANONICAL_SYNTHESIS_RATE,
           },
           segment.indexStart,
         ),
@@ -1582,7 +1582,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       if (controller.cancelled) return true
       const duration = await readAudioDuration(synth.blob, controller.abort.signal)
       if (controller.cancelled) return true
-      currentSynthesisRate = effectiveSpeed
       metadataAvailable = (synth.boundaries.length > 0 || (synth.wordBoundaries?.length ?? 0) > 0)
       playbackDuration = duration
       // Play the isolated fragment only; do not continue to subsequent sentences.
@@ -1772,7 +1771,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
               wordBoundaries: segment.wordBoundaries,
               spokenStart: 0,
               spokenEnd: Math.max(0, segment.sourceEndAt - segment.sourceStartAt),
-              rate: effectiveSpeed,
+              rate: CANONICAL_SYNTHESIS_RATE,
             },
             segment.indexStart,
           ),
@@ -1783,14 +1782,13 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       currentSegmentIndex = 1
       playbackElapsed = 0
       playbackDuration = segmentDurationAt(0)
-      currentSynthesisRate = effectiveSpeed
       deps.getEditor()?.clearPlaybackHighlight?.()
       return true
     }
     const lang = splitTtsSegments(scoped.text)[0]?.lang ?? splitTtsSegments(content)[0]?.lang ?? 'en'
     const voice = resolveEffectiveVoice(lang)
     if (!voice?.edge) return false
-    const cached = peekCachedSynthesis(scoped.text, voice.edge, effectiveSpeed)
+    const cached = peekCachedSynthesis(scoped.text, voice.edge)
     if (!cached) return false
     sessionSegments = [{ text: scoped.text, lang, indexStart: scoped.from, indexEnd: scoped.to - 1 }]
     sessionOffset = 0
@@ -1801,26 +1799,25 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     totalSegments = 1
     deps.getEditor()?.clearPlaybackHighlight?.()
     clearSegments()
-    recordSegment(
-      0,
-      buildSegmentMeta(
+      recordSegment(
         0,
-        sessionSegments[0],
-        {
-          boundaries: cached.boundaries,
-          wordBoundaries: cached.wordBoundaries,
-          spokenStart: cached.spokenStart,
-          spokenEnd: cached.spokenEnd,
-          rate: effectiveSpeed,
-        },
-        scoped.from,
-      ),
-    )
+        buildSegmentMeta(
+          0,
+          sessionSegments[0],
+          {
+            boundaries: cached.boundaries,
+            wordBoundaries: cached.wordBoundaries,
+            spokenStart: cached.spokenStart,
+            spokenEnd: cached.spokenEnd,
+            rate: cached.rate ?? CANONICAL_SYNTHESIS_RATE,
+          },
+          scoped.from,
+        ),
+      )
     metadataAvailable = true
     currentSegmentIndex = 1
     playbackElapsed = 0
     playbackDuration = segmentDurationAt(0)
-    currentSynthesisRate = effectiveSpeed
     deps.getEditor()?.clearPlaybackHighlight?.()
     return true
   }
@@ -1887,7 +1884,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
               wordBoundaries: segment.wordBoundaries,
               spokenStart: 0,
               spokenEnd: Math.max(0, segment.sourceEndAt - segment.sourceStartAt),
-              rate: effectiveSpeed,
+              rate: CANONICAL_SYNTHESIS_RATE,
             },
             segment.indexStart,
           ),
@@ -1900,7 +1897,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         currentSegmentIndex = 1
         playbackElapsed = 0
         playbackDuration = segmentDurationAt(0)
-        currentSynthesisRate = effectiveSpeed
         updateHighlightForPosition(0, 0)
         const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
         currentController = controller
@@ -1918,7 +1914,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
                 `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, segment.lang)})`,
               )
             }
-            const cached = peekCachedSynthesis(segment.source.text, segVoice.edge, effectiveSpeed)
+            const cached = peekCachedSynthesis(segment.source.text, segVoice.edge)
             if (!cached) {
               throw new Error('Scoped playback lost its source cache entry')
             }
@@ -1989,7 +1985,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       if (controller.cancelled) return
       const duration = await readAudioDuration(synth.blob, controller.abort.signal)
       if (controller.cancelled) return
-      currentSynthesisRate = effectiveSpeed
       metadataAvailable = (synth.boundaries.length > 0 || (synth.wordBoundaries?.length ?? 0) > 0)
       playbackDuration = duration
       const scopedMeta: SegmentMeta = {
@@ -2003,7 +1998,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         duration,
         spokenStart: synth.spokenStart,
         spokenEnd: synth.spokenEnd,
-        rate: effectiveSpeed,
+        rate: synth.rate ?? CANONICAL_SYNTHESIS_RATE,
       }
       recordSegment(0, scopedMeta)
       const scopedHighlights = highlightBoundaries(scopedMeta, scopedMeta.wordBoundaries ?? scopedMeta.boundaries)
@@ -2073,7 +2068,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       duration: fields.duration,
       spokenStart: fields.spokenStart,
       spokenEnd: fields.spokenEnd,
-      rate: fields.rate ?? effectiveSpeed,
+      rate: fields.rate ?? CANONICAL_SYNTHESIS_RATE,
     }
   }
 
@@ -2101,7 +2096,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     measuredTotal = 0
     playbackElapsed = 0
     playbackDuration = 0
-    currentSynthesisRate = effectiveSpeed
     metadataAvailable = false
     // Invalidate any pending debounced seek that was queued before the reset.
     pendingSelectionGeneration += 1
@@ -2161,7 +2155,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     // record nor play stale audio over the re-synthesized segment.
     taskGeneration.set(index, (taskGeneration.get(index) ?? 0) + 1)
     const effective = { ...segment, lang: effectiveSegmentLang(index) }
-    const rate = effectiveSpeed
+    const rate = CANONICAL_SYNTHESIS_RATE
     const docId = deps.getCacheScopeId()
     const synth = await getCachedSynthesis(segment.text, voiceEdge, rate, undefined, docId)
     const abort = new AbortController()
@@ -2369,9 +2363,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     get positionSegmentText() {
       return positionSegmentText
     },
-    get currentSynthesisRate() {
-      return currentSynthesisRate
-    },
     get playbackElapsed() {
       return playbackElapsed
     },
@@ -2407,6 +2398,10 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     },
     get segments() {
       return segmentMetaMap
+    },
+    /** @deprecated — always 1; use playbackSpeed/effectiveSpeed for UI */
+    get currentSynthesisRate() {
+      return CANONICAL_SYNTHESIS_RATE
     },
     get currentSessionSegment() {
       return positionSegmentIndex >= 0 ? sessionSegments[positionSegmentIndex] ?? null : null

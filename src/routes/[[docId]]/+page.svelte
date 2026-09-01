@@ -158,8 +158,6 @@
   ): boolean {
     const scope = currentScopeSegment(segments)
     return isScopeInvalidatedByClearedKeys(scope, clearedKeys, entries, {
-      effectiveSpeed: playback.effectiveSpeed,
-      defaultSpeed: settings.speed,
       resolveVoiceEdge: lang => playback.effectiveVoiceEdge(lang),
     })
   }
@@ -172,16 +170,10 @@
         shouldReset = true
       } else {
         const segments = splitTtsSegments(content)
-        const effective = playback.effectiveSpeed
-        const fallback = settings.speed
         shouldReset = segments.some(seg => {
           const voiceEdge = settings.resolveVoiceForSegment(seg.lang)?.edge
           if (!voiceEdge) return false
-          if (effective === fallback) return !!peekCachedSynthesis(seg.text, voiceEdge, effective)
-          return (
-            !!peekCachedSynthesis(seg.text, voiceEdge, effective) ||
-            !!peekCachedSynthesis(seg.text, voiceEdge, fallback)
-          )
+          return !!peekCachedSynthesis(seg.text, voiceEdge)
         })
         if (!shouldReset) {
           const snapshot = cacheEntries.length ? cacheEntries : await getSynthesisCacheEntries()
@@ -224,25 +216,20 @@
     if (shouldReset) playback.resetSession()
   }
 
-  // Cache keys for every segment of the current document that has a voice;
-  // only these can exist in the per-document client cache. Use the session
-  // playback rate so chip-switched speeds are evicted instead of orphaned.
-  function documentSynthesisCacheKeys(rate = playback.effectiveSpeed): string[] {
+  // Cache keys for every segment of the current document that has a voice.
+  // Synthesis is cached at the canonical 1x rate and reused across playback
+  // speeds, so document eviction only needs one key per text+voice pair.
+  function documentSynthesisCacheKeys(): string[] {
     const content = settings.content
     if (!content.trim()) return []
     return splitTtsSegments(content).flatMap(segment => {
       const voice = settings.resolveVoiceForSegment(segment.lang)
-      return voice?.edge ? [synthesisCacheKey(segment.text, voice.edge, rate)] : []
+      return voice?.edge ? [synthesisCacheKey(segment.text, voice.edge)] : []
     })
   }
 
   function resetPlaybackAndCache() {
-    const effective = playback.effectiveSpeed
-    const fallback = settings.speed
-    const keys =
-      effective !== fallback
-        ? [...documentSynthesisCacheKeys(effective), ...documentSynthesisCacheKeys(fallback)]
-        : documentSynthesisCacheKeys(effective)
+    const keys = documentSynthesisCacheKeys()
     playback.resetSession()
     void clearDocumentSynthesisCache(editor.cacheScopeId, keys)
   }

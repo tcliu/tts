@@ -1,4 +1,5 @@
 import type { SynthesizedSegment } from './tts-client'
+import { CANONICAL_SYNTHESIS_RATE } from './tts-cache-key'
 
 // Type-only cycle is intentional: tts-client owns the domain type while this
 // module owns its storage shape; erased types keep the runtime dependency
@@ -96,6 +97,8 @@ function toPersistedRecord(key: string, segment: SynthesizedSegment, meta?: Pers
 
 export function toSynthesizedSegment(record: PersistedSynthesisRecord): SynthesizedSegment {
   // Explicit field list so storage fields cannot leak into in-memory segments.
+  // Legacy records written under the old rate-keyed cache logic may carry a
+  // non-canonical rate; force canonical so playback scaling divides by 1.
   return {
     blob: record.blob,
     boundaries: record.boundaries,
@@ -103,6 +106,7 @@ export function toSynthesizedSegment(record: PersistedSynthesisRecord): Synthesi
     spokenStart: record.spokenStart,
     spokenEnd: record.spokenEnd,
     etag: record.etag,
+    rate: CANONICAL_SYNTHESIS_RATE,
   }
 }
 
