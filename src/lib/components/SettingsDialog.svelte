@@ -197,7 +197,6 @@
             size="sm"
             disabled={cacheStats === null || cacheStats.segments === 0}
             ariaLabel={text.clearAllCacheEntries}
-            className="text-sm"
             onClick={onClearCache}>
             {text.clearAll}
           </Button>
@@ -206,7 +205,6 @@
             size="sm"
             disabled={cacheStats === null || cacheStats.segments === 0}
             ariaLabel={text.viewSynthesisCache}
-            className="text-sm"
             onClick={onViewCache}>
             {text.view}
           </Button>

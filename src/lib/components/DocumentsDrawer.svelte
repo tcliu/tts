@@ -89,7 +89,7 @@
   style:will-change={dragging ? 'transform' : undefined}
   use:dragCloseLeft={dragCloseOptions}>
   <div class="flex flex-none flex-col gap-2 px-3">
-    <Button variant="outline" accent="cyan" size="sm" onClick={onNew} className="justify-center px-2.5 py-1.5 text-sm">
+    <Button variant="outline" accent="cyan" size="sm" onClick={onNew} className="justify-center">
       {#snippet icon()}
         <PlusIcon className="h-4 w-4" />
       {/snippet}

@@ -835,8 +835,7 @@
           ariaPressed={playback.isPlaying}
           disabled={playback.voiceSwitching || (playback.isPlaying ? false : !settings.canPlay)}
           ariaLabel={playback.isPlaying ? text.stop : text.playback}
-          onClick={playback.isPlaying ? playback.stopPlayback : playback.startPlayback}
-          className="px-2.5 py-1.5 text-sm">
+          onClick={playback.isPlaying ? playback.stopPlayback : playback.startPlayback}>
           {#snippet icon()}
             {#if playback.isPlaying}
               <StopIcon className="h-4 w-4" />
@@ -854,8 +853,7 @@
           size="sm"
           disabled={editor.currentDocId ? !editor.isDirty : !settings.canPlay}
           ariaLabel={text.reset}
-          onClick={editor.resetEditor}
-          className="px-2.5 py-1.5 text-sm">
+          onClick={editor.resetEditor}>
           {#snippet icon()}
             <RefreshIcon className="h-4 w-4" />
           {/snippet}
@@ -869,8 +867,7 @@
           size="sm"
           disabled={editor.saveDisabled}
           ariaLabel={text.save}
-          onClick={editor.saveDocument}
-          className="px-2.5 py-1.5 text-sm">
+          onClick={editor.saveDocument}>
           {#snippet icon()}
             <SaveIcon className="h-4 w-4" />
           {/snippet}
@@ -885,7 +882,6 @@
           disabled={!settings.canPlay}
           ariaLabel={text.copy}
           onClick={() => void editor.copyEditorContent()}
-          className="px-2.5 py-1.5 text-sm"
           icon={copyIcon}>
           {text.copy}
         </Button>
@@ -901,8 +897,7 @@
               if (editor.currentDocId) {
                 editor.requestDeleteDocument(editor.currentDocId)
               }
-            }}
-            className="px-2.5 py-1.5 text-sm">
+            }}>
             {#snippet icon()}
               <DeleteIcon className="h-4 w-4" />
             {/snippet}
@@ -918,8 +913,7 @@
           ariaPressed={showMetadata}
           disabled={!settings.canPlay}
           ariaLabel={text.info}
-          onClick={() => (showMetadata = !showMetadata)}
-          className="px-2.5 py-1.5 text-sm">
+          onClick={() => (showMetadata = !showMetadata)}>
           {#snippet icon()}
             <InfoIcon className="h-4 w-4" />
           {/snippet}
@@ -933,8 +927,7 @@
             variant="secondary"
             size="sm"
             ariaLabel={text.clone}
-            onClick={editor.requestCloneDocument}
-            className="px-2.5 py-1.5 text-sm">
+            onClick={editor.requestCloneDocument}>
             {#snippet icon()}
               <DocumentIcon className="h-4 w-4" />
             {/snippet}
@@ -949,12 +942,7 @@
         ondragover={handleUploadDragOver}
         ondragleave={handleUploadDragLeave}
         ondrop={handleUploadDrop}>
-        <Button
-          variant="secondary"
-          size="sm"
-          ariaLabel={text.upload}
-          onClick={editor.requestUpload}
-          className="px-2.5 py-1.5 text-sm">
+        <Button variant="secondary" size="sm" ariaLabel={text.upload} onClick={editor.requestUpload}>
           {#snippet icon()}
             <UploadIcon className="h-4 w-4" />
           {/snippet}
