@@ -1,4 +1,4 @@
-import { synthesisCacheKey } from './tts-cache-key'
+import { CANONICAL_SYNTHESIS_RATE, synthesisCacheKey } from './tts-cache-key'
 import type { TtsBoundary } from './tts-reference'
 import {
   clearPersistedSegments,
@@ -18,6 +18,7 @@ export interface SynthesizedSegment {
   spokenStart?: number
   spokenEnd?: number
   etag?: string
+  rate?: number
 }
 
 const SYNTHESIS_CACHE_MAX = 200
@@ -71,22 +72,23 @@ function cacheSynthesis(
   entry: SynthesizedSegment,
   options?: { persist?: boolean; docId?: string; text?: string; voiceId?: string; rate?: number },
 ) {
+  const cachedEntry = { ...entry, rate: options?.rate ?? entry.rate ?? CANONICAL_SYNTHESIS_RATE }
+  if ((options?.persist ?? true) && cachedEntry.blob) {
+    void putPersistedSegment(key, cachedEntry, {
+      docId: options?.docId,
+      text: options?.text,
+      voiceId: options?.voiceId,
+      rate: cachedEntry.rate,
+    })
+  }
   if (synthesisCache.has(key)) {
     synthesisCache.delete(key)
   }
-  synthesisCache.set(key, entry)
+  synthesisCache.set(key, cachedEntry)
   while (synthesisCache.size > SYNTHESIS_CACHE_MAX) {
     const oldest = synthesisCache.keys().next().value
     if (oldest === undefined) break
     synthesisCache.delete(oldest)
-  }
-  if ((options?.persist ?? true) && entry.blob) {
-    void putPersistedSegment(key, entry, {
-      docId: options?.docId,
-      text: options?.text,
-      voiceId: options?.voiceId,
-      rate: options?.rate,
-    })
   }
 }
 
@@ -146,6 +148,7 @@ async function requestSynthesis({
     spokenStart: data.spokenStart,
     spokenEnd: data.spokenEnd,
     etag: response.headers.get('ETag') ?? undefined,
+    rate: CANONICAL_SYNTHESIS_RATE,
   }
   return { notModified: false, segment }
 }
@@ -153,14 +156,13 @@ async function requestSynthesis({
 export function peekCachedSynthesis(
   textToSpeak: string,
   voiceId: string,
-  rate: number,
 ): SynthesizedSegment | null {
   const trimmed = textToSpeak.trim()
-  const cacheKey = synthesisCacheKey(trimmed, voiceId, rate)
+  const cacheKey = synthesisCacheKey(trimmed, voiceId, CANONICAL_SYNTHESIS_RATE)
   const cached = synthesisCache.get(cacheKey)
   // Same blob guard as getCachedSynthesis so warm-up never trusts an entry
   // that cannot play.
-  return cached?.blob ? cached : null
+  return cached?.blob ? { ...cached, rate: CANONICAL_SYNTHESIS_RATE } : null
 }
 
 export async function getCachedSynthesis(
@@ -173,7 +175,7 @@ export async function getCachedSynthesis(
   const trimmed = textToSpeak.trim()
   const cacheKey = synthesisCacheKey(trimmed, voiceId, rate)
   const cached = synthesisCache.get(cacheKey)
-  if (cached?.blob) return cached
+  if (cached?.blob) return { ...cached, rate: cached.rate ?? CANONICAL_SYNTHESIS_RATE }
 
   // The re-verification here covers paths hydration misses: play before
   // hydration lands, failed hydration, or mid-session LRU eviction.
@@ -181,13 +183,13 @@ export async function getCachedSynthesis(
   if (local) {
     const result = await requestSynthesis({ textToSpeak: trimmed, voiceId, rate, signal, etag: local.etag })
     if (!result.notModified) {
-      cacheSynthesis(cacheKey, result.segment, { docId, text: trimmed, voiceId, rate })
+      cacheSynthesis(cacheKey, result.segment, { docId, text: trimmed, voiceId, rate: result.segment.rate })
       return result.segment
     }
     // Already persisted; rewriting it would duplicate an identical record
     // write and re-run the eviction scan.
-    cacheSynthesis(cacheKey, local, { persist: false })
-    return local
+    cacheSynthesis(cacheKey, local, { persist: false, rate: local.rate ?? CANONICAL_SYNTHESIS_RATE })
+    return { ...local, rate: local.rate ?? CANONICAL_SYNTHESIS_RATE }
   }
 
   const result = await requestSynthesis({ textToSpeak: trimmed, voiceId, rate, signal })
@@ -196,7 +198,7 @@ export async function getCachedSynthesis(
     // a local copy; reaching here without one is an inconsistent server reply.
     throw new Error('Synthesis cache returned 304 without a client ETag')
   }
-  cacheSynthesis(cacheKey, result.segment, { docId, text: trimmed, voiceId, rate })
+  cacheSynthesis(cacheKey, result.segment, { docId, text: trimmed, voiceId, rate: result.segment.rate })
   return result.segment
 }
 

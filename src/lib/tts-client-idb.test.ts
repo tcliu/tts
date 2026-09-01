@@ -79,7 +79,16 @@ describe('tts-client-idb', () => {
     const restored = await mod.getPersistedSegment('k1')
     expect(restored).not.toBeNull()
     expect(restored?.blob).toBe('audio-bytes')
-    expect(restored).toEqual(segment())
+    // Legacy rate values are coerced to canonical so playback scaling stays
+    // consistent across the fix/cache-rate-1-reuse migration.
+    expect(restored).toEqual({
+      ...segment(),
+      wordBoundaries: [],
+      spokenStart: undefined,
+      spokenEnd: undefined,
+      etag: undefined,
+      rate: 1,
+    })
     expect(restored).not.toHaveProperty('key')
     expect(restored).not.toHaveProperty('savedAt')
     expect(restored).not.toHaveProperty('junk')

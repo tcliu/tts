@@ -4,6 +4,7 @@ import { logAccess, logEvent, getRequestIp } from '$lib/server/logging'
 import { synthesizeEdgeTts } from '$lib/server/edge-tts'
 import { synthesisCacheKey, getCachedSynthesis, setCachedSynthesis, matchesIfNoneMatch } from '$lib/server/tts-cache'
 import { isRateLimited } from '$lib/server/rate-limit'
+import { CANONICAL_SYNTHESIS_RATE } from '$lib/tts-cache-key'
 import { REFERENCE_LANGUAGES, SPEEDS } from '$lib/tts-reference'
 
 const KNOWN_VOICES = new Set(REFERENCE_LANGUAGES.flatMap(language => language.voices.map(voice => voice.edge)))
@@ -53,9 +54,10 @@ export const POST: RequestHandler = async event => {
     return json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': '60' } })
   }
 
-  const key = synthesisCacheKey(text, voice, rate)
+  const synthesisRate = CANONICAL_SYNTHESIS_RATE
+  const key = synthesisCacheKey(text, voice, synthesisRate)
   const startedAt = Date.now()
-  logAccess({ event, action: 'tts_synthesize_start', details: { key, voice, rate, text_length: text.length } })
+  logAccess({ event, action: 'tts_synthesize_start', details: { key, voice, rate, synthesis_rate: synthesisRate, text_length: text.length } })
 
   try {
     const cached = await getCachedSynthesis(key)
@@ -70,6 +72,7 @@ export const POST: RequestHandler = async event => {
             key,
             voice,
             rate,
+            synthesis_rate: synthesisRate,
             text_length: text.length,
             elapsed_ms: Date.now() - startedAt,
           },
@@ -86,6 +89,7 @@ export const POST: RequestHandler = async event => {
           key,
           voice,
           rate,
+          synthesis_rate: synthesisRate,
           text_length: text.length,
           audio_bytes: Buffer.byteLength(cached.value.audio, 'base64'),
           elapsed_ms: Date.now() - startedAt,
@@ -94,7 +98,7 @@ export const POST: RequestHandler = async event => {
       return json(cached.value, { headers: { 'Cache-Control': 'no-store', ETag: cached.etag } })
     }
 
-    const result = await synthesizeEdgeTts(text, voice, rate)
+    const result = await synthesizeEdgeTts(text, voice, synthesisRate)
     const payload = {
       audio: Buffer.from(result.audio).toString('base64'),
       boundaries: result.boundaries,
@@ -110,6 +114,7 @@ export const POST: RequestHandler = async event => {
         key,
         voice,
         rate,
+        synthesis_rate: synthesisRate,
         text_length: text.length,
         audio_bytes: result.audio.byteLength,
         boundary_count: result.boundaries.length,
@@ -125,6 +130,7 @@ export const POST: RequestHandler = async event => {
         key,
         voice,
         rate,
+        synthesis_rate: synthesisRate,
         text_length: text.length,
         error: error instanceof Error ? error.message : 'Unknown error',
         elapsed_ms: Date.now() - startedAt,
