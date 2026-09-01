@@ -278,13 +278,7 @@
           onpointerdown={event => event.preventDefault()}
           onclick={() => void select(option.value)}
           onmouseenter={() => selection.set(index)}
-          class={`${optionRowClass} ${
-            index === selection.index
-              ? 'bg-slate-800 text-cyan-200'
-              : option.value === activeValue
-                ? 'bg-cyan-500/15 text-cyan-200'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200'
-           }`}>
+          class={`${optionRowClass} ${index === selection.index ? 'bg-slate-800 text-cyan-200' : 'text-slate-300'}`}>
           <span class="min-w-0 truncate">{option.label}</span>
         </button>
       {/each}

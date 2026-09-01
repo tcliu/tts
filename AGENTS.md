@@ -94,6 +94,10 @@ Project-specific development conventions for the TTS web app.
   and routes `onClose` through `dismissDrawerAndFocusTrigger` to return focus;
   disable the gesture when docked (see `references/responsive-design.md`).
 - Playback toolbar is a container-query ladder (`@container`, 9 bands `tiny→full` in `toolbar-ladder.ts`) with paired `TOOLBAR_BANDS`/`INLINE_AT_BAND`/`REVEAL_CLASS` literals; thresholds are calibrated at `--text-sm` worst-Latin (`--container-tts-*` in `src/styles.css`: `4→352`, `5→432`, `6→508`) and all three tables must change together.
+- Icon-only `Button` uses uniform padding (`p-1.5` for `sm`, `p-2.5` for `md`) so vertical/horizontal match; text buttons keep `px`/`py` distinction.
+- Dropdown/menu option panels show at most one highlighted row at a time, shared by mouse hover and keyboard (`ArrowUp/Down`, `Home/End`). The highlight follows `useListSelection` index via `onmouseenter` and `selection.move`; the selected value is `aria-selected`/`aria-checked` + checkmark only, not a second background.
+- Option panels hide only when their trigger is clipped or out of viewport after scroll (via `useDropdown` `isHostHidden` check), not on any ancestor scroll; scrolling the panel's own list never dismisses.
+- Synthesis cache dialog's table spans the dialog width (`w-full`), caps body at `max-h-[min(50vh,32rem)]` with `overflow-auto` so the dialog itself never vertically scrolls; pagination handles overflow. The table is the shared `DataTable` (`containerClass`/`tableClass` `w-full`, `resizable` via `use-column-resize`, `storageKey` `synthesis-cache`).
 
 ## Theming
 

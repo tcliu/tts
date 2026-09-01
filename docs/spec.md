@@ -41,6 +41,7 @@ coherent system instead of a new parallel one.
 
 - Reuse the `CodeEditor` component pattern for the line-numbered editor.
 - Reuse the `SelectDropdown` pattern for voice and speed selection.
+- Reuse `DataTable`/`Pagination` (with `use-column-resize` and `column-width-storage`) for the Synthesis cache dialog; the table spans `w-full`, caps body at `50vh`/`32rem`, and is sortable/paginated/resizable.
 - Reuse dialog structure and dismissal behavior from `BaseDialog`.
 - Reuse shared icon components or add new icon components rather than inlining
   SVGs in feature code.

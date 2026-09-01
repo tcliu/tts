@@ -155,8 +155,15 @@
   with `0.25–3` range and `0.25` step).
 - The Synthesis tab contains a Synthesis concurrency field that caps how many
   segments synthesize in parallel and a Cache entry showing how many segments
-  have stored synthesis and the total size on disk, with a button to clear
-  every cached audio file.
+  have stored synthesis and the total size on disk, with buttons to clear
+  every cached audio file and to view cached segments in a dialog.
+- The Synthesis cache dialog shows a full-width table (`Lang`, `Voice`, `Text`,
+  `Size`, `Saved`) that is sortable by header, paginated, and searchable;
+  the table body caps at `50vh`/`32rem` and scrolls internally so the dialog
+  itself never shows a vertical scrollbar. Each cached segment is keyed by
+  `text + voice` and may be shared across documents, so no `Document` column
+  is shown. Playback at any speed reuses the same `1×` cached audio via
+  `playbackRate`.
 - The dialog keeps the same outer size across all tabs, anchored to the Voices
   tab (largest content); switching to Speed or Synthesis does not shrink the
   dialog.

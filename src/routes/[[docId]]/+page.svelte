@@ -744,8 +744,8 @@
               : state.active
                 ? 'bg-slate-800 text-cyan-200'
                 : option.value === settings.locale
-                  ? 'bg-cyan-500/15 text-cyan-200'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
+                  ? 'text-cyan-200'
+                  : 'text-slate-300'
           }`}
         onSelect={index => selectLanguage(UI_LANGUAGE_OPTIONS[index].value)}>
         {#snippet icon()}
@@ -772,8 +772,8 @@
               : state.active
                 ? 'bg-slate-800 text-cyan-200'
                 : option.value === settings.theme
-                  ? 'bg-cyan-500/15 text-cyan-200'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
+                  ? 'text-cyan-200'
+                  : 'text-slate-300'
           }`}
         onSelect={index => selectTheme(themeOptions[index].value)}>
         {#snippet icon()}

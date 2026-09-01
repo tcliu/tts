@@ -58,7 +58,7 @@
         ? 'cursor-not-allowed text-slate-600'
         : state.active
           ? 'bg-slate-800 text-cyan-200'
-          : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'
+          : 'text-slate-300'
     }`
   }
 </script>

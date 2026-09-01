@@ -25,13 +25,11 @@ export interface UseDropdownOptions {
   /** Reactive accessor for the container the outside-click helper watches. */
   container: () => HTMLElement | null
   /**
-   * Called when a scroll moves an ancestor of the trigger (or the page
-   * itself) while open, so a panel portalled to `body` would no longer be
-   * anchored to its trigger. Skipped when the scroll target is inside the
-   * panel (a scrollable option list) or inside an unrelated surface (e.g.
-   * the editor during playback highlight auto-scroll), which must not
-   * dismiss the open panel. Omit to opt out (e.g. surfaces that should
-   * stay open across scrolls).
+   * Called when the trigger becomes hidden (out of viewport or clipped by
+   * an ancestor scroll container) after a scroll while open. The panel is
+   * portalled to `body`, so hiding avoids a detached floating panel.
+   * Scrolling the panel's own list or an unrelated surface where the
+   * trigger stays visible does not dismiss. Omit to opt out.
    */
   onScrollClose?: () => void
 }
@@ -90,23 +88,48 @@ export function useDropdown(get: () => UseDropdownOptions): void {
     }
     window.addEventListener('keydown', handleEscapeCapture, true)
 
+    function isHostHidden(host: HTMLElement): boolean {
+      if (!host.isConnected) return true
+      if (typeof (host as unknown as { checkVisibility?: (opts?: unknown) => boolean }).checkVisibility === 'function') {
+        try {
+          if (!(host as unknown as { checkVisibility: (opts: unknown) => boolean }).checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })) {
+            return true
+          }
+        } catch {}
+      }
+      const rect = host.getBoundingClientRect()
+      if (rect.width === 0 && rect.height === 0) return true
+      if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) return true
+      let el: HTMLElement | null = host.parentElement
+      while (el) {
+        const style = getComputedStyle(el)
+        const overflow = `${style.overflow}${style.overflowX}${style.overflowY}`
+        if (/(auto|scroll|hidden|clip)/.test(overflow)) {
+          const parentRect = el.getBoundingClientRect()
+          if (rect.bottom < parentRect.top || rect.top > parentRect.bottom || rect.right < parentRect.left || rect.left > parentRect.right) {
+            return true
+          }
+        }
+        el = el.parentElement
+      }
+      return false
+    }
+
     function handleScroll(event: Event) {
       if (!get().isOpen()) return
       const target = event.target
       const panelEl = get().panel?.()
-      const host = get().container()
-      if (target instanceof Node) {
-        // Scrolling the panel's own option list must not dismiss it.
-        if (panelEl?.contains(target)) return
-        // Only close when the scroll moves an ancestor of the trigger (or
-        // the page/document root), i.e. the anchored panel would detach.
-        // Unrelated surfaces (e.g. the editor auto-scrolling its playback
-        // highlight) must not close an open dropdown.
-        if (host && !host.contains(target)) {
-          if (target !== document && target !== document.documentElement && target !== document.body) return
+      if (target instanceof Node && panelEl?.contains(target)) return
+      // Defer visibility check until after scroll layout, and only hide when
+      // the trigger itself is clipped/out of view (out of scrollable area).
+      requestAnimationFrame(() => {
+        if (!get().isOpen()) return
+        const hostEl = get().container()
+        if (!hostEl) return
+        if (isHostHidden(hostEl)) {
+          get().onScrollClose?.()
         }
-      }
-      get().onScrollClose?.()
+      })
     }
     if (onScrollClose) {
       window.addEventListener('scroll', handleScroll, { capture: true, passive: true })

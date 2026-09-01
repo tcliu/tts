@@ -264,7 +264,7 @@
       onpointerdown={(event) => event.preventDefault()}
       onclick={() => select(option.value)}
       onmouseenter={() => selection.set(index)}
-      class={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-xs outline-none transition ${index === selection.index ? 'bg-slate-800 text-slate-100' : option.value === activeValue ? VARIANT_ACTIVE[variant] : 'text-slate-300'}`}>
+      class={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-xs outline-none transition ${index === selection.index ? 'bg-slate-800 text-slate-100' : 'text-slate-300'}`}>
       <span class="min-w-0 truncate">{option.label}</span>
       {#if option.value === activeValue}
         <CheckIcon className="h-3 w-3 shrink-0 opacity-70" />
