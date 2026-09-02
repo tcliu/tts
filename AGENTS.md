@@ -77,14 +77,17 @@ Project-specific development conventions for the TTS web app.
   raw controls use `onpointerdown={e => e.preventDefault()}` for the same effect.
 - Settings dialog keeps the same outer size across all tabs, anchored to the
   Voices tab (largest content); Speed and Synthesis tabs must not shrink the
-  dialog — fix the outer height and scroll the Voices list internally.
+  dialog — use `BaseDialog` `height="fixed"` (`h-[min(78vh,640px)] min-h-[480px] sm:min-h-[520px]`) and scroll the Voices list internally.
 - Keyboard focus in text/number inputs should use a single custom `focus-visible` treatment (no double ring or orange native outline); when Tab focuses a number input, place the caret at the end instead of selecting the whole value.
 - BaseDialog spans full screen (sheet) only on phone-class viewports: the fixed
   scrim carries `@container` (its width equals the viewport) and the padded
   centering row plus panel use `@max-md:*` — the default Tailwind *container*
   token `md` (28rem/448px), not the viewport `md` breakpoint (48rem/768px);
   don't confuse the two. The scrim padding (`px-3 py-4`) lives on the centering
-  row, not the scrim, because a container cannot query itself.
+  row, not the scrim, because a container cannot query itself. Dialog sizing is
+  preset via `maxWidth` (`md`/`lg`/`xl`/`2xl`/`3xl`/`4xl`/`5xl`/`6xl`/`7xl`/`fit`/`wide`) and
+  `height` (`auto`/`fixed`/`tall`); callers pick a preset instead of hardcoding
+  `w-`/`h-` in `className`.
 - Settings Voices tab follows the aligned label + control-group row pattern (see `references/responsive-design.md`): voice model group = spoken-language selector (if any) + voice-model selector; support four states a) `label | spoken | voice`, b) `label | voice` (no spoken), c) `label` / `spoken + voice`, d) `label` / `spoken` / `voice` with voice-group left aligned across languages and stacked `flex-col` below `sm` so shrinking forces label and voice-group into separate rows.
 - Documents drawer is docked at `lg` with two states: expanded (`lg:static lg:w-72`) and header-toggle collapsed (`lg:static lg:w-0`), and overlayed below it (`absolute inset-y-0 left-0 w-64 z-20`) on smaller viewports; keep `DOCKED_QUERY` (`(min-width: 64rem)`) in `+page.svelte` synced with `DocumentsDrawer`'s `lg:*` classes and gate overlay-only dismissals (click-outside, Escape, swipe) with `isDocked`.
 - A docked-collapsed drawer must be non-interactive (`inert` + `aria-hidden`) so keyboard focus cannot move into hidden controls.
@@ -100,7 +103,8 @@ Project-specific development conventions for the TTS web app.
 - Icon-only `Button` uses uniform padding (`p-1.5` for `sm`, `p-2.5` for `md`) so vertical/horizontal match; text buttons keep `px`/`py` distinction.
 - Dropdown/menu option panels show at most one highlighted row at a time, shared by mouse hover and keyboard (`ArrowUp/Down`, `Home/End`). The highlight follows `useListSelection` index via `onmouseenter` and `selection.move`; the selected value is `aria-selected`/`aria-checked` + checkmark only, not a second background.
 - Option panels hide only when their trigger is clipped or out of viewport after scroll (via `useDropdown` `isHostHidden` check), not on any ancestor scroll; scrolling the panel's own list never dismisses.
-- Synthesis cache dialog's table spans the dialog width (`w-full`), uses `DataTable` `fillHeight` (`min-h-0 overflow-auto`) inside the `BaseDialog` `max-h-[min(84vh,760px)] flex-col` shell so the dialog itself never vertically scrolls; pagination handles overflow. The table is the shared `DataTable` (`tableClass` `w-full`, `resizable` via `use-column-resize`, `storageKey` `synthesis-cache`) following the admin Users table (`src/lib/components/AdminUsersView.svelte` in `../share-text`).
+- Synthesis cache dialog's table spans the dialog width (`w-full`), uses `DataTable` `fillHeight` (`min-h-0 overflow-auto`) inside the `BaseDialog` `maxWidth="wide" height="tall"` (`w-[min(96vw,96rem)] h-[min(88vh,860px)] flex-col`) shell so the dialog itself never vertically scrolls; pagination handles overflow. The table is the shared `DataTable` (`tableClass` `w-full`, `resizable` via `use-column-resize`, `storageKey` `synthesis-cache`) following the admin Users table (`src/lib/components/AdminUsersView.svelte` in `../share-text`).
+- Dialogs containing `DataTable` keep a fixed outer height via `BaseDialog` `height` preset (`fixed`/`tall`) and let the table `fillHeight` fill the remaining vertical space with pagination pinned at the bottom; do not size the dialog to the table height.
 
 ## Theming
 
