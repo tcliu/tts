@@ -36,22 +36,11 @@
   import UploadIcon from '$lib/icons/UploadIcon.svelte'
 
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
-  import { REFERENCE_LANGUAGES, SPEED_OPTIONS, splitTtsSegments } from '$lib/tts-reference'
-  import { synthesisCacheKey } from '$lib/tts-cache-key'
-  import { isScopeInvalidatedByClearedKeys } from '$lib/tts-cache-clear'
+  import { REFERENCE_LANGUAGES, SPEED_OPTIONS } from '$lib/tts-reference'
   import ChipDropdown from '$lib/components/ChipDropdown.svelte'
-  import {
-    clearSynthesisCache,
-    clearSynthesisCacheEntries,
-    clearDocumentSynthesisCache,
-    getSynthesisCacheEntries,
-    getSynthesisCacheStats,
-    peekCachedSynthesis,
-    type SynthesisCacheEntry,
-    type SynthesisCacheStats,
-  } from '$lib/tts-client'
   import { usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
   import { useMetadata, RESYNC_DEBOUNCE_MS } from '$lib/use-metadata.svelte'
+  import { useSynthesisCache } from '$lib/use-synthesis-cache.svelte'
   import PlaybackSlider from '$lib/components/PlaybackSlider.svelte'
   import MetadataPanel from '$lib/components/MetadataPanel.svelte'
   import { useSettings, type UiTheme } from '$lib/use-settings.svelte'
@@ -119,120 +108,16 @@
   // outlives panel close/reopen so toggling Info keeps the expanded layout.
   let metadataExpanded = $state(false)
 
-  // Client-side synthesis cache facts for the Settings dialog; null until the
-  // first IndexedDB scan for the currently open dialog lands.
-  let cacheStats = $state<SynthesisCacheStats | null>(null)
-  let cacheDialogOpen = $state(false)
-  let cacheDialogLoading = $state(false)
-  let cacheEntries = $state<SynthesisCacheEntry[]>([])
-
-  $effect(() => {
-    if (!settingsOpen) return
-    let current = true
-    void getSynthesisCacheStats().then(stats => {
-      if (current) cacheStats = stats
-    })
-    return () => {
-      current = false
-    }
+  const synthesisCache = useSynthesisCache({
+    settings,
+    playback,
+    getCacheScopeId: () => editor.cacheScopeId,
+    getEditor: () => editorRef,
   })
 
-  function currentScopeSegment(segments?: ReturnType<typeof splitTtsSegments>) {
-    const content = settings.content
-    if (!content.trim()) return null
-    const playbackSegment = playback.currentSessionSegment
-    if (playbackSegment) {
-      return playbackSegment
-    }
-    const resolvedSegments = segments ?? splitTtsSegments(content)
-    const caret =
-      editorRef?.getCaretPosition?.() ?? editorRef?.getSelectionRange?.()?.from ?? null
-    if (caret == null) return null
-    return resolvedSegments.find(seg => caret >= seg.indexStart && caret <= seg.indexEnd) ?? null
-  }
-
-  function currentScopeInvalidatedByClearedKeys(
-    clearedKeys: string[],
-    entries = cacheEntries,
-    segments?: ReturnType<typeof splitTtsSegments>,
-  ): boolean {
-    const scope = currentScopeSegment(segments)
-    return isScopeInvalidatedByClearedKeys(scope, clearedKeys, entries, {
-      resolveVoiceEdge: lang => playback.effectiveVoiceEdge(lang),
-    })
-  }
-
-  async function clearClientSynthesisCache() {
-    const content = settings.content
-    let shouldReset = false
-    if (content.trim()) {
-      if (playback.hasSession || playback.synthesizedCount > 0) {
-        shouldReset = true
-      } else {
-        const segments = splitTtsSegments(content)
-        shouldReset = segments.some(seg => {
-          const voiceEdge = playback.effectiveVoiceEdge(seg.lang)
-          if (!voiceEdge) return false
-          return !!peekCachedSynthesis(seg.text, voiceEdge)
-        })
-        if (!shouldReset) {
-          const snapshot = cacheEntries.length ? cacheEntries : await getSynthesisCacheEntries()
-          if (snapshot.length > 0) {
-            const allKeys = snapshot.map(entry => entry.key)
-            shouldReset = currentScopeInvalidatedByClearedKeys(allKeys, snapshot, segments)
-          }
-        }
-      }
-    }
-    await clearSynthesisCache()
-    cacheStats = { segments: 0, bytes: 0 }
-    cacheEntries = []
-    if (shouldReset) playback.resetSession()
-  }
-
-  async function loadCacheEntries() {
-    cacheDialogLoading = true
-    try {
-      cacheEntries = await getSynthesisCacheEntries()
-    } finally {
-      cacheDialogLoading = false
-    }
-  }
-
-  async function openCacheDialog() {
-    cacheDialogOpen = true
-    await loadCacheEntries()
-  }
-
-  async function clearSelectedCacheEntries(keys: string[]) {
-    const shouldReset = keys.length > 0 && currentScopeInvalidatedByClearedKeys(keys)
-    await clearSynthesisCacheEntries(keys)
-    const nextEntries = cacheEntries.filter(entry => !keys.includes(entry.key))
-    cacheEntries = nextEntries
-    cacheStats = {
-      segments: nextEntries.length,
-      bytes: nextEntries.reduce((total, entry) => total + entry.bytes, 0),
-    }
-    if (shouldReset) playback.resetSession()
-  }
-
-  // Cache keys for every segment of the current document that has a voice.
-  // Synthesis is cached at the canonical 1x rate and reused across playback
-  // speeds, so document eviction only needs one key per text+voice pair.
-  function documentSynthesisCacheKeys(): string[] {
-    const content = settings.content
-    if (!content.trim()) return []
-    return splitTtsSegments(content).flatMap(segment => {
-      const edge = playback.effectiveVoiceEdge(segment.lang)
-      return edge ? [synthesisCacheKey(segment.text, edge)] : []
-    })
-  }
-
-  function resetPlaybackAndCache() {
-    const keys = documentSynthesisCacheKeys()
-    playback.resetSession()
-    void clearDocumentSynthesisCache(editor.cacheScopeId, keys)
-  }
+  $effect(() => {
+    synthesisCache.setStatsOpen(settingsOpen)
+  })
 
   const THEME_MENU_OPTIONS: { value: UiTheme }[] = [
     { value: 'dark' },
@@ -1054,7 +939,7 @@
                 showMetadata = false
                 void tick().then(() => editorRef?.focus())
               }}
-              onResetCache={resetPlaybackAndCache} />
+              onResetCache={synthesisCache.resetCurrentDocument} />
           {/if}
         </div>
       </div>
@@ -1076,32 +961,32 @@
         synthesisConcurrency={settings.synthesisConcurrency}
         voiceSelections={settings.voiceSelections}
         groupSelections={settings.groupSelections}
-        cacheStats={cacheStats}
+        cacheStats={synthesisCache.stats}
         onCancel={() => (settingsOpen = false)}
         onSelectVoice={settings.selectVoice}
         onSelectGroup={settings.selectGroup}
         onSelectSpeed={settings.setSpeed}
         onSelectConcurrent={settings.setSynthesisConcurrency}
-        onClearCache={() => void clearClientSynthesisCache()}
-        onViewCache={() => void openCacheDialog()} />
+        onClearCache={() => void synthesisCache.clearAll()}
+        onViewCache={() => void synthesisCache.openDialog()} />
     {:catch}
       <!-- Chunk load failed; drop the dialog instead of leaving an unhandled rejection. -->
       {settingsOpen = false}
     {/await}
   {/if}
 
-  {#if cacheDialogOpen}
+  {#if synthesisCache.dialogOpen}
     {#await import('$lib/components/SynthesisCacheDialog.svelte') then { default: SynthesisCacheDialog }}
       <SynthesisCacheDialog
         locale={settings.locale}
-        entries={cacheEntries}
-        loading={cacheDialogLoading}
-        onCancel={() => (cacheDialogOpen = false)}
-        onClearSelected={clearSelectedCacheEntries}
+        entries={synthesisCache.entries}
+        loading={synthesisCache.dialogLoading}
+        onCancel={synthesisCache.closeDialog}
+        onClearSelected={synthesisCache.clearSelected}
         onBeforePlay={() => playback.stopPlayback()} />
     {:catch}
       <!-- Chunk load failed; drop the dialog instead of leaving an unhandled rejection. -->
-      {cacheDialogOpen = false}
+      {synthesisCache.closeDialog()}
     {/await}
   {/if}
 

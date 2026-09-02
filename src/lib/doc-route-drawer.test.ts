@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 const pageSource = readFileSync('src/routes/[[docId]]/+page.svelte', 'utf-8')
 const drawerSource = readFileSync('src/lib/components/DocumentsDrawer.svelte', 'utf-8')
+const synthesisCacheSource = readFileSync('src/lib/use-synthesis-cache.svelte.ts', 'utf-8')
 
 describe('doc route drawer layout contract', () => {
   it('renders the documents drawer regardless of drawerOpen state', () => {
@@ -29,9 +30,10 @@ describe('doc route drawer layout contract', () => {
   })
 
   it('invalidates cache clears by the current scope segment instead of any document segment', () => {
-    expect(pageSource).toContain('function currentScopeSegment(')
-    expect(pageSource).toContain('const playbackSegment = playback.currentSessionSegment')
-    expect(pageSource).toContain('function currentScopeInvalidatedByClearedKeys(')
-    expect(pageSource).toContain('const shouldReset = keys.length > 0 && currentScopeInvalidatedByClearedKeys(keys)')
+    expect(pageSource).toContain('const synthesisCache = useSynthesisCache({')
+    expect(synthesisCacheSource).toContain('function currentScopeSegment(')
+    expect(synthesisCacheSource).toContain('const playbackSegment = deps.playback.currentSessionSegment')
+    expect(synthesisCacheSource).toContain('function currentScopeInvalidatedByClearedKeys(')
+    expect(synthesisCacheSource).toContain('const shouldReset = keys.length > 0 && currentScopeInvalidatedByClearedKeys(keys)')
   })
 })
