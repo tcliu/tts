@@ -171,7 +171,7 @@
       } else {
         const segments = splitTtsSegments(content)
         shouldReset = segments.some(seg => {
-          const voiceEdge = settings.resolveVoiceForSegment(seg.lang)?.edge
+          const voiceEdge = playback.effectiveVoiceEdge(seg.lang)
           if (!voiceEdge) return false
           return !!peekCachedSynthesis(seg.text, voiceEdge)
         })
@@ -223,8 +223,8 @@
     const content = settings.content
     if (!content.trim()) return []
     return splitTtsSegments(content).flatMap(segment => {
-      const voice = settings.resolveVoiceForSegment(segment.lang)
-      return voice?.edge ? [synthesisCacheKey(segment.text, voice.edge)] : []
+      const edge = playback.effectiveVoiceEdge(segment.lang)
+      return edge ? [synthesisCacheKey(segment.text, edge)] : []
     })
   }
 

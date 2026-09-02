@@ -92,6 +92,10 @@ coherent system instead of a new parallel one.
   per-language voice overrides. Both live only in the active session (cleared
   when the session is re-primed or reset), never touch the persisted settings,
   and the pipeline resolves each segment's voice at launch time through them.
+  Before synthesis the effective voice is the persisted default; after a
+  cache hit or successful synthesis the voice is pinned to that written
+  language so the chip stays sticky across position navigation until a manual
+  chip pick overwrites it or cache clear / reset wipes it.
 - Changing the voice model during playback pauses at the current word: the
   spoken position maps to a character offset through the old voice's word
   boundaries (duration-ratio interpolation when boundaries are missing), the
@@ -153,6 +157,9 @@ coherent system instead of a new parallel one.
 - `$lib/server/edge-tts` speaks to the Edge read-aloud WebSocket service with
   an overall timeout; any close that bypasses the completion signal fails the
   request rather than leaving it pending.
+- `POST /api/tts/synthesize` is rate-limited per IP (`TTS_RATE_LIMIT_MAX` per
+  60s, default `60` via `src/lib/server/rate-limit.ts` `RETRY_AFTER_S`); cache
+  hits / `304` are exempt and do not count toward the budget.
 - `$lib/server/tts-cache` persists synthesis results on disk under `.tts/`
   behind an injectable directory, keyed by the shared `$lib/tts-cache-key`
   builder, with a time-to-live envelope stamped with a content-hash ETag;

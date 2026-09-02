@@ -256,6 +256,23 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     return resolveEffectiveVoiceForWrittenLang(toWrittenLang(segmentLang))
   }
 
+  function pinVoiceForWrittenLang(languageCode: string, edge: string) {
+    if (!edge) return
+    if (session.voiceSelections.has(languageCode)) return
+    const next = new Map(session.voiceSelections)
+    next.set(languageCode, edge)
+    session.voiceSelections = next
+  }
+
+  function pinVoicesForSegments(segments: { lang: string }[]) {
+    for (const segment of segments) {
+      const written = toWrittenLang(segment.lang)
+      if (session.voiceSelections.has(written)) continue
+      const edge = resolveEffectiveVoice(segment.lang)?.edge
+      if (edge) pinVoiceForWrittenLang(written, edge)
+    }
+  }
+
   // Plain Map (not $state) — only read imperatively in launch/resynthesize/
   // playback loop. Generations are monotonic and intentionally never cleared;
   // stale tasks from prior runs are already guarded by `controller.cancelled`.
@@ -923,6 +940,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
               wordBoundaries: synth.wordBoundaries ?? [],
               rate,
               voiceName: voice.name,
+              voiceEdge: voice.edge,
               duration,
               spokenStart: synth.spokenStart,
               spokenEnd: synth.spokenEnd,
@@ -974,6 +992,10 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
               spokenEnd: base.spokenEnd ?? existingMeta.spokenEnd,
             })
           }
+          // Pin the voice for this language so the chip stays on the synthesized
+          // voice after playback (default before synthesis, sticky after). Manual
+          // picks overwrite the pin; cache clear wipes it via resetSession.
+          pinVoiceForWrittenLang(toWrittenLang(res.effectiveLang), res.voiceEdge)
         })
         tasks.set(index, task)
         return task
@@ -1100,9 +1122,11 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   function refreshSessionFromCache() {
     // Surface only already-cached segments so the status strip and slider can
     // appear without the Info panel; uncached synthesis stays deferred to Play.
+    // Resolve through the effective voice (pinned + default) so a manual chip
+    // pick is respected, and pin the voice after a hit so the chip stays sticky.
     for (let index = 0; index < session.segments.length; index += 1) {
       const segment = session.segments[index]
-      const voice = deps.settings.resolveVoiceForSegment(segment.lang)
+      const voice = resolveEffectiveVoice(segment.lang)
       if (!voice?.edge) {
         continue
       }
@@ -1125,6 +1149,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
           segment.indexStart,
         ),
       )
+      pinVoiceForWrittenLang(toWrittenLang(segment.lang), voice.edge)
     }
     metadataAvailable = Object.keys(segmentMetaMap).length > 0
   }
@@ -1364,6 +1389,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       playbackElapsed = 0
       playbackDuration = segmentDurationAt(0)
       deps.getEditor()?.clearPlaybackHighlight?.()
+      pinVoicesForSegments(reusable)
       return true
     }
     const lang = resolveScopedPlaybackLang(scoped.text, content)
@@ -1399,6 +1425,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     playbackElapsed = 0
     playbackDuration = segmentDurationAt(0)
     deps.getEditor()?.clearPlaybackHighlight?.()
+    pinVoiceForWrittenLang(toWrittenLang(lang), voice.edge)
     return true
   }
 
@@ -1472,6 +1499,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         currentSegmentIndex = 1
         playbackElapsed = 0
         playbackDuration = segmentDurationAt(0)
+        pinVoicesForSegments(reusable)
         updateHighlightForPosition(0, 0)
         const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
         currentController = controller
@@ -1563,6 +1591,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
         scoped.from,
       )
       recordSegmentMeta(0, scopedMeta)
+      pinVoiceForWrittenLang(toWrittenLang(lang), voice.edge)
       const scopedHighlights = highlightBoundaries(scopedMeta, scopedMeta.wordBoundaries ?? scopedMeta.boundaries)
       const applyHighlight = (currentTime: number) => {
         const relativeAt = currentTime - (synth.spokenStart ?? 0)

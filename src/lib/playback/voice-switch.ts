@@ -80,6 +80,15 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
       baseOffset,
     )
     deps.recordSegmentMeta(index, meta)
+    // Pin the voice for this language so the chip stays sticky after synthesis
+    // (default before synthesis, sticky after). Manual picks overwrite via
+    // recordSessionVoiceOverride; this only fills the gap.
+    const written = toWrittenLang(effectiveLang)
+    if (voiceEdge && !deps.getSessionVoiceSelections().has(written)) {
+      const next = new Map(deps.getSessionVoiceSelections())
+      next.set(written, voiceEdge)
+      deps.setSessionVoiceSelections(next)
+    }
   }
 
   async function overrideSegmentLanguage(index: number, lang: string): Promise<void> {
