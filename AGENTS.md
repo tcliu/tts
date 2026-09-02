@@ -38,6 +38,7 @@ Project-specific development conventions for the TTS web app.
   `ip=<ip> action=<action> ...` line carrying key identifying info, and async
   operations also log `_start`/`_end` with `elapsed_ms`; never log secrets,
   tokens, or document contents.
+- JSON payloads and exported metadata files use `snake_case` field names per `references/api-client.md`; map to `camelCase` only at the app boundary.
 - Written language is the top-level `code` in `reference-languages.json`; spoken variants are `aliases` there (e.g. `yue`→`zh`) resolved via `toWrittenLang` in `tts-reference.ts` with fixed groups in `SPOKEN_GROUP` (e.g. `yue`→`Cantonese`); voice variants are the per-voice `group` (e.g. Mandarin/Cantonese/Taiwanese under `zh`).
 - Temporary scratch files (plans, proposals, scratch notes) go in `.tmp/`,
   never in source directories.
