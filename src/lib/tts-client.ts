@@ -11,6 +11,15 @@ import {
   toSynthesizedSegment,
 } from './tts-client-idb'
 
+export class RateLimitedError extends Error {
+  retryAfter: number
+  constructor(message: string, retryAfter: number) {
+    super(message)
+    this.name = 'RateLimitedError'
+    this.retryAfter = retryAfter
+  }
+}
+
 export interface SynthesizedSegment {
   blob: Blob
   boundaries: TtsBoundary[]
@@ -122,6 +131,15 @@ async function requestSynthesis({
 
   if (response.status === 304) {
     return { notModified: true }
+  }
+
+  if (response.status === 429) {
+    const retryAfter = Number(response.headers.get('Retry-After') ?? '60')
+    const data = await response.json().catch(() => ({}))
+    throw new RateLimitedError(
+      typeof data.error === 'string' ? data.error : 'Too many requests',
+      Number.isFinite(retryAfter) ? retryAfter : 60,
+    )
   }
 
   if (!response.ok) {

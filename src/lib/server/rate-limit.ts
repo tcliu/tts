@@ -1,5 +1,10 @@
-const WINDOW_MS = 60_000
-const MAX_REQUESTS = 20
+export const WINDOW_MS = 60_000
+export const RETRY_AFTER_S = 60
+export const DEFAULT_MAX_REQUESTS = 60
+export const MAX_REQUESTS = (() => {
+  const raw = Number(process.env.TTS_RATE_LIMIT_MAX)
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_MAX_REQUESTS
+})()
 
 interface Bucket {
   count: number

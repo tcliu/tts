@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types'
 import { logAccess, logEvent, getRequestIp } from '$lib/server/logging'
 import { synthesizeEdgeTts } from '$lib/server/edge-tts'
 import { synthesisCacheKey, getCachedSynthesis, setCachedSynthesis, matchesIfNoneMatch } from '$lib/server/tts-cache'
-import { isRateLimited } from '$lib/server/rate-limit'
+import { isRateLimited, RETRY_AFTER_S } from '$lib/server/rate-limit'
 import { CANONICAL_SYNTHESIS_RATE } from '$lib/tts-cache-key'
 import { REFERENCE_LANGUAGES, SPEEDS } from '$lib/tts-reference'
 
@@ -44,14 +44,6 @@ export const POST: RequestHandler = async event => {
   }
   if (!(SPEEDS as readonly number[]).includes(rate)) {
     return json({ error: 'Invalid rate' }, { status: 400 })
-  }
-  if (isRateLimited(ip)) {
-    logEvent({
-      ip,
-      action: 'tts_synthesize_rate_limited',
-      details: { voice, rate, text_length: text.length, retry_after_s: 60, level: 'WARN' },
-    })
-    return json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': '60' } })
   }
 
   const synthesisRate = CANONICAL_SYNTHESIS_RATE
@@ -105,6 +97,15 @@ export const POST: RequestHandler = async event => {
         spoken_end: cached.value.spokenEnd,
       }
       return json(wireValue, { headers: { 'Cache-Control': 'no-store', ETag: cached.etag } })
+    }
+
+    if (isRateLimited(ip)) {
+      logEvent({
+        ip,
+        action: 'tts_synthesize_rate_limited',
+        details: { voice, rate, text_length: text.length, retry_after_s: RETRY_AFTER_S, level: 'WARN' },
+      })
+      return json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(RETRY_AFTER_S) } })
     }
 
     const result = await synthesizeEdgeTts(text, voice, synthesisRate)
