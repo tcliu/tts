@@ -129,12 +129,23 @@ async function requestSynthesis({
     throw new Error(typeof data.error === 'string' ? data.error : 'Synthesis failed.')
   }
 
-  const data = (await response.json()) as {
+  const raw = (await response.json()) as {
     audio: string
     boundaries: TtsBoundary[]
     wordBoundaries?: TtsBoundary[]
+    word_boundaries?: TtsBoundary[]
     spokenStart?: number
+    spoken_start?: number
     spokenEnd?: number
+    spoken_end?: number
+  }
+  // Wire is snake_case per AGENTS.md; accept camel for backward compat during rollout.
+  const data = {
+    audio: raw.audio,
+    boundaries: raw.boundaries,
+    wordBoundaries: raw.wordBoundaries ?? raw.word_boundaries,
+    spokenStart: raw.spokenStart ?? raw.spoken_start,
+    spokenEnd: raw.spokenEnd ?? raw.spoken_end,
   }
   const binary = atob(data.audio)
   const bytes = new Uint8Array(binary.length)

@@ -132,6 +132,8 @@ export interface UiText {
   segmentLanguage: string
   expandSentence: string
   collapseSentence: string
+  expandAll: string
+  collapseAll: string
   playWord: string
   noWords: string
   tableExpand: string
@@ -290,6 +292,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     segmentLanguage: 'Segment language',
     expandSentence: 'Expand words',
     collapseSentence: 'Collapse words',
+    expandAll: 'Expand all',
+    collapseAll: 'Collapse all',
     playWord: 'Play word',
     noWords: 'No word timing.',
     tableExpand: '',
@@ -430,6 +434,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     segmentLanguage: '段落語言',
     expandSentence: '展開詞彙',
     collapseSentence: '收合詞彙',
+    expandAll: '全部展開',
+    collapseAll: '全部收合',
     playWord: '播放詞彙',
     noWords: '沒有詞彙時間資訊。',
     tableExpand: '',
@@ -570,6 +576,8 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     segmentLanguage: '段落语言',
     expandSentence: '展开词汇',
     collapseSentence: '收起词汇',
+    expandAll: '全部展开',
+    collapseAll: '全部收起',
     playWord: '播放词汇',
     noWords: '没有词汇时间信息。',
     tableExpand: '',

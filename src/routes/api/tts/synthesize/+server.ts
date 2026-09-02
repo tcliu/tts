@@ -95,18 +95,34 @@ export const POST: RequestHandler = async event => {
           elapsed_ms: Date.now() - startedAt,
         },
       })
-      return json(cached.value, { headers: { 'Cache-Control': 'no-store', ETag: cached.etag } })
+      // Wire format is snake_case per AGENTS.md/references/api-client.md; internal
+      // CachedSynthesis stays camelCase and is mapped at the boundary.
+      const wireValue = {
+        audio: cached.value.audio,
+        boundaries: cached.value.boundaries,
+        word_boundaries: cached.value.wordBoundaries,
+        spoken_start: cached.value.spokenStart,
+        spoken_end: cached.value.spokenEnd,
+      }
+      return json(wireValue, { headers: { 'Cache-Control': 'no-store', ETag: cached.etag } })
     }
 
     const result = await synthesizeEdgeTts(text, voice, synthesisRate)
-    const payload = {
+    const stored: import('$lib/server/tts-cache').CachedSynthesis = {
       audio: Buffer.from(result.audio).toString('base64'),
       boundaries: result.boundaries,
       wordBoundaries: result.wordBoundaries,
       spokenStart: result.spokenStart,
       spokenEnd: result.spokenEnd,
     }
-    const etag = await setCachedSynthesis(key, payload)
+    const etag = await setCachedSynthesis(key, stored)
+    const payload = {
+      audio: stored.audio,
+      boundaries: stored.boundaries,
+      word_boundaries: stored.wordBoundaries,
+      spoken_start: stored.spokenStart,
+      spoken_end: stored.spokenEnd,
+    }
     logAccess({
       event,
       action: 'tts_synthesize_complete',

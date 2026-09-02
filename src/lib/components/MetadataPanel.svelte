@@ -31,11 +31,11 @@
   const SENTENCE_COLS = ['w-6', 'w-6', 'w-10', 'w-14', 'w-12', ''] as const
   const WORD_COLS = ['w-6', 'w-10', 'w-14', ''] as const
 
-  function attachWordContainer(node: HTMLDivElement, sentenceIndex: number) {
-    wordContainers.set(sentenceIndex, node)
+  function attachWordContainer(node: HTMLDivElement, sentenceOffset: number) {
+    wordContainers.set(sentenceOffset, node)
     return {
       destroy() {
-        wordContainers.delete(sentenceIndex)
+        wordContainers.delete(sentenceOffset)
       }
     }
   }
@@ -64,11 +64,11 @@
     })
   })
 
-  function sentenceKey(row: { sentenceIndex: number }): number {
-    return row.sentenceIndex
+  function sentenceKey(row: { offset: number }): number {
+    return row.offset
   }
 
-  function toggleRow(row: { sentenceIndex: number; hasWords: boolean }) {
+  function toggleRow(row: { offset: number; hasWords: boolean }) {
     if (!row.hasWords) return
     const key = sentenceKey(row)
     const next = new Set(expandedRows)
@@ -77,8 +77,25 @@
     expandedRows = next
   }
 
-  function isExpanded(row: { sentenceIndex: number }): boolean {
+  function isExpanded(row: { offset: number }): boolean {
     return expandedRows.has(sentenceKey(row))
+  }
+
+  const visibleExpandableOffsets = $derived(metadata.rows.filter(row => row.hasWords).map(row => row.offset))
+  const allVisibleExpanded = $derived(
+    visibleExpandableOffsets.length > 0 && visibleExpandableOffsets.every(offset => expandedRows.has(offset)),
+  )
+
+  function toggleExpandAll() {
+    if (allVisibleExpanded) {
+      const next = new Set(expandedRows)
+      for (const offset of visibleExpandableOffsets) next.delete(offset)
+      expandedRows = next
+    } else {
+      const next = new Set(expandedRows)
+      for (const offset of visibleExpandableOffsets) next.add(offset)
+      expandedRows = next
+    }
   }
 </script>
 
@@ -152,6 +169,18 @@
         <span>{text.metadataStale}</span>
       {:else}
         <span>{text.segmentHint}</span>
+      {/if}
+      {#if visibleExpandableOffsets.length > 0}
+        <Button
+          variant="ghost"
+          size="sm"
+          ariaLabel={allVisibleExpanded ? text.collapseAll : text.expandAll}
+          tooltip={allVisibleExpanded ? text.collapseAll : text.expandAll}
+          preventFocusSteal
+          onClick={toggleExpandAll}
+          className="ml-auto border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:text-slate-200 focus-visible:ring-2 focus-visible:ring-cyan-500">
+          {allVisibleExpanded ? text.collapseAll : text.expandAll}
+        </Button>
       {/if}
     </div>
     {#if metadata.rows.length === 0}
@@ -247,7 +276,7 @@
                           </thead>
                         </table>
                       </div>
-                      <div tabindex="-1" class="max-h-64 overflow-auto outline-none" use:attachWordContainer={row.sentenceIndex}>
+                      <div tabindex="-1" class="max-h-64 overflow-auto outline-none" use:attachWordContainer={row.offset}>
                         <table class="w-full table-fixed border-collapse text-xs">
                           <colgroup>
                             {#each WORD_COLS as cls}

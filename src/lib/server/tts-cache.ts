@@ -77,14 +77,29 @@ export async function getCachedSynthesis(key: string): Promise<CachedSynthesisRe
   }
 
   try {
-    const envelope = JSON.parse(raw) as Partial<CacheEnvelope>
+    const rawEnvelope = JSON.parse(raw) as Partial<CacheEnvelope> & { value?: Record<string, unknown> }
     if (
-      typeof envelope.savedAt !== 'number' ||
-      Date.now() - envelope.savedAt > CACHE_TTL_MS ||
-      !envelope.value ||
-      typeof envelope.value.audio !== 'string'
+      typeof rawEnvelope.savedAt !== 'number' ||
+      Date.now() - rawEnvelope.savedAt > CACHE_TTL_MS ||
+      !rawEnvelope.value ||
+      typeof (rawEnvelope.value as { audio?: unknown }).audio !== 'string'
     ) {
       return null
+    }
+    // Normalize snake_case wire payloads (and legacy camel) to the internal
+    // camelCase CachedSynthesis shape so callers never branch on naming.
+    const v = rawEnvelope.value as Record<string, unknown>
+    const normalized: CachedSynthesis = {
+      audio: v.audio as string,
+      boundaries: (v.boundaries as TtsBoundary[]) ?? [],
+      wordBoundaries: (v.wordBoundaries as TtsBoundary[] | undefined) ?? (v.word_boundaries as TtsBoundary[] | undefined),
+      spokenStart: (v.spokenStart as number | undefined) ?? (v.spoken_start as number | undefined),
+      spokenEnd: (v.spokenEnd as number | undefined) ?? (v.spoken_end as number | undefined),
+    }
+    const envelope: CacheEnvelope = {
+      savedAt: rawEnvelope.savedAt as number,
+      etag: rawEnvelope.etag as string,
+      value: normalized,
     }
     // Envelopes written before etags existed lack one; derive it on read so
     // the cached audio keeps serving instead of forcing re-synthesis.
