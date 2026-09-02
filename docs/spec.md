@@ -25,9 +25,17 @@ coherent system instead of a new parallel one.
   - `use-settings.svelte.ts` owns user preferences, persistence, and voice
     resolution.
   - `use-playback.svelte.ts` owns the playback engine, session state, progress,
-    and status messaging.
+    and status messaging; selection-scope helpers live in
+    `src/lib/playback/selection-scope.ts`, duration scaling in
+    `src/lib/playback/timing.ts`, voice remapping in
+    `src/lib/playback/voice-remap.ts`, audio element lifecycle in
+    `src/lib/playback/audio.ts` via `createAudioPlayer`, highlight
+    computation in `src/lib/playback/highlight.ts`, segment metadata in
+    `src/lib/playback/segment-meta.ts`, and voice-switch serialization in
+    `src/lib/playback/voice-switch.ts` via `createVoiceSwitch`.
   - `use-metadata.svelte.ts` owns boundary rows, search/follow state, staleness,
-    and background resync.
+    and background resync; `MetadataPanel` keys expanded rows by stable
+    `offset` and offers a filtered bulk expand/collapse control.
   - `use-documents.svelte.ts` owns the `localStorage`-backed document store
     (list, save, rename, delete) and hydration.
   - `use-documents-drawer.svelte.ts` owns drawer open state and name search.
@@ -135,9 +143,13 @@ coherent system instead of a new parallel one.
 
 ## Synthesis service
 
-- The client posts `{ text, voice, rate }` to `POST /api/tts/synthesize`.
-- The endpoint validates the voice against the reference voice list, caps text
-  length, and returns base64 MP3 audio with sentence-boundary metadata.
+ - The client posts `{ text, voice, rate }` to `POST /api/tts/synthesize`.
+ - The endpoint validates the voice against the reference voice list, caps text
+   length, and returns base64 MP3 audio with sentence-boundary metadata as
+   `snake_case` fields (`word_boundaries`, `spoken_start`, `spoken_end`) per
+   `references/api-client.md`; the client maps to `camelCase` at the boundary
+   and accepts legacy `camelCase` during rollout, and `$lib/server/tts-cache`
+   normalizes both shapes on read.
 - `$lib/server/edge-tts` speaks to the Edge read-aloud WebSocket service with
   an overall timeout; any close that bypasses the completion signal fails the
   request rather than leaving it pending.

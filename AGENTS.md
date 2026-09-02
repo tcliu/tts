@@ -117,6 +117,9 @@ Project-specific development conventions for the TTS web app.
 
 - Follow `references/svelte.md` for Svelte 5 runes and effect rules; component
   attributes stay camelCase in this project.
+- Follow `references/js-ts.md` for module design; split by coherent
+  responsibility, keep dependency flow one-way, and avoid micro-modules and
+  over-fragmentation.
 - Follow `references/tailwind.md` for literal utility classes and runtime style
   values.
 - Follow `references/tailwind-theming.md` for the attribute-driven palette

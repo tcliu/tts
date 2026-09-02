@@ -134,12 +134,17 @@
 - The panel's column headers are localized with the rest of the interface.
 - Activating a row (pointer or keyboard) replays the session starting from that
   sentence.
-- A search field filters rows by text, offset, or language.
-- A follow toggle scrolls the panel to keep the spoken row visible; scrolling
-  respects reduced-motion preferences.
-- Editing the editor content clears the rows and marks them stale; a status hint
-  shows the rows were cleared, and the panel shows the cached segment rows again
-  after a short pause once playback re-reads the synthesis cache.
+ - A search field filters rows by text, offset, or language.
+ - A follow toggle scrolls the panel to keep the spoken row visible; scrolling
+   respects reduced-motion preferences.
+ - Each sentence with word timing has a per-row expand control revealing its word
+   table; a bulk control above the table expands or collapses all currently
+   visible word tables at once (filtered rows only, keyboard reachable, `Expand
+   all` / `Collapse all` labels, offset-stable keys so filtering does not
+   reopen the wrong rows).
+ - Editing the editor content clears the rows and marks them stale; a status hint
+   shows the rows were cleared, and the panel shows the cached segment rows again
+   after a short pause once playback re-reads the synthesis cache.
 
 ## Settings dialog
 
