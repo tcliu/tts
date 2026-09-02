@@ -353,7 +353,7 @@
   }
 </script>
 
-<BaseDialog title={text.synthesisCacheDetailsTitle} maxWidth="7xl" closeLabel={text.close} onCancel={onCancel} className="flex max-h-[min(84vh,760px)] flex-col">
+<BaseDialog title={text.synthesisCacheDetailsTitle} maxWidth="wide" height="tall" closeLabel={text.close} onCancel={onCancel}>
   <div class="flex min-h-0 flex-1 flex-col gap-1.5">
     <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
       <div class="min-w-0 flex-1">

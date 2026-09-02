@@ -9,13 +9,14 @@
   interface Props {
     title?: string
     className?: string
-    maxWidth?: 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '6xl' | '7xl' | 'fit'
+    maxWidth?: 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | '7xl' | 'fit' | 'wide'
+    height?: 'auto' | 'fixed' | 'tall'
     closeLabel: string
     onCancel: () => void
     children?: import('svelte').Snippet
   }
 
-  let { title, className = '', maxWidth = 'md', closeLabel, onCancel, children }: Props = $props()
+  let { title, className = '', maxWidth = 'md', height = 'auto', closeLabel, onCancel, children }: Props = $props()
 
   let dialogIndex = 0
   let dialogRef = $state<HTMLElement | null>(null)
@@ -27,13 +28,29 @@
     lg: 'max-w-lg',
     xl: 'max-w-xl',
     '2xl': 'max-w-2xl',
+    '3xl': 'max-w-3xl',
     '4xl': 'max-w-4xl',
+    '5xl': 'max-w-5xl',
     '6xl': 'max-w-6xl',
     '7xl': 'max-w-7xl',
     fit: 'w-fit max-w-[90vw]',
+    wide: 'w-[min(96vw,96rem)] max-w-[96rem]',
   } as const
 
-  const sizeClass = $derived(maxWidth === 'fit' ? maxWidthClasses.fit : `w-full ${maxWidthClasses[maxWidth]}`)
+  const heightClasses = {
+    auto: '',
+    fixed: 'h-[min(78vh,640px)] min-h-[480px] sm:min-h-[520px]',
+    tall: 'h-[min(88vh,860px)]',
+  } as const
+
+  const sizeClass = $derived.by(() => {
+    const widthClass =
+      maxWidth === 'fit' || maxWidth === 'wide'
+        ? maxWidthClasses[maxWidth]
+        : `w-full ${maxWidthClasses[maxWidth] ?? maxWidthClasses.md}`
+    const hClass = heightClasses[height ?? 'auto']
+    return [widthClass, hClass].filter(Boolean).join(' ')
+  })
 
   onMount(() => {
     openDialogCount += 1

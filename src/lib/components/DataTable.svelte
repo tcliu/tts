@@ -290,8 +290,8 @@
 
   <div tabindex="-1" class={`${fillHeight ? FILL_CONTAINER_CLASS : containerClass} outline-none`} bind:this={tableContainer}>
     <table
-      class="border-separate border-spacing-0 text-sm [&_tr:last-child_td]:border-b-0 {managedWidths ? '' : `w-full ${tableClass}`}"
-      style={managedWidths ? `table-layout:fixed;width:${totalWidth}px;` : ''}>
+      class="border-separate border-spacing-0 text-sm [&_tr:last-child_td]:border-b-0 {managedWidths ? 'min-w-full' : `w-full min-w-full ${tableClass}`}"
+      style={managedWidths ? `table-layout:fixed;min-width:100%;width:${totalWidth}px;` : ''}>
       {#if managedWidths}
         <colgroup>
           {#if selectable}

@@ -77,7 +77,7 @@
   const MAX_SPEED = SPEEDS[SPEEDS.length - 1]
 </script>
 
-<BaseDialog title={text.settingsTitle} maxWidth="2xl" closeLabel={text.close} onCancel={onCancel} className="flex h-[min(78vh,640px)] min-h-[480px] flex-col sm:min-h-[520px]">
+<BaseDialog title={text.settingsTitle} maxWidth="2xl" height="fixed" closeLabel={text.close} onCancel={onCancel}>
   <Tabs
     ariaLabel={text.settingsTitle}
     state={{}}
