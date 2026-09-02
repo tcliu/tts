@@ -13,7 +13,7 @@ export function formatClock(sec: number): string {
 
 export const RESUME_EPSILON = 0.08
 
-export function highlightBoundaries(meta: BoundaryMeta | undefined, fallback: TtsBoundary[]): TtsBoundary[] {
+export function highlightBoundaries(meta: BoundaryMeta | undefined, fallback: TtsBoundary[] = []): TtsBoundary[] {
   if (meta?.wordBoundaries && meta.wordBoundaries.length > 0) {
     return meta.wordBoundaries
   }
