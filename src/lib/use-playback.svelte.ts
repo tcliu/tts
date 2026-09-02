@@ -104,8 +104,6 @@ export interface PlaybackHandle {
   readonly positionSegmentLang: string
   readonly positionLanguageCode: string
   readonly positionSegmentText: string
-  /** @deprecated — always 1; synthesis is canonical at 1×, speed via playbackRate */
-  readonly currentSynthesisRate: number
   readonly playbackElapsed: number
   readonly playbackDuration: number
   readonly totalElapsed: number
@@ -1831,10 +1829,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     },
     get segments() {
       return segmentMetaMap
-    },
-    /** @deprecated — always 1; use playbackSpeed/effectiveSpeed for UI */
-    get currentSynthesisRate() {
-      return CANONICAL_SYNTHESIS_RATE
     },
     get currentSessionSegment() {
       return positionSegmentIndex >= 0 ? session.segments[positionSegmentIndex] ?? null : null

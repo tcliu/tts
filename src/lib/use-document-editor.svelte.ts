@@ -9,6 +9,12 @@ export type DiscardKind = 'new' | 'open' | 'delete' | 'clone' | 'upload'
 
 export type UploadNotice = 'uploaded' | 'too-large' | 'read-failed' | 'binary'
 
+interface PendingAction {
+  kind: DiscardKind
+  id: string | null
+  file: File | null
+}
+
 const UPLOAD_NOTICE_MS = 4000
 
 function createDraftCacheId(): string {
@@ -40,9 +46,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   let overwriteConfirmOpen = $state(false)
 
   let discardDialogOpen = $state(false)
-  let pendingDocumentId = $state<string | null>(null)
-  let pendingDiscardKind = $state<DiscardKind>('open')
-  let pendingUploadFile = $state<File | null>(null)
+  let pendingAction = $state<PendingAction | null>(null)
 
   let deleteDialogOpen = $state(false)
   let deleteTargetId = $state<string | null>(null)
@@ -91,17 +95,14 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     file: File | null,
     needsDiscard: boolean,
   ): boolean {
+    const action: PendingAction = { kind, id, file }
     if (deps.isPlaybackActive?.()) {
-      pendingDiscardKind = kind
-      pendingDocumentId = id
-      pendingUploadFile = file
+      pendingAction = action
       playbackConfirmOpen = true
       return true
     }
     if (needsDiscard) {
-      pendingDiscardKind = kind
-      pendingDocumentId = id
-      pendingUploadFile = file
+      pendingAction = action
       discardDialogOpen = true
       return true
     }
@@ -214,17 +215,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
 
   function requestDeleteDocument(id: string) {
     const isCurrent = id === currentDocId
-    if (isCurrent && deps.isPlaybackActive?.()) {
-      pendingDiscardKind = 'delete'
-      pendingDocumentId = id
-      pendingUploadFile = null
-      playbackConfirmOpen = true
-      return
-    }
-    if (isCurrent && isDirty) {
-      pendingDiscardKind = 'delete'
-      pendingDocumentId = id
-      discardDialogOpen = true
+    if (isCurrent && gateNavigation('delete', id, null, isDirty)) {
       return
     }
     deleteTargetId = id
@@ -298,8 +289,8 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function requestUpload() {
-    pendingUploadFile = null
     if (gateNavigation('upload', null, null, isDirty)) return
+    pendingAction = null
     deps.openFilePicker()
   }
 
@@ -358,12 +349,11 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function clearPendingState() {
-    pendingDocumentId = null
-    pendingDiscardKind = 'open'
-    pendingUploadFile = null
+    pendingAction = null
   }
 
-  function executeDirectNavigation(kind: DiscardKind, id: string | null, file: File | null) {
+  function executePendingAction(action: PendingAction) {
+    const { kind, id, file } = action
     if (kind === 'open') {
       if (id) openDocument(id)
     } else if (kind === 'delete') {
@@ -382,13 +372,14 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function handleConfirmDiscard() {
-    const kind = pendingDiscardKind
-    const id = pendingDocumentId
-    const file = pendingUploadFile
+    const action = pendingAction
     discardDialogOpen = false
     clearPendingState()
-    if (kind === 'clone') {
-      const source = id ? documents.findById(id) : undefined
+    if (!action) {
+      return
+    }
+    if (action.kind === 'clone') {
+      const source = action.id ? documents.findById(action.id) : undefined
       if (source) {
         // Confirmed discard: drop the unsaved edits so the detached copy
         // carries only the source document's saved content.
@@ -398,9 +389,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
       }
       return
     }
-    // Defer to shared direct executor for the remaining kinds.
-    // pendingUploadFile already cleared via clearPendingState; restore file for upload.
-    executeDirectNavigation(kind, id, file)
+    executePendingAction(action)
   }
 
   function handleCancelDiscard() {
@@ -409,11 +398,14 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   }
 
   function handleConfirmPlayback() {
-    const kind = pendingDiscardKind
-    const id = pendingDocumentId
-    const file = pendingUploadFile
+    const action = pendingAction
     playbackConfirmOpen = false
     deps.resetPlaybackSession()
+    if (!action) {
+      clearPendingState()
+      return
+    }
+    const { kind, id, file } = action
     // After stopping playback, check if unsaved changes still require confirmation.
     const needsDiscard =
       (kind === 'open' && isDirty) ||
@@ -427,7 +419,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     }
     // No discard needed — execute the pending navigation directly.
     clearPendingState()
-    executeDirectNavigation(kind, id, file)
+    executePendingAction(action)
   }
 
   function handleCancelPlayback() {

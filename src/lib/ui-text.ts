@@ -41,8 +41,6 @@ export interface UiText {
   voiceSwitching: string
   tableSentence: string
   tableNumber: string
-  /** @deprecated — Info panel Time column removed (see metadata-panel-time-column-removal) */
-  tableTime: string
   tableOffset: string
   tableLang: string
   tableText: string
@@ -100,17 +98,10 @@ export interface UiText {
   themeMidnight: string
   themeMint: string
   themeLavender: string
-  /** @deprecated — use synthesisTab */
-  cacheTab: string
   synthesisTab: string
-  /** @deprecated — use cache label inside Synthesis tab (value is now "Cache") */
   synthesisCache: string
   segmentsUnit: string
   cachedSegmentsNone: string
-  /** @deprecated — use segmentsUnit */
-  documentsUnit: string
-  /** @deprecated — use cachedSegmentsNone */
-  cachedDocumentsNone: string
   clearSynthesisCache: string
   clearAllCacheEntries: string
   clearSelectedCacheEntries: string
@@ -206,7 +197,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     voiceSwitching: 'Switching voice…',
     tableSentence: 'Sent',
     tableNumber: '#',
-    tableTime: 'Time',
     tableOffset: 'Offset',
     tableLang: 'Lang',
     tableText: 'Text',
@@ -264,13 +254,10 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeMidnight: 'Midnight',
     themeMint: 'Mint',
     themeLavender: 'Lavender',
-    cacheTab: 'Synthesis',
     synthesisTab: 'Synthesis',
     synthesisCache: 'Cache',
     segmentsUnit: 'segments',
     cachedSegmentsNone: 'No cached segments.',
-    documentsUnit: 'segments',
-    cachedDocumentsNone: 'No cached segments.',
     clearSynthesisCache: 'Clear cache',
     clearAllCacheEntries: 'Clear all cached segments',
     clearSelectedCacheEntries: 'Clear selected cached segments',
@@ -348,7 +335,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     voiceSwitching: '正在切換語音…',
     tableSentence: '句',
     tableNumber: '#',
-    tableTime: '時間',
     tableOffset: '位移',
     tableLang: '語言',
     tableText: '文字',
@@ -406,13 +392,10 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeMidnight: '午夜',
     themeMint: '薄荷',
     themeLavender: '薰衣草',
-    cacheTab: '語音合成',
     synthesisTab: '語音合成',
     synthesisCache: '快取',
     segmentsUnit: '個片段',
     cachedSegmentsNone: '沒有已快取的片段。',
-    documentsUnit: '個片段',
-    cachedDocumentsNone: '沒有已快取的片段。',
     clearSynthesisCache: '清除快取',
     clearAllCacheEntries: '清除全部已快取片段',
     clearSelectedCacheEntries: '清除所選已快取片段',
@@ -490,7 +473,6 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     voiceSwitching: '正在切换语音…',
     tableSentence: '句',
     tableNumber: '#',
-    tableTime: '时间',
     tableOffset: '偏移',
     tableLang: '语言',
     tableText: '文本',
@@ -548,13 +530,10 @@ export const UI_TEXT: Record<UiLocale, UiText> = {
     themeMidnight: '午夜',
     themeMint: '薄荷',
     themeLavender: '薰衣草',
-    cacheTab: '语音合成',
     synthesisTab: '语音合成',
     synthesisCache: '缓存',
     segmentsUnit: '个片段',
     cachedSegmentsNone: '暂无已缓存的片段。',
-    documentsUnit: '个片段',
-    cachedDocumentsNone: '暂无已缓存的片段。',
     clearSynthesisCache: '清除缓存',
     clearAllCacheEntries: '清除全部已缓存片段',
     clearSelectedCacheEntries: '清除所选已缓存片段',
