@@ -43,6 +43,13 @@ import { createEmptySession, type PlaybackSession } from './playback/session'
 import { LocalizedPlaybackError } from './playback/types'
 import { createIsolatedPlayer } from './playback/isolated'
 import { createSelectionSync } from './playback/selection'
+import {
+  effectiveSegmentLang as voiceSessionEffectiveSegmentLang,
+  resolveEffectiveVoiceForWrittenLang as voiceSessionResolveEffectiveVoiceForWrittenLang,
+  resolveEffectiveVoice as voiceSessionResolveEffectiveVoice,
+  pinVoiceForWrittenLang as voiceSessionPinVoiceForWrittenLang,
+  pinVoicesForSegments as voiceSessionPinVoicesForSegments,
+} from './playback/voice-session'
 import type { SettingsHandle } from './use-settings.svelte'
 import { activeBoundaryAt, highlightBoundaries, locateBoundaryStartWithinOrBefore, locateSegmentStartByCharOffset, trimWhitespaceRange } from './playback/boundaries'
 import { readAudioDuration } from './playback/audio-helpers'
@@ -210,40 +217,23 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   function effectiveSegmentLang(index: number): string {
-    if (index < 0 || index >= session.segments.length) return ''
-    return session.langOverrides.get(index) ?? session.segments[index]?.lang ?? ''
+    return voiceSessionEffectiveSegmentLang(session, index)
   }
 
   function resolveEffectiveVoiceForWrittenLang(languageCode: string): TtsVoice | undefined {
-    const overrideEdge = session.voiceSelections.get(languageCode)
-    if (overrideEdge) {
-      const voice = REFERENCE_LANGUAGES.find(item => item.code === languageCode)?.voices.find(
-        item => item.edge === overrideEdge,
-      )
-      if (voice) return voice
-    }
-    return deps.settings.resolveVoiceForSegment(languageCode)
+    return voiceSessionResolveEffectiveVoiceForWrittenLang(session, languageCode, c => deps.settings.resolveVoiceForSegment(c))
   }
 
   function resolveEffectiveVoice(segmentLang: string): TtsVoice | undefined {
-    return resolveEffectiveVoiceForWrittenLang(toWrittenLang(segmentLang))
+    return voiceSessionResolveEffectiveVoice(session, segmentLang, c => deps.settings.resolveVoiceForSegment(c))
   }
 
   function pinVoiceForWrittenLang(languageCode: string, edge: string) {
-    if (!edge) return
-    if (session.voiceSelections.has(languageCode)) return
-    const next = new Map(session.voiceSelections)
-    next.set(languageCode, edge)
-    session.voiceSelections = next
+    return voiceSessionPinVoiceForWrittenLang(session, languageCode, edge)
   }
 
   function pinVoicesForSegments(segments: { lang: string }[]) {
-    for (const segment of segments) {
-      const written = toWrittenLang(segment.lang)
-      if (session.voiceSelections.has(written)) continue
-      const edge = resolveEffectiveVoice(segment.lang)?.edge
-      if (edge) pinVoiceForWrittenLang(written, edge)
-    }
+    return voiceSessionPinVoicesForSegments(session, segments, c => deps.settings.resolveVoiceForSegment(c))
   }
 
   // Plain Map (not $state) — only read imperatively in launch/resynthesize/

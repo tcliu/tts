@@ -28,20 +28,25 @@ coherent system instead of a new parallel one.
     and status messaging; selection-scope helpers live in
     `src/lib/playback/selection-scope.ts` and debounced selection sync in
     `src/lib/playback/selection.ts` via `createSelectionSync` (grouped
-    `session`/`playback`/`editor` deps), duration scaling in
-    `src/lib/playback/timing.ts` and progress helpers in
-    `src/lib/playback/progress.ts`, voice remapping in
-    `src/lib/playback/voice-remap.ts`, audio element lifecycle in
+    `session`/`playback`/`editor` deps), duration/clock helpers and
+    `syntheticRangeAt` in `src/lib/playback/timing.ts` (`formatClock`,
+    `RESUME_EPSILON`, `syntheticRangeAt`), progress helpers in
+    `src/lib/playback/progress.ts`, boundary helpers in
+    `src/lib/playback/boundaries.ts` (`highlightBoundaries`,
+    `activeBoundaryAt`, `locateSegmentStartByCharOffset`,
+    `locateBoundaryStartWithinOrBefore`, `trimWhitespaceRange`), audio helpers
+    in `src/lib/playback/audio-helpers.ts` (`readAudioDuration`), voice
+    remapping in `src/lib/playback/voice-remap.ts`, audio element lifecycle in
     `src/lib/playback/audio.ts` via `createAudioPlayer`, highlight
     computation in `src/lib/playback/highlight.ts`, segment metadata in
     `src/lib/playback/segment-meta.ts`, voice-switch serialization in
     `src/lib/playback/voice-switch.ts` via `createVoiceSwitch`, and shared
     playback types in `src/lib/playback/types.ts` (`SegmentMeta`,
-    `PlaybackController`, `LocalizedPlaybackError`).
+    `PlaybackController`, `LocalizedPlaybackError`); `playback-helpers.ts` is a
+    deprecated re-export shim.
   - `use-metadata.svelte.ts` owns boundary rows (pure builder in
     `src/lib/metadata/rows.ts` via `buildSortedRows`, active indices in
-    `src/lib/metadata/active-index.ts`, and shared `syntheticRangeAt` in
-    `src/lib/metadata/synthetic.ts`), search/follow state, staleness, and
+    `src/lib/metadata/active-index.ts`), search/follow state, staleness, and
     background resync; `MetadataPanel` keys expanded rows by stable `offset` and
     offers a filtered bulk expand/collapse control.
   - `use-documents.svelte.ts` owns the `localStorage`-backed document store
