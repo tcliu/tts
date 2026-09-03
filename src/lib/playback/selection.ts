@@ -4,7 +4,7 @@ import {
   highlightBoundaries,
   locateBoundaryStartWithinOrBefore,
   locateSegmentStartByCharOffset,
-} from '../playback-helpers'
+} from './boundaries'
 import type { SegmentMeta } from './types'
 
 export interface SessionDeps {

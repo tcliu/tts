@@ -1,6 +1,5 @@
 import { mergeBracketBoundaries, shouldUseRangeRows } from '../bracket-merge'
-import { syntheticRangeAt } from './synthetic'
-import { getSegmentDuration } from '../playback/timing'
+import { getSegmentDuration, syntheticRangeAt } from '../playback/timing'
 import type { SegmentMeta } from '../playback/types'
 
 export interface MetadataWord {

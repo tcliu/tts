@@ -1,4 +1,4 @@
-import { activeBoundaryAt, highlightBoundaries } from '../playback-helpers'
+import { activeBoundaryAt, highlightBoundaries } from './boundaries'
 import type { TtsBoundary } from '../tts-reference'
 import type { SegmentMeta } from './types'
 import type { TtsSegment } from '../tts-reference'

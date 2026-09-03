@@ -1,6 +1,6 @@
 import { splitTtsSegments } from '../tts-reference'
 import type { TtsBoundary } from '../tts-reference'
-import { trimWhitespaceRange } from '../playback-helpers'
+import { trimWhitespaceRange } from './boundaries'
 
 export function hasNonEmptySelection(range: { from: number; to: number } | null | undefined): boolean {
   return !!range && range.to > range.from

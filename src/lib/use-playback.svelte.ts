@@ -44,18 +44,11 @@ import { LocalizedPlaybackError } from './playback/types'
 import { createIsolatedPlayer } from './playback/isolated'
 import { createSelectionSync } from './playback/selection'
 import type { SettingsHandle } from './use-settings.svelte'
-import {
-  activeBoundaryAt,
-  formatClock,
-  highlightBoundaries,
-  locateBoundaryStartWithinOrBefore,
-  locateSegmentStartByCharOffset,
-  readAudioDuration,
-  RESUME_EPSILON,
-  trimWhitespaceRange,
-} from './playback-helpers'
+import { activeBoundaryAt, highlightBoundaries, locateBoundaryStartWithinOrBefore, locateSegmentStartByCharOffset, trimWhitespaceRange } from './playback/boundaries'
+import { readAudioDuration } from './playback/audio-helpers'
+import { formatClock, RESUME_EPSILON } from './playback/timing'
 
-export { formatClock, RESUME_EPSILON }
+export { formatClock, RESUME_EPSILON, readAudioDuration, trimWhitespaceRange, activeBoundaryAt, highlightBoundaries, locateSegmentStartByCharOffset, locateBoundaryStartWithinOrBefore }
 
 export type CodeEditorHandle = {
   getSelectionText: () => string

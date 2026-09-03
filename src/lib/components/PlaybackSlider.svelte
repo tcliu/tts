@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatClock } from '$lib/playback-helpers'
+  import { formatClock } from '$lib/playback/timing'
 
   interface Props {
     displayValue: number

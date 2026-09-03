@@ -1,11 +1,10 @@
 import { UI_TEXT } from '../ui-text'
 import { segmentLanguageName } from '../ui-text'
 import { splitHighlightRanges } from '../tts-reference'
-import { trimWhitespaceRange } from '../playback-helpers'
-import { highlightBoundaries, activeBoundaryAt } from '../playback-helpers'
+import { trimWhitespaceRange, highlightBoundaries, activeBoundaryAt } from './boundaries'
 import { activeHighlightRange } from '../tts-reference'
 import { getCachedSynthesis } from '../tts-client'
-import { readAudioDuration } from '../playback-helpers'
+import { readAudioDuration } from './audio-helpers'
 import { LocalizedPlaybackError, type SegmentMeta } from './types'
 
 export interface IsolatedDeps {

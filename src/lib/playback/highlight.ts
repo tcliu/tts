@@ -1,6 +1,5 @@
-import { activeBoundaryAt, highlightBoundaries } from '../playback-helpers'
+import { activeBoundaryAt, highlightBoundaries, trimWhitespaceRange } from './boundaries'
 import { activeHighlightRange } from '../tts-reference'
-import { trimWhitespaceRange } from '../playback-helpers'
 import type { SegmentMeta } from './types'
 import type { TtsSegment } from '../tts-reference'
 

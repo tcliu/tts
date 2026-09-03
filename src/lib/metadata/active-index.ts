@@ -1,6 +1,5 @@
 import { mergeBracketBoundaries, shouldUseRangeRows } from '../bracket-merge'
-import { getSegmentDuration } from '../playback/timing'
-import { syntheticRangeAt } from './synthetic'
+import { getSegmentDuration, syntheticRangeAt } from '../playback/timing'
 import type { SegmentMeta } from '../playback/types'
 
 export function activeBoundaryIndexFor(
