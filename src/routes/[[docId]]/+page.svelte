@@ -10,17 +10,6 @@
   import DocumentsDrawer from '$lib/components/DocumentsDrawer.svelte'
   import Menu from '$lib/components/Menu.svelte'
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
-  import SunIcon from '$lib/icons/SunIcon.svelte'
-  import MoonIcon from '$lib/icons/MoonIcon.svelte'
-  import FireIcon from '$lib/icons/FireIcon.svelte'
-  import LightBulbIcon from '$lib/icons/LightBulbIcon.svelte'
-  import SparklesIcon from '$lib/icons/SparklesIcon.svelte'
-  import CloudIcon from '$lib/icons/CloudIcon.svelte'
-  import ForestIcon from '$lib/icons/ForestIcon.svelte'
-  import MidnightIcon from '$lib/icons/MidnightIcon.svelte'
-  import MintIcon from '$lib/icons/MintIcon.svelte'
-  import LavenderIcon from '$lib/icons/LavenderIcon.svelte'
-  import PaletteIcon from '$lib/icons/PaletteIcon.svelte'
   import SettingsIcon from '$lib/icons/SettingsIcon.svelte'
   import InfoIcon from '$lib/icons/InfoIcon.svelte'
 
@@ -36,8 +25,22 @@
   import UploadIcon from '$lib/icons/UploadIcon.svelte'
 
   import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
-  import { REFERENCE_LANGUAGES, SPEED_OPTIONS } from '$lib/tts-reference'
+  import { SPEED_OPTIONS } from '$lib/tts-reference'
   import ChipDropdown from '$lib/components/ChipDropdown.svelte'
+  import { THEME_ICONS, THEME_MENU_OPTIONS } from '$lib/page/theme'
+  import PaletteIcon from '$lib/icons/PaletteIcon.svelte'
+  import {
+    buildChipLangOptions,
+    buildWrittenLabel,
+    buildVoiceChipOptions,
+    buildChipVoiceOptions,
+    handleLangChipSelect as handleLangChipSelectImpl,
+    handleVoiceChipSelect as handleVoiceChipSelectImpl,
+    speedChipOptions,
+  } from '$lib/page/chips'
+  import { createPlaybackArrowHandler as handlePlaybackArrowKeyImpl } from '$lib/page/toolbar'
+  import { panelActionDisabled as panelActionDisabledImpl } from '$lib/page/panel'
+  import { createWarmCacheController } from '$lib/page/warm-cache'
   import { usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
   import { useMetadata, RESYNC_DEBOUNCE_MS } from '$lib/use-metadata.svelte'
   import { useSynthesisCache } from '$lib/use-synthesis-cache.svelte'
@@ -119,32 +122,6 @@
     synthesisCache.setStatsOpen(settingsOpen)
   })
 
-  const THEME_MENU_OPTIONS: { value: UiTheme }[] = [
-    { value: 'dark' },
-    { value: 'ember' },
-    { value: 'forest' },
-    { value: 'midnight' },
-    { value: 'nebula' },
-    { value: 'light' },
-    { value: 'mint' },
-    { value: 'sepia' },
-    { value: 'lavender' },
-    { value: 'sky' },
-  ]
-
-  const THEME_ICONS: Record<UiTheme, typeof MoonIcon> = {
-    dark: MoonIcon,
-    ember: FireIcon,
-    forest: ForestIcon,
-    midnight: MidnightIcon,
-    nebula: SparklesIcon,
-    light: SunIcon,
-    mint: MintIcon,
-    sepia: LightBulbIcon,
-    lavender: LavenderIcon,
-    sky: CloudIcon,
-  }
-
   let fileInputRef = $state<HTMLInputElement | null>(null)
 
   let uploadDragActive = $state(false)
@@ -175,70 +152,16 @@
     THEME_MENU_OPTIONS.map(option => ({ value: option.value, label: themeLabels[option.value], icon: THEME_ICONS[option.value] })),
   )
 
-  // Written-only: spoken variants collapse (yue/Cantonese -> zh/Chinese,
-  // en-GB/en-US -> en/English). Voice models for each spoken variant stay
-  // as groups under the written language (e.g. zh groups Mandarin/Cantonese/Taiwanese).
-  const chipLangOptions = $derived(
-    REFERENCE_LANGUAGES.map(lang => ({
-      value: lang.code,
-      label: `${segmentLanguageName(settings.locale, lang.code)} · ${lang.code}`,
-    })),
-  )
-
-  const writtenLabel = $derived.by(() => {
-    const code = playback.positionLanguageCode
-    return code ? segmentLanguageName(settings.locale, code) : ''
-  })
-
-  const voiceChipOptions = $derived.by(() => {
-    const code = playback.positionLanguageCode
-    if (!code) return []
-    const lang = REFERENCE_LANGUAGES.find(item => item.code === code)
-    if (!lang) return []
-    return lang.voices
-  })
-
-  const chipVoiceOptions = $derived(
-    voiceChipOptions.map(voice => ({ value: voice.edge, label: chipVoiceLabel(voice) })),
-  )
-
+  const chipLangOptions = $derived(buildChipLangOptions(settings.locale))
+  const writtenLabel = $derived(buildWrittenLabel(settings.locale, playback.positionLanguageCode))
+  const voiceChipOptions = $derived(buildVoiceChipOptions(playback.positionLanguageCode))
+  const chipVoiceOptions = $derived(buildChipVoiceOptions(voiceChipOptions))
   const activeChipVoiceEdge = $derived(playback.positionVoiceEdge)
 
-  function chipVoiceLabel(voice: { name: string; gender: string; edge: string; group?: string }): string {
-    const locale = voice.edge.split('-').slice(0, 2).join('-')
-    const base = `${voice.name} · ${voice.gender} · ${locale}`
-    return voice.group ? `${base} · ${voice.group}` : base
-  }
+  function handleLangChipSelect(code: string) { return handleLangChipSelectImpl(playback, code) }
+  function handleVoiceChipSelect(edge: string) { return handleVoiceChipSelectImpl(playback, edge) }
 
-  async function handleLangChipSelect(code: string) {
-    const idx = playback.positionSegmentIndex
-    if (idx < 0) return
-    try {
-      await playback.overrideSegmentLanguage(idx, code)
-    } catch (error) {
-      console.error(error)
-    }
-  }
-
-  async function handleVoiceChipSelect(edge: string) {
-    const idx = playback.positionSegmentIndex
-    if (idx < 0) return
-    // Switching the voice model during playback only overrides the active
-    // session; the persisted default voice setting is left untouched.
-    try {
-      await playback.overrideSegmentVoice(idx, edge)
-    } catch (error) {
-      console.error(error)
-    }
-  }
-
-  const speedChipOptions = $derived(SPEED_OPTIONS)
-
-  function handleSpeedChipSelect(value: string) {
-    const next = Number(value)
-    if (!Number.isFinite(next)) return
-    playback.setPlaybackSpeed(next)
-  }
+  function handleSpeedChipSelect(value: string) { playback.setPlaybackSpeed(Number(value)) }
 
   const statusMessage = $derived(
     editor.uploadNotice === 'uploaded'
@@ -267,44 +190,25 @@
   )
 
   function handlePlaybackSliderInput(event: Event) {
-    const target = event.currentTarget
-    if (!(target instanceof HTMLInputElement)) {
-      return
-    }
-    playbackSliderDraft = target.value
+    const t = event.currentTarget
+    if (t instanceof HTMLInputElement) playbackSliderDraft = t.value
   }
 
   async function commitPlaybackSlider(event: Event) {
-    const target = event.currentTarget
-    if (!(target instanceof HTMLInputElement)) {
-      playbackSliderDraft = null
-      return
-    }
+    const t = event.currentTarget
+    if (!(t instanceof HTMLInputElement)) { playbackSliderDraft = null; return }
     playbackSliderDraft = null
-    await playback.seekTo(Number(target.value))
+    await playback.seekTo(Number(t.value))
   }
 
-  function isEditableActiveElement(el: Element | null): boolean {
-    if (!el) return false
-    if (el.tagName === 'TEXTAREA') return true
-    if (el.tagName === 'INPUT' && (el as HTMLInputElement).type !== 'range') return true
-    if ((el as HTMLElement).isContentEditable) return true
-    return false
-  }
-
-  function handlePlaybackArrowKey(event: KeyboardEvent) {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-    if (editorRef?.hasFocus?.()) return
-    if (isEditableActiveElement(document.activeElement)) return
-    if (dialogsOpen()) return
-    if (drawerPanelRef?.contains(document.activeElement)) return
-    if (playback.synthesizedCount === 0 || playbackSliderMax <= 0) return
-    event.preventDefault()
-    const step = playbackSliderMax * 0.05
-    const delta = event.key === 'ArrowRight' ? step : -step
-    const next = Math.min(playbackSliderMax, Math.max(0, playback.totalElapsed + delta))
-    void playback.seekTo(next)
-  }
+  // toolbar arrow handler — defined after slider so playbackSliderMax is in scope via getter
+  const handlePlaybackArrowKey = handlePlaybackArrowKeyImpl({
+    getEditorRef: () => editorRef,
+    getDrawerPanelRef: () => drawerPanelRef,
+    getPlayback: () => playback,
+    getSliderMax: () => playbackSliderMax,
+    dialogsOpen,
+  })
 
   // Overflow-menu contents per band, derived from the single-source ladder so
   // band boundaries and menu contents cannot drift apart. Index parallels
@@ -313,54 +217,23 @@
   const toolbarMenus = $derived(TOOLBAR_BANDS.map(band => menuFor(band.name, toolbarMode)))
   const overlayDrawerOpen = $derived(!isDocked && drawer.drawerOpen)
   const drawerVisible = $derived(isDocked ? dockedDrawerOpen : drawer.drawerOpen)
-  // Plain locals, not $state: writing them from inside the effect must not
-  // re-trigger the effect (a $state write here would rerun the effect, whose
-  // cleanup would cancel the pending debounced warm-up below).
-  let lastPlaybackContent: string | null = null
-  let lastWarmedDocId: string | null | undefined = undefined
 
   function panelActionDisabled(action: PanelAction): boolean {
-    if (action === 'play') {
-      return playback.isPlaying ? false : !settings.canPlay
-    }
-    if (action === 'copy') {
-      return !settings.canPlay
-    }
-    if (action === 'save') {
-      return editor.saveDisabled
-    }
-    if (action === 'reset') {
-      return editor.currentDocId ? !editor.isDirty : !settings.canPlay
-    }
-    return false
+    return panelActionDisabledImpl(action, {
+      isPlaying: playback.isPlaying,
+      canPlay: settings.canPlay,
+      saveDisabled: editor.saveDisabled,
+      currentDocId: editor.currentDocId,
+      isDirty: editor.isDirty,
+    })
   }
 
-  let warmTimer: ReturnType<typeof setTimeout> | null = null
-  $effect(() => {
-    const content = settings.content
-    const docId = editor.currentDocId ?? null
-    if (content === lastPlaybackContent && docId === lastWarmedDocId) {
-      return
-    }
-    const isOpening = docId !== lastWarmedDocId || lastPlaybackContent === null
-    lastPlaybackContent = content
-    lastWarmedDocId = docId
-    if (isOpening) {
-      // Doc open or switch: surface cached synthesis in the same flush so the
-      // status strip shows instantly. Uncached synthesis stays deferred to Play.
-      if (warmTimer) clearTimeout(warmTimer)
-      playback.warmFromCache()
-      return
-    }
-    // Same-document edit: debounce the warm-up so a full-document re-segment
-    // plus per-segment cache scan does not run on every keystroke; shares the
-    // metadata module's RESYNC_DEBOUNCE_MS cadence.
-    if (warmTimer) clearTimeout(warmTimer)
-    warmTimer = setTimeout(() => playback.warmFromCache(), RESYNC_DEBOUNCE_MS)
-    return () => {
-      if (warmTimer) clearTimeout(warmTimer)
-    }
+  const warmCache = createWarmCacheController({
+    getContent: () => settings.content,
+    getDocId: () => editor.currentDocId ?? null,
+    warmFromCache: () => playback.warmFromCache(),
   })
+  $effect(() => warmCache.handleEffect())
 
   function toggleDrawer() {
     if (isDocked) {

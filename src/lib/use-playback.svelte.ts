@@ -50,6 +50,8 @@ import {
   pinVoiceForWrittenLang as voiceSessionPinVoiceForWrittenLang,
   pinVoicesForSegments as voiceSessionPinVoicesForSegments,
 } from './playback/voice-session'
+import { createPlaybackEngine } from './playback/engine'
+import { createScopedPlayback } from './playback/scoped'
 import type { SettingsHandle } from './use-settings.svelte'
 import { activeBoundaryAt, highlightBoundaries, locateBoundaryStartWithinOrBefore, locateSegmentStartByCharOffset, trimWhitespaceRange } from './playback/boundaries'
 import { readAudioDuration } from './playback/audio-helpers'
@@ -569,7 +571,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     )
   }
 
-  function sessionMatchesEditor(editor: CodeEditorHandle, content: string): boolean {
+  function sessionMatchesEditor(editor: { getSelectionRange: () => { from: number; to: number } | null }, content: string): boolean {
     if (session.segments.length === 0 || session.sourceContent !== content) {
       return false
     }
@@ -599,262 +601,50 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     })
   }
 
-  async function runPlayback(
-    segments: ReturnType<typeof splitTtsSegments>,
-    playbackOffset: number,
-    startIndex: number,
-    startAt = 0,
-    startCharOffset?: number,
-  ) {
-    const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
-    currentController = controller
-    isPlaying = true
-    activeInfoOffset = -1
-    activeInfoKind = null
-    lastStatusReason = 'ready'
-    measuredTotal = 0
-    playedDuration = 0
-    for (let i = 0; i < startIndex; i += 1) {
-      const prior = segmentDurationAt(i)
-      measuredTotal += prior
-      playedDuration += prior
-    }
-    let wasCancelled = false
-
-    try {
-      const concurrency = deps.settings.synthesisConcurrency
-      synthesizedCount = Object.keys(segmentMetaMap).length
-      const tasks = new Map<
-        number,
-        Promise<{
-          blob: Blob
-          boundaries: TtsBoundary[]
-          wordBoundaries: TtsBoundary[]
-          rate: number
-          voiceName: string
-          duration: number
-          spokenStart?: number
-          spokenEnd?: number
-          generation: number
-          effectiveLang: string
-        }>
-      >()
-      let active = 0
-      const waiters: Array<() => void> = []
-      const acquire = () =>
-        new Promise<void>(resolve => {
-          if (active < concurrency) {
-            active += 1
-            resolve()
-          } else {
-            waiters.push(resolve)
-          }
-        })
-      let nextToLaunch = 0
-      const scheduleNext = () => {
-        if (controller.cancelled) return
-        while (nextToLaunch < segments.length && active < concurrency) {
-          launch(nextToLaunch++)
-        }
-      }
-      const release = () => {
-        active -= 1
-        const next = waiters.shift()
-        if (next) {
-          active += 1
-          next()
-        }
-        // Keep the synthesis pipeline full: launch follow-up segments without
-        // waiting for playback to reach them.
-        scheduleNext()
-      }
-      const launch = (index: number) => {
-        const existing = tasks.get(index)
-        if (existing) return existing
-        const segment = segments[index]
-        const generationAtQueue = taskGeneration.get(index) ?? 0
-        const task = (async () => {
-          await acquire()
-          // Re-read after queue wait; an override may have landed while queued.
-          const effectiveLang = effectiveSegmentLang(index)
-          const voice = resolveEffectiveVoice(effectiveLang)
-          const rate = CANONICAL_SYNTHESIS_RATE
-          const generation = taskGeneration.get(index) ?? generationAtQueue
-          try {
-            if (!voice?.edge) {
-              throw new LocalizedPlaybackError(
-                `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, effectiveLang)})`,
-              )
-            }
-            const synth = await getCachedSynthesis(
-              segment.text,
-              voice.edge,
-              rate,
-              controller.abort.signal,
-              deps.getCacheScopeId(),
-            )
-            const duration = await readAudioDuration(synth.blob, controller.abort.signal)
-            return {
-              blob: synth.blob,
-              boundaries: synth.boundaries,
-              wordBoundaries: synth.wordBoundaries ?? [],
-              rate,
-              voiceName: voice.name,
-              voiceEdge: voice.edge,
-              duration,
-              spokenStart: synth.spokenStart,
-              spokenEnd: synth.spokenEnd,
-              generation,
-              effectiveLang,
-            }
-          } finally {
-            release()
-          }
-        })()
-        task.then((res) => {
-          if (controller.cancelled) return
-          // A re-synthesis outside the pipeline superseded this task; the
-          // fresh meta is already recorded, so skip the stale result.
-          if ((taskGeneration.get(index) ?? 0) !== res.generation) return
-          const existingMeta = segmentMetaMap[index]
-          // Merge with the existing meta only when it describes this exact
-          // text; a mismatch means it was recorded under an older split and
-          // its boundaries, duration, and spoken range would be wrong here.
-          const compatible = existingMeta?.text === segment.text
-          const effective = { ...segment, lang: res.effectiveLang }
-          const base = buildSegmentMeta(
-            index,
-            effective,
-            {
-              boundaries: res.boundaries,
-              wordBoundaries: res.wordBoundaries,
-              duration: res.duration,
-              spokenStart: res.spokenStart,
-              spokenEnd: res.spokenEnd,
-              rate: res.rate,
-            },
-            playbackOffset + segment.indexStart,
-          )
-          if (!compatible) {
-            recordSegment(index, base)
-          } else {
-            // Fresh synthesis wins: the base already reflects the segment's
-            // current language/voice, so a boundary-less re-synthesis must
-            // not resurrect the previous voice's timing.
-            recordSegment(index, {
-              ...existingMeta,
-              ...base,
-              boundaries: base.boundaries.length > 0 ? base.boundaries : existingMeta.boundaries,
-              wordBoundaries:
-                (base.wordBoundaries?.length ?? 0) > 0 ? base.wordBoundaries : (existingMeta.wordBoundaries ?? []),
-              duration: base.duration ?? existingMeta.duration,
-              spokenStart: base.spokenStart ?? existingMeta.spokenStart,
-              spokenEnd: base.spokenEnd ?? existingMeta.spokenEnd,
-            })
-          }
-          // Pin the voice for this language so the chip stays on the synthesized
-          // voice after playback (default before synthesis, sticky after). Manual
-          // picks overwrite the pin; cache clear wipes it via resetSession.
-          pinVoiceForWrittenLang(toWrittenLang(res.effectiveLang), res.voiceEdge)
-        })
-        tasks.set(index, task)
-        return task
-      }
-
-      // Prioritize the segment where playback begins so it is synthesized
-      // first; the whole text then synthesizes ahead in the background as
-      // concurrency slots free up, independent of playback progress.
-      void launch(startIndex)
-      scheduleNext()
-      for (let index = startIndex; index < segments.length; index += 1) {
-        const segment = segments[index]
-        if (controller.cancelled) return
-        currentSegmentIndex = index + 1
-        totalSegments = segments.length
-        playbackElapsed = index === startIndex ? startAt : 0
-        playbackDuration = 0
-        const ranges = splitHighlightRanges(segment.text)
-        const absoluteBase = playbackOffset + segment.indexStart
-        let result = await launch(index)
-        // A queued task can be superseded by a language or voice override made
-        // while playback is paused or switching; rebuild it so the segment
-        // plays audio that matches its current language and voice.
-        while (!controller.cancelled && result.generation !== (taskGeneration.get(index) ?? 0)) {
-          tasks.delete(index)
-          result = await launch(index)
-        }
-        if (controller.cancelled) return
-        metadataAvailable = result.boundaries.length > 0 || result.wordBoundaries.length > 0
-        playbackDuration = result.duration
-
-        const segmentMeta = segmentMetaMap[index]
-        const highlightMarks = highlightBoundaries(
-          segmentMeta,
-          result.wordBoundaries.length > 0 ? result.wordBoundaries : result.boundaries,
-        )
-
-        const applyHighlight = (currentTime: number) => {
-          updateHighlightForPosition(index, currentTime)
-        }
-        const selectWholeSegment = () => {
-          const trimmed = trimWhitespaceRange(segment.text, 0, segment.text.length)
-          applyPlaybackHighlight(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
-        }
-        let segAt = index === startIndex ? startAt : 0
-        if (highlightMarks.length > 0) {
-          applyHighlight(segAt)
-        } else {
-          selectWholeSegment()
-        }
-
-        if (index === startIndex && startCharOffset != null && highlightMarks.length > 0) {
-          let candidateAt = 0
-          for (const boundary of highlightMarks) {
-            if (absoluteBase + boundary.offset <= startCharOffset) {
-              candidateAt = boundary.at
-              continue
-            }
-            break
-          }
-          segAt = candidateAt
-          playbackElapsed = segAt
-          if (segAt > 0) {
-            const range = activeHighlightRange(ranges, highlightMarks, segAt)
-            if (range) {
-              const trimmed = trimWhitespaceRange(segment.text, range.start, range.end)
-              applyPlaybackHighlight(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
-            }
-          }
-        }
-
-        const spokenStart = segmentMeta?.spokenStart ?? 0
-        const spokenEnd = segmentMeta?.spokenEnd
-        await playAudioBlob(
-          controller,
-          result.blob,
-          ranges.length > 0 && highlightMarks.length > 0 ? applyHighlight : undefined,
-          duration => {
-            setSegmentDuration(index, duration)
-          },
-          segAt,
-          spokenStart,
-          spokenEnd,
-        )
-        if (controller.cancelled) {
-          wasCancelled = true
-        } else {
-          measuredTotal += playbackDuration
-          playedDuration = measuredTotal
-        }
-      }
-
-      if (wasCancelled) return
-      finishPlaybackRun({ resetResume: true, clearActiveInfo: true, updateSynthesizedCount: true })
-    } catch (error) {
-      if (controller.cancelled) return
-      failPlaybackRun(error, { clearActiveInfo: true, clearHighlight: false })
-    }
-  }
+  const __engine = createPlaybackEngine({
+    getSegmentDurationAt: segmentDurationAt,
+    getEffectiveSegmentLang: effectiveSegmentLang,
+    getResolveEffectiveVoice: resolveEffectiveVoice,
+    pinVoiceForWrittenLang,
+    getSegmentMetaMap: () => segmentMetaMap,
+    recordSegment,
+    getTaskGeneration: () => taskGeneration,
+    getSettings: () => deps.settings,
+    getCacheScopeId: () => deps.getCacheScopeId(),
+    getCurrentController: () => currentController,
+    setCurrentController: v => { currentController = v },
+    getIsPlaying: () => isPlaying,
+    setIsPlaying: v => { isPlaying = v },
+    getActiveInfoOffset: () => activeInfoOffset,
+    setActiveInfoOffset: v => { activeInfoOffset = v },
+    getActiveInfoKind: () => activeInfoKind,
+    setActiveInfoKind: v => { activeInfoKind = v },
+    getLastStatusReason: () => lastStatusReason,
+    setLastStatusReason: v => { lastStatusReason = v },
+    getCurrentSegmentIndex: () => currentSegmentIndex,
+    setCurrentSegmentIndex: v => { currentSegmentIndex = v },
+    getTotalSegments: () => totalSegments,
+    setTotalSegments: v => { totalSegments = v },
+    getPlaybackElapsed: () => playbackElapsed,
+    setPlaybackElapsed: v => { playbackElapsed = v },
+    getPlaybackDuration: () => playbackDuration,
+    setPlaybackDuration: v => { playbackDuration = v },
+    getMeasuredTotal: () => measuredTotal,
+    setMeasuredTotal: v => { measuredTotal = v },
+    getPlayedDuration: () => playedDuration,
+    setPlayedDuration: v => { playedDuration = v },
+    getSynthesizedCount: () => synthesizedCount,
+    setSynthesizedCount: v => { synthesizedCount = v },
+    getMetadataAvailable: () => metadataAvailable,
+    setMetadataAvailable: v => { metadataAvailable = v },
+    updateHighlightForPosition,
+    setSegmentDuration,
+    applyPlaybackHighlight,
+    finishPlaybackRun,
+    failPlaybackRun,
+    playAudioBlob,
+  })
+  const runPlayback = __engine.runPlayback
 
   function warmFromCache() {
     if (!isSynthesisCacheHydrated()) {
@@ -1110,91 +900,64 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     }
   }
 
-  function recordReusableScopedMeta(reusable: NonNullable<ReturnType<typeof buildReusableScopedSegments>>) {
-    for (let i = 0; i < reusable.length; i += 1) {
-      const segment = reusable[i]
-      recordSegmentMeta(
-        i,
-        buildSegmentMeta(
-          i,
-          session.segments[i],
-          {
-            boundaries: segment.boundaries,
-            wordBoundaries: segment.wordBoundaries,
-            spokenStart: 0,
-            spokenEnd: Math.max(0, segment.sourceEndAt - segment.sourceStartAt),
-            rate: CANONICAL_SYNTHESIS_RATE,
-          },
-          segment.indexStart,
-        ),
-      )
-    }
-  }
-
-  function finalizeScopedWarmup(
-    reusable: ReturnType<typeof buildReusableScopedSegments> | null,
-    lang: string | null,
-  ) {
-    metadataAvailable = true
-    currentSegmentIndex = 1
-    playbackElapsed = 0
-    playbackDuration = segmentDurationAt(0)
-    deps.getEditor()?.clearPlaybackHighlight?.()
-    if (reusable) pinVoicesForSegments(reusable)
-    else if (lang) pinVoiceForWrittenLang(toWrittenLang(lang), resolveEffectiveVoice(lang)?.edge ?? '')
-  }
-
-  function warmSelectionScope(range: { from: number; to: number }): boolean {
-    const content = deps.settings.content
-    const scoped = trimmedContentRange(range, content)
-    if (!scoped) return false
-    const reusable = buildReusableScopedSegments(scoped, content)
-    if (reusable) {
-      const newSegments = reusable.map(segment => ({
-        text: segment.text,
-        lang: segment.lang,
-        indexStart: segment.indexStart,
-        indexEnd: segment.indexEnd,
-      }))
-      applyScopedSession({ segments: newSegments, range, content, resumeSelection: { from: scoped.from, to: scoped.to } })
-      deps.getEditor()?.clearPlaybackHighlight?.()
-      clearSegments()
-      recordReusableScopedMeta(reusable)
-      if (Object.keys(segmentMetaMap).length === 0) return false
-      finalizeScopedWarmup(reusable, null)
-      return true
-    }
-    const lang = resolveScopedPlaybackLang(scoped.text, content)
-    const voice = resolveEffectiveVoice(lang)
-    if (!voice?.edge) return false
-    const cached = peekCachedSynthesis(scoped.text, voice.edge)
-    if (!cached) return false
-    applyScopedSession({
-      segments: [{ text: scoped.text, lang, indexStart: scoped.from, indexEnd: scoped.to - 1 }],
-      range,
-      content,
-      resumeSelection: { from: scoped.from, to: scoped.to },
-    })
-    deps.getEditor()?.clearPlaybackHighlight?.()
-    clearSegments()
-    recordSegmentMeta(
-      0,
-      buildSegmentMeta(
-        0,
-        session.segments[0],
-        {
-          boundaries: cached.boundaries,
-          wordBoundaries: cached.wordBoundaries,
-          spokenStart: cached.spokenStart,
-          spokenEnd: cached.spokenEnd,
-          rate: canonicalRate(cached.rate),
-        },
-        scoped.from,
-      ),
-    )
-    finalizeScopedWarmup(null, lang)
-    return true
-  }
+  const __scoped = createScopedPlayback({
+    getContent: () => deps.settings.content,
+    getLocale: () => deps.settings.locale,
+    getCacheScopeId: () => deps.getCacheScopeId(),
+    getEffectiveSpeed: () => effectiveSpeed,
+    getSession: () => session,
+    getSegmentMetaMap: () => segmentMetaMap,
+    getCurrentController: () => currentController,
+    setCurrentController: v => { currentController = v },
+    getIsPlaying: () => isPlaying,
+    setIsPlaying: v => { isPlaying = v },
+    getPlaybackEnded: () => playbackEnded,
+    setPlaybackEnded: v => { playbackEnded = v },
+    getLastStatusReason: () => lastStatusReason,
+    setLastStatusReason: v => { lastStatusReason = v },
+    getActiveInfoOffset: () => activeInfoOffset,
+    setActiveInfoOffset: v => { activeInfoOffset = v },
+    getActiveInfoKind: () => activeInfoKind,
+    setActiveInfoKind: v => { activeInfoKind = v },
+    getCurrentSegmentIndex: () => currentSegmentIndex,
+    setCurrentSegmentIndex: v => { currentSegmentIndex = v },
+    getTotalSegments: () => totalSegments,
+    setTotalSegments: v => { totalSegments = v },
+    getPlaybackElapsed: () => playbackElapsed,
+    setPlaybackElapsed: v => { playbackElapsed = v },
+    getPlaybackDuration: () => playbackDuration,
+    setPlaybackDuration: v => { playbackDuration = v },
+    getMeasuredTotal: () => measuredTotal,
+    setMeasuredTotal: v => { measuredTotal = v },
+    getPlayedDuration: () => playedDuration,
+    setPlayedDuration: v => { playedDuration = v },
+    getMetadataAvailable: () => metadataAvailable,
+    setMetadataAvailable: v => { metadataAvailable = v },
+    getStatusMessage: () => statusMessage,
+    setStatusMessage: v => { statusMessage = v },
+    getEditor: () => deps.getEditor(),
+    buildReusableScopedSegments,
+    resolveEffectiveVoice,
+    resolveScopedPlaybackLang,
+    applyScopedSession,
+    clearSegments,
+    recordSegmentMeta,
+    recordSegment,
+    setSegmentDuration,
+    pinVoicesForSegments,
+    pinVoiceForWrittenLang,
+    segmentDurationAt,
+    updateHighlightForPosition,
+    applyPlaybackHighlight,
+    finishPlaybackRun,
+    failPlaybackRun,
+    runPlayback,
+    stopPlayback,
+    sessionMatchesEditor,
+    playAudioBlob,
+  })
+  const warmSelectionScope = __scoped.warmSelectionScope
+  const playSelectedText = __scoped.playSelectedText
 
   selectionSync = createSelectionSync({
     session: {
@@ -1225,199 +988,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
 
   function syncSelectionStart(range: { from: number; to: number } | null): void {
     selectionSync!.syncSelectionStart(range)
-  }
-
-  async function playSelectedText(range: { from: number; to: number }) {
-    const content = deps.settings.content
-    const scoped = trimmedContentRange(range, content)
-    if (!scoped) {
-      return
-    }
-    const editor = deps.getEditor()
-    if (editor && sessionMatchesEditor(editor, content) && session.selectionScoped) {
-      if (session.segments.length === 1) {
-        playbackEnded = false
-        await runPlayback(session.segments, session.offset, session.resumeIndex, session.resumeTime)
-        return
-      }
-      const reusableForReuse = buildReusableScopedSegments(scoped, content)
-      if (
-        reusableForReuse &&
-        session.segments.length === reusableForReuse.length &&
-        session.segments.every((seg, idx) => seg.text === reusableForReuse[idx].text)
-      ) {
-        playbackEnded = false
-        await runPlayback(session.segments, session.offset, session.resumeIndex, session.resumeTime)
-        return
-      }
-    }
-    const lang = resolveScopedPlaybackLang(scoped.text, content)
-    const voice = resolveEffectiveVoice(lang)
-    if (!voice?.edge) {
-      throw new LocalizedPlaybackError(
-        `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, lang)})`,
-      )
-    }
-    const reusable = buildReusableScopedSegments(scoped, content)
-    if (reusable) {
-      playbackEnded = false
-      stopPlayback()
-      activeInfoOffset = -1
-      activeInfoKind = null
-      const newSegments = reusable.map(segment => ({
-        text: segment.text,
-        lang: segment.lang,
-        indexStart: segment.indexStart,
-        indexEnd: segment.indexEnd,
-      }))
-      applyScopedSession({ segments: newSegments, range, content, resumeSelection: { from: scoped.from, to: scoped.to } })
-      clearSegments()
-      for (let i = 0; i < reusable.length; i += 1) {
-        const segment = reusable[i]
-        recordSegmentMeta(
-          i,
-          buildSegmentMeta(
-            i,
-            session.segments[i],
-            {
-              boundaries: segment.boundaries,
-              wordBoundaries: segment.wordBoundaries,
-              spokenStart: 0,
-              spokenEnd: Math.max(0, segment.sourceEndAt - segment.sourceStartAt),
-              rate: CANONICAL_SYNTHESIS_RATE,
-            },
-            segment.indexStart,
-          ),
-        )
-      }
-      if (Object.keys(segmentMetaMap).length === 0) {
-        // Fallback to single-segment synthesis if slicing produced nothing.
-      } else {
-        metadataAvailable = true
-        currentSegmentIndex = 1
-        playbackElapsed = 0
-        playbackDuration = segmentDurationAt(0)
-        pinVoicesForSegments(reusable)
-        updateHighlightForPosition(0, 0)
-        const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
-        currentController = controller
-        isPlaying = true
-        lastStatusReason = 'ready'
-        try {
-          measuredTotal = 0
-          playedDuration = 0
-          for (let idx = 0; idx < reusable.length; idx += 1) {
-            if (controller.cancelled) return
-            const segment = reusable[idx]
-            const segVoice = resolveEffectiveVoice(segment.lang)
-            if (!segVoice?.edge) {
-              throw new LocalizedPlaybackError(
-                `${UI_TEXT[deps.settings.locale].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale, segment.lang)})`,
-              )
-            }
-            const cached = peekCachedSynthesis(segment.source.text, segVoice.edge)
-            if (!cached) {
-              throw new Error('Scoped playback lost its source cache entry')
-            }
-            const meta = segmentMetaMap[idx]
-            if (!meta) continue
-            currentSegmentIndex = idx + 1
-            playbackDuration = segmentDurationAt(idx)
-            playbackElapsed = 0
-            // Highlight will be driven per word via the sliced word boundaries.
-            const segHighlights = highlightBoundaries(meta)
-            if (segHighlights.length > 0) updateHighlightForPosition(idx, 0)
-            else {
-              const trimmed = trimWhitespaceRange(segment.text, 0, segment.text.length)
-              applyPlaybackHighlight(segment.indexStart + trimmed.start, segment.indexStart + trimmed.end)
-            }
-            // Play only the selected whole-word slice on the source blob timeline.
-            const slicedStartOrig = segment.sourceStartAt
-            const slicedEndOrig = segment.sourceEndAt
-            await playAudioBlob(controller, cached.blob, (currentTime) => {
-              const rel = currentTime - slicedStartOrig
-              updateHighlightForPosition(idx, rel)
-            }, d => setSegmentDuration(idx, d), 0, slicedStartOrig, slicedEndOrig)
-            if (controller.cancelled) return
-            measuredTotal += segmentDurationAt(idx)
-            playedDuration = measuredTotal
-          }
-          finishPlaybackRun({ clearActiveInfo: false })
-        } catch (error) {
-          if (controller.cancelled) return
-          failPlaybackRun(error, { clearActiveInfo: false, clearHighlight: true })
-        }
-        return
-      }
-    }
-    playbackEnded = false
-    stopPlayback()
-    activeInfoOffset = -1
-    activeInfoKind = null
-    applyScopedSession({
-      segments: [{ text: scoped.text, lang, indexStart: scoped.from, indexEnd: scoped.to - 1 }],
-      range,
-      content,
-      resumeSelection: { from: scoped.from, to: scoped.to },
-    })
-    clearSegments()
-    const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
-    currentController = controller
-    isPlaying = true
-    lastStatusReason = 'ready'
-    currentSegmentIndex = 1
-    playbackElapsed = 0
-    playbackDuration = 0
-    try {
-      const synth = await getCachedSynthesis(scoped.text, voice.edge, effectiveSpeed, controller.abort.signal, deps.getCacheScopeId())
-      if (controller.cancelled) return
-      const duration = await readAudioDuration(synth.blob, controller.abort.signal)
-      if (controller.cancelled) return
-      metadataAvailable = (synth.boundaries.length > 0 || (synth.wordBoundaries?.length ?? 0) > 0)
-      playbackDuration = duration
-      const scopedMeta = buildSegmentMeta(
-        0,
-        session.segments[0],
-        {
-          boundaries: synth.boundaries,
-          wordBoundaries: synth.wordBoundaries ?? [],
-          duration,
-          spokenStart: synth.spokenStart,
-          spokenEnd: synth.spokenEnd,
-          rate: synth.rate ?? CANONICAL_SYNTHESIS_RATE,
-        },
-        scoped.from,
-      )
-      recordSegmentMeta(0, scopedMeta)
-      pinVoiceForWrittenLang(toWrittenLang(lang), voice.edge)
-      const scopedHighlights = highlightBoundaries(scopedMeta, scopedMeta.wordBoundaries ?? scopedMeta.boundaries)
-      const applyHighlight = (currentTime: number) => {
-        const relativeAt = currentTime - (synth.spokenStart ?? 0)
-        updateHighlightForPosition(0, relativeAt)
-      }
-      if (scopedHighlights.length > 0) {
-        updateHighlightForPosition(0, 0)
-      } else {
-        applyPlaybackHighlight(scoped.from, scoped.to)
-      }
-      await playAudioBlob(
-        controller,
-        synth.blob,
-        applyHighlight,
-        d => {
-          playbackDuration = d
-          setSegmentDuration(0, d)
-        },
-        0,
-        synth.spokenStart ?? 0,
-        synth.spokenEnd,
-      )
-      if (controller.cancelled) return
-      finishPlaybackRun({ clearActiveInfo: false })
-    } catch (error) {
-      if (controller.cancelled) return
-      failPlaybackRun(error, { clearActiveInfo: false, clearHighlight: true })
-    }
   }
 
   function recordSegment(index: number, record: SegmentMeta) {
