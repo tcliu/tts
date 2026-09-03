@@ -11,18 +11,22 @@ import { activeBoundaryAt, highlightBoundaries, trimWhitespaceRange } from './bo
 import { readAudioDuration } from './audio-helpers'
 import { toWrittenLang } from '../tts-reference'
 
-export interface PlaybackEngineDeps {
-  getSegmentDurationAt: (index: number) => number
-  getEffectiveSegmentLang: (index: number) => string
-  getResolveEffectiveVoice: (lang: string) => { edge: string; name: string } | undefined
-  pinVoiceForWrittenLang: (code: string, edge: string) => void
+/**
+ * Core playback state accessors.
+ * Grouped to reduce the total number of dep functions.
+ */
+export interface CoreState {
+  getSession: () => { segments: TtsSegment[]; offset: number }
   getSegmentMetaMap: () => Record<number, SegmentMeta>
-  recordSegment: (index: number, meta: SegmentMeta) => void
   getTaskGeneration: () => Map<number, number>
-  getSettings: () => { locale: string; synthesisConcurrency: number }
-  getCacheScopeId: () => string
   getCurrentController: () => PlaybackController | null
   setCurrentController: (c: PlaybackController | null) => void
+}
+
+/**
+ * Playback progress state.
+ */
+export interface ProgressState {
   getIsPlaying: () => boolean
   setIsPlaying: (v: boolean) => void
   getActiveInfoOffset: () => number
@@ -47,11 +51,53 @@ export interface PlaybackEngineDeps {
   setSynthesizedCount: (v: number) => void
   getMetadataAvailable: () => boolean
   setMetadataAvailable: (v: boolean) => void
+}
+
+/**
+ * Voice resolution deps.
+ */
+export interface VoiceDeps {
+  getEffectiveSegmentLang: (index: number) => string
+  getResolveEffectiveVoice: (lang: string) => { edge: string; name: string } | undefined
+  pinVoiceForWrittenLang: (code: string, edge: string) => void
+}
+
+/**
+ * Highlight computation deps.
+ */
+export interface HighlightDeps {
   updateHighlightForPosition: (index: number, at: number) => { from: number; to: number } | null
   setSegmentDuration: (index: number, duration: number) => void
   applyPlaybackHighlight: (from: number, to: number) => void
-  finishPlaybackRun: (opts?: { resetResume?: boolean; clearActiveInfo?: boolean; updateSynthesizedCount?: boolean }) => void
-  failPlaybackRun: (error: unknown, opts?: { clearActiveInfo?: boolean; clearHighlight?: boolean }) => void
+}
+
+/**
+ * Lifecycle callbacks for playback run completion.
+ */
+export interface PlaybackLifecycle {
+  finishPlaybackRun: (opts?: {
+    resetResume?: boolean
+    clearActiveInfo?: boolean
+    updateSynthesizedCount?: boolean
+  }) => void
+  failPlaybackRun: (error: unknown, opts?: {
+    clearActiveInfo?: boolean
+    clearHighlight?: boolean
+  }) => void
+}
+
+export interface PlaybackEngineDeps {
+  core: CoreState
+  progress: ProgressState
+  voice: VoiceDeps
+  highlight: HighlightDeps
+  lifecycle: PlaybackLifecycle
+  settings: {
+    locale: string
+    synthesisConcurrency: number
+  }
+  getCacheScopeId: () => string
+  recordSegment: (index: number, meta: SegmentMeta) => void
   playAudioBlob: (
     controller: PlaybackController,
     blob: Blob,
@@ -64,6 +110,17 @@ export interface PlaybackEngineDeps {
 }
 
 export function createPlaybackEngine(deps: PlaybackEngineDeps) {
+  const { core, progress, voice, highlight, lifecycle } = deps
+
+  function segmentDurationAt(index: number): number {
+    const meta = core.getSegmentMetaMap()[index]
+    if (!meta) return 0
+    if (meta.spokenEnd != null && meta.spokenStart != null) {
+      return Math.max(0, meta.spokenEnd - meta.spokenStart)
+    }
+    return meta.duration ?? 0
+  }
+
   async function runPlayback(
     segments: TtsSegment[],
     playbackOffset: number,
@@ -72,23 +129,23 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
     startCharOffset?: number,
   ): Promise<void> {
     const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
-    deps.setCurrentController(controller)
-    deps.setIsPlaying(true)
-    deps.setActiveInfoOffset(-1)
-    deps.setActiveInfoKind(null)
-    deps.setLastStatusReason('ready')
-    deps.setMeasuredTotal(0)
-    deps.setPlayedDuration(0)
+    core.setCurrentController(controller)
+    progress.setIsPlaying(true)
+    progress.setActiveInfoOffset(-1)
+    progress.setActiveInfoKind(null)
+    progress.setLastStatusReason('ready')
+    progress.setMeasuredTotal(0)
+    progress.setPlayedDuration(0)
     for (let i = 0; i < startIndex; i += 1) {
-      const prior = deps.getSegmentDurationAt(i)
-      deps.setMeasuredTotal(deps.getMeasuredTotal() + prior)
-      deps.setPlayedDuration(deps.getPlayedDuration() + prior)
+      const prior = segmentDurationAt(i)
+      progress.setMeasuredTotal(progress.getMeasuredTotal() + prior)
+      progress.setPlayedDuration(progress.getPlayedDuration() + prior)
     }
     let wasCancelled = false
 
     try {
-      const concurrency = deps.getSettings().synthesisConcurrency
-      deps.setSynthesizedCount(Object.keys(deps.getSegmentMetaMap()).length)
+      const concurrency = deps.settings.synthesisConcurrency
+      progress.setSynthesizedCount(Object.keys(core.getSegmentMetaMap()).length)
       const tasks = new Map<
         number,
         Promise<{
@@ -136,28 +193,28 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
         const existing = tasks.get(index)
         if (existing) return existing
         const segment = segments[index]
-        const generationAtQueue = deps.getTaskGeneration().get(index) ?? 0
+        const generationAtQueue = core.getTaskGeneration().get(index) ?? 0
         const task = (async () => {
           await acquire()
-          const effectiveLang = deps.getEffectiveSegmentLang(index)
-          const voice = deps.getResolveEffectiveVoice(effectiveLang)
+          const effectiveLang = voice.getEffectiveSegmentLang(index)
+          const voiceResolved = voice.getResolveEffectiveVoice(effectiveLang)
           const rate = CANONICAL_SYNTHESIS_RATE
-          const generation = deps.getTaskGeneration().get(index) ?? generationAtQueue
+          const generation = core.getTaskGeneration().get(index) ?? generationAtQueue
           try {
-            if (!voice?.edge) {
+            if (!voiceResolved?.edge) {
               throw new LocalizedPlaybackError(
-                `${UI_TEXT[deps.getSettings().locale as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(deps.getSettings().locale as keyof typeof UI_TEXT, effectiveLang)})`,
+                `${UI_TEXT[deps.settings.locale as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale as keyof typeof UI_TEXT, effectiveLang)})`,
               )
             }
-            const synth = await getCachedSynthesis(segment.text, voice.edge, rate, controller.abort.signal, deps.getCacheScopeId())
+            const synth = await getCachedSynthesis(segment.text, voiceResolved.edge, rate, controller.abort.signal, deps.getCacheScopeId())
             const duration = await readAudioDuration(synth.blob, controller.abort.signal)
             return {
               blob: synth.blob,
               boundaries: synth.boundaries,
               wordBoundaries: synth.wordBoundaries ?? [],
               rate,
-              voiceName: voice.name,
-              voiceEdge: voice.edge,
+              voiceName: voiceResolved.name,
+              voiceEdge: voiceResolved.edge,
               duration,
               spokenStart: synth.spokenStart,
               spokenEnd: synth.spokenEnd,
@@ -170,8 +227,9 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
         })()
         task.then(res => {
           if (controller.cancelled) return
-          if ((deps.getTaskGeneration().get(index) ?? 0) !== res.generation) return
-          const existingMeta = deps.getSegmentMetaMap()[index]
+          if ((core.getTaskGeneration().get(index) ?? 0) !== res.generation) return
+          const metaMap = core.getSegmentMetaMap()
+          const existingMeta = metaMap[index]
           const compatible = existingMeta?.text === segment.text
           const effective = { ...segment, lang: res.effectiveLang }
           const base = buildSegmentMeta(
@@ -200,7 +258,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
               spokenEnd: base.spokenEnd ?? existingMeta.spokenEnd,
             })
           }
-          deps.pinVoiceForWrittenLang(toWrittenLang(res.effectiveLang), res.voiceEdge)
+          voice.pinVoiceForWrittenLang(toWrittenLang(res.effectiveLang), res.voiceEdge)
         })
         tasks.set(index, task)
         return task
@@ -211,30 +269,30 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
       for (let index = startIndex; index < segments.length; index += 1) {
         const segment = segments[index]
         if (controller.cancelled) return
-        deps.setCurrentSegmentIndex(index + 1)
-        deps.setTotalSegments(segments.length)
-        deps.setPlaybackElapsed(index === startIndex ? startAt : 0)
-        deps.setPlaybackDuration(0)
+        progress.setCurrentSegmentIndex(index + 1)
+        progress.setTotalSegments(segments.length)
+        progress.setPlaybackElapsed(index === startIndex ? startAt : 0)
+        progress.setPlaybackDuration(0)
         const ranges = splitHighlightRanges(segment.text)
         const absoluteBase = playbackOffset + segment.indexStart
         let result = await launch(index)
-        while (!controller.cancelled && result.generation !== (deps.getTaskGeneration().get(index) ?? 0)) {
+        while (!controller.cancelled && result.generation !== (core.getTaskGeneration().get(index) ?? 0)) {
           tasks.delete(index)
           result = await launch(index)
         }
         if (controller.cancelled) return
-        deps.setMetadataAvailable(result.boundaries.length > 0 || result.wordBoundaries.length > 0)
-        deps.setPlaybackDuration(result.duration)
+        progress.setMetadataAvailable(result.boundaries.length > 0 || result.wordBoundaries.length > 0)
+        progress.setPlaybackDuration(result.duration)
 
-        const segmentMeta = deps.getSegmentMetaMap()[index]
+        const segmentMeta = core.getSegmentMetaMap()[index]
         const highlightMarks = highlightBoundaries(segmentMeta, result.wordBoundaries.length > 0 ? result.wordBoundaries : result.boundaries)
 
         const applyHighlight = (currentTime: number) => {
-          deps.updateHighlightForPosition(index, currentTime)
+          highlight.updateHighlightForPosition(index, currentTime)
         }
         const selectWholeSegment = () => {
           const trimmed = trimWhitespaceRange(segment.text, 0, segment.text.length)
-          deps.applyPlaybackHighlight(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
+          highlight.applyPlaybackHighlight(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
         }
         let segAt = index === startIndex ? startAt : 0
         if (highlightMarks.length > 0) {
@@ -253,12 +311,12 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
             break
           }
           segAt = candidateAt
-          deps.setPlaybackElapsed(segAt)
+          progress.setPlaybackElapsed(segAt)
           if (segAt > 0) {
             const range = activeHighlightRange(ranges, highlightMarks, segAt)
             if (range) {
               const trimmed = trimWhitespaceRange(segment.text, range.start, range.end)
-              deps.applyPlaybackHighlight(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
+              highlight.applyPlaybackHighlight(absoluteBase + trimmed.start, absoluteBase + trimmed.end)
             }
           }
         }
@@ -270,7 +328,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
           result.blob,
           ranges.length > 0 && highlightMarks.length > 0 ? applyHighlight : undefined,
           duration => {
-            deps.setSegmentDuration(index, duration)
+            highlight.setSegmentDuration(index, duration)
           },
           segAt,
           spokenStart,
@@ -279,16 +337,16 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
         if (controller.cancelled) {
           wasCancelled = true
         } else {
-          deps.setMeasuredTotal(deps.getMeasuredTotal() + deps.getPlaybackDuration())
-          deps.setPlayedDuration(deps.getMeasuredTotal())
+          progress.setMeasuredTotal(progress.getMeasuredTotal() + progress.getPlaybackDuration())
+          progress.setPlayedDuration(progress.getMeasuredTotal())
         }
       }
 
       if (wasCancelled) return
-      deps.finishPlaybackRun({ resetResume: true, clearActiveInfo: true, updateSynthesizedCount: true })
+      lifecycle.finishPlaybackRun({ resetResume: true, clearActiveInfo: true, updateSynthesizedCount: true })
     } catch (error) {
       if (controller.cancelled) return
-      deps.failPlaybackRun(error, { clearActiveInfo: true, clearHighlight: false })
+      lifecycle.failPlaybackRun(error, { clearActiveInfo: true, clearHighlight: false })
     }
   }
 

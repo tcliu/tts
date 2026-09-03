@@ -10,22 +10,22 @@ export function effectiveSegmentLang(session: PlaybackSession, index: number): s
 export function resolveEffectiveVoiceForWrittenLang(
   session: PlaybackSession,
   languageCode: string,
-  fallback: (code: string) => TtsVoice | undefined,
+  resolveDefault: (code: string) => TtsVoice | undefined,
 ): TtsVoice | undefined {
   const overrideEdge = session.voiceSelections.get(languageCode)
   if (overrideEdge) {
     const voice = REFERENCE_LANGUAGES.find(item => item.code === languageCode)?.voices.find(item => item.edge === overrideEdge)
     if (voice) return voice
   }
-  return fallback(languageCode)
+  return resolveDefault(languageCode)
 }
 
 export function resolveEffectiveVoice(
   session: PlaybackSession,
   segmentLang: string,
-  fallback: (code: string) => TtsVoice | undefined,
+  resolveDefault: (code: string) => TtsVoice | undefined,
 ): TtsVoice | undefined {
-  return resolveEffectiveVoiceForWrittenLang(session, toWrittenLang(segmentLang), fallback)
+  return resolveEffectiveVoiceForWrittenLang(session, toWrittenLang(segmentLang), resolveDefault)
 }
 
 export function pinVoiceForWrittenLang(session: PlaybackSession, languageCode: string, edge: string): void {
@@ -39,12 +39,12 @@ export function pinVoiceForWrittenLang(session: PlaybackSession, languageCode: s
 export function pinVoicesForSegments(
   session: PlaybackSession,
   segments: { lang: string }[],
-  fallback: (code: string) => TtsVoice | undefined,
+  resolveDefault: (code: string) => TtsVoice | undefined,
 ): void {
   for (const segment of segments) {
     const written = toWrittenLang(segment.lang)
     if (session.voiceSelections.has(written)) continue
-    const edge = resolveEffectiveVoice(session, segment.lang, fallback)?.edge
+    const edge = resolveEffectiveVoice(session, segment.lang, resolveDefault)?.edge
     if (edge) pinVoiceForWrittenLang(session, written, edge)
   }
 }

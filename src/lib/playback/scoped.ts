@@ -9,15 +9,30 @@ import { LocalizedPlaybackError, type PlaybackController, type SegmentMeta } fro
 import { highlightBoundaries, trimWhitespaceRange } from './boundaries'
 import { readAudioDuration } from './audio-helpers'
 
-export interface ScopedDeps {
+/**
+ * Content and locale access.
+ */
+export interface ContentDeps {
   getContent: () => string
   getLocale: () => string
   getCacheScopeId: () => string
   getEffectiveSpeed: () => number
+}
+
+/**
+ * Session state access.
+ */
+export interface SessionDeps {
   getSession: () => import('./session').PlaybackSession
   getSegmentMetaMap: () => Record<number, SegmentMeta>
   getCurrentController: () => PlaybackController | null
   setCurrentController: (c: PlaybackController | null) => void
+}
+
+/**
+ * Playback control state.
+ */
+export interface PlaybackControlDeps {
   getIsPlaying: () => boolean
   setIsPlaying: (v: boolean) => void
   getPlaybackEnded: () => boolean
@@ -44,11 +59,33 @@ export interface ScopedDeps {
   setMetadataAvailable: (v: boolean) => void
   getStatusMessage: () => string
   setStatusMessage: (v: string) => void
-  getEditor: () => { clearPlaybackHighlight?: () => void; getSelectionRange?: () => { from: number; to: number } | null; getSelectionText?: () => string } | null
+}
+
+/**
+ * Editor interaction deps.
+ */
+export interface EditorScopedDeps {
+  getEditor: () => {
+    clearPlaybackHighlight?: () => void
+    getSelectionRange?: () => { from: number; to: number } | null
+    getSelectionText?: () => string
+  } | null
   buildReusableScopedSegments: (scoped: { from: number; to: number }, content: string) => ReusableScopedSegment[] | null
   resolveEffectiveVoice: (lang: string) => { edge: string; name: string } | undefined
   resolveScopedPlaybackLang: (scopedText: string, content: string) => string
-  applyScopedSession: (input: { segments: ReturnType<typeof splitTtsSegments>; range: { from: number; to: number }; content: string; resumeSelection: { from: number; to: number } }) => void
+  applyScopedSession: (input: {
+    segments: ReturnType<typeof splitTtsSegments>
+    range: { from: number; to: number }
+    content: string
+    resumeSelection: { from: number; to: number }
+  }) => void
+  sessionMatchesEditor: (editor: { getSelectionRange: () => { from: number; to: number } | null }, content: string) => boolean
+}
+
+/**
+ * Segment operations.
+ */
+export interface SegmentOps {
   clearSegments: () => void
   recordSegmentMeta: (index: number, meta: SegmentMeta) => void
   recordSegment: (index: number, meta: SegmentMeta) => void
@@ -58,11 +95,29 @@ export interface ScopedDeps {
   segmentDurationAt: (index: number) => number
   updateHighlightForPosition: (index: number, at: number) => { from: number; to: number } | null
   applyPlaybackHighlight: (from: number, to: number) => void
-  finishPlaybackRun: (opts?: { resetResume?: boolean; clearActiveInfo?: boolean; updateSynthesizedCount?: boolean }) => void
-  failPlaybackRun: (error: unknown, opts?: { clearActiveInfo?: boolean; clearHighlight?: boolean }) => void
-  runPlayback: (segments: ReturnType<typeof splitTtsSegments>, offset: number, startIndex: number, startAt: number, startCharOffset?: number) => Promise<void>
+}
+
+/**
+ * Playback lifecycle callbacks.
+ */
+export interface ScopedLifecycle {
+  finishPlaybackRun: (opts?: {
+    resetResume?: boolean
+    clearActiveInfo?: boolean
+    updateSynthesizedCount?: boolean
+  }) => void
+  failPlaybackRun: (error: unknown, opts?: {
+    clearActiveInfo?: boolean
+    clearHighlight?: boolean
+  }) => void
+  runPlayback: (
+    segments: ReturnType<typeof splitTtsSegments>,
+    offset: number,
+    startIndex: number,
+    startAt: number,
+    startCharOffset?: number,
+  ) => Promise<void>
   stopPlayback: () => void
-  sessionMatchesEditor: (editor: { getSelectionRange: () => { from: number; to: number } | null }, content: string) => boolean
   playAudioBlob: (
     controller: PlaybackController,
     blob: Blob,
@@ -74,76 +129,92 @@ export interface ScopedDeps {
   ) => Promise<void>
 }
 
+export interface ScopedDeps {
+  content: ContentDeps
+  session: SessionDeps
+  control: PlaybackControlDeps
+  editor: EditorScopedDeps
+  segment: SegmentOps
+  lifecycle: ScopedLifecycle
+}
+
 export function createScopedPlayback(deps: ScopedDeps) {
+  const { content, session, control, editor, segment, lifecycle } = deps
+
   function recordReusableScopedMeta(reusable: ReusableScopedSegment[]): void {
     for (let i = 0; i < reusable.length; i += 1) {
-      const segment = reusable[i]
-      deps.recordSegmentMeta(
+      const seg = reusable[i]
+      segment.recordSegmentMeta(
         i,
         buildSegmentMeta(
           i,
-          deps.getSession().segments[i],
+          session.getSession().segments[i],
           {
-            boundaries: segment.boundaries,
-            wordBoundaries: segment.wordBoundaries,
+            boundaries: seg.boundaries,
+            wordBoundaries: seg.wordBoundaries,
             spokenStart: 0,
-            spokenEnd: Math.max(0, segment.sourceEndAt - segment.sourceStartAt),
+            spokenEnd: Math.max(0, seg.sourceEndAt - seg.sourceStartAt),
             rate: CANONICAL_SYNTHESIS_RATE,
           },
-          segment.indexStart,
+          seg.indexStart,
         ),
       )
     }
   }
 
   function finalizeScopedWarmup(reusable: ReusableScopedSegment[] | null, lang: string | null): void {
-    deps.setMetadataAvailable(true)
-    deps.setCurrentSegmentIndex(1)
-    deps.setPlaybackElapsed(0)
-    deps.setPlaybackDuration(deps.segmentDurationAt(0))
-    deps.getEditor()?.clearPlaybackHighlight?.()
-    if (reusable) deps.pinVoicesForSegments(reusable)
-    else if (lang) deps.pinVoiceForWrittenLang(toWrittenLang(lang), deps.resolveEffectiveVoice(lang)?.edge ?? '')
+    control.setMetadataAvailable(true)
+    control.setCurrentSegmentIndex(1)
+    control.setPlaybackElapsed(0)
+    control.setPlaybackDuration(segment.segmentDurationAt(0))
+    editor.getEditor()?.clearPlaybackHighlight?.()
+    if (reusable) segment.pinVoicesForSegments(reusable)
+    else if (lang) segment.pinVoiceForWrittenLang(toWrittenLang(lang), editor.resolveEffectiveVoice(lang)?.edge ?? '')
   }
 
   function warmSelectionScope(range: { from: number; to: number }): boolean {
-    const content = deps.getContent()
-    const scoped = trimmedContentRange(range, content)
+    const text = content.getContent()
+    const scoped = trimmedContentRange(range, text)
     if (!scoped) return false
-    const reusable = deps.buildReusableScopedSegments(scoped, content)
+    const reusable = editor.buildReusableScopedSegments(scoped, text)
     if (reusable) {
-      const newSegments = reusable.map(segment => ({
-        text: segment.text,
-        lang: segment.lang,
-        indexStart: segment.indexStart,
-        indexEnd: segment.indexEnd,
+      const newSegments = reusable.map(s => ({
+        text: s.text,
+        lang: s.lang,
+        indexStart: s.indexStart,
+        indexEnd: s.indexEnd,
       }))
-      deps.applyScopedSession({ segments: newSegments, range, content, resumeSelection: { from: scoped.from, to: scoped.to } })
-      deps.getEditor()?.clearPlaybackHighlight?.()
-      deps.clearSegments()
+      editor.applyScopedSession({
+        segments: newSegments,
+        range,
+        content: text,
+        resumeSelection: { from: scoped.from, to: scoped.to },
+      })
+      editor.getEditor()?.clearPlaybackHighlight?.()
+      segment.clearSegments()
       recordReusableScopedMeta(reusable)
-      if (Object.keys(deps.getSegmentMetaMap()).length === 0) return false
+      if (Object.keys(session.getSegmentMetaMap()).length === 0) return false
       finalizeScopedWarmup(reusable, null)
       return true
     }
-    const lang = deps.resolveScopedPlaybackLang(scoped.text, content)
-    const voice = deps.resolveEffectiveVoice(lang)
+    const lang = editor.resolveScopedPlaybackLang(scoped.text, text)
+    const voice = editor.resolveEffectiveVoice(lang)
     if (!voice?.edge) return false
     const cached = peekCachedSynthesis(scoped.text, voice.edge)
     if (!cached) return false
-    deps.applyScopedSession({
+    editor.applyScopedSession({
       segments: [{ text: scoped.text, lang, indexStart: scoped.from, indexEnd: scoped.to - 1 }],
       range,
-      content,
+      content: text,
       resumeSelection: { from: scoped.from, to: scoped.to },
     })
-    deps.getEditor()?.clearPlaybackHighlight?.()
-    deps.clearSegments()
-    deps.recordSegmentMeta(
+    editor.getEditor()?.clearPlaybackHighlight?.()
+    segment.clearSegments()
+    segment.recordSegmentMeta(
       0,
       buildSegmentMeta(
         0,
-        deps.getSession().segments[0],
+        session.getSession().segments[0],
         {
           boundaries: cached.boundaries,
           wordBoundaries: cached.wordBoundaries,
@@ -159,155 +230,168 @@ export function createScopedPlayback(deps: ScopedDeps) {
   }
 
   async function playSelectedText(range: { from: number; to: number }): Promise<void> {
-    const content = deps.getContent()
-    const scoped = trimmedContentRange(range, content)
+    const text = content.getContent()
+    const scoped = trimmedContentRange(range, text)
     if (!scoped) return
-    const editor = deps.getEditor()
-    const session = deps.getSession()
-    if (editor && deps.sessionMatchesEditor(editor as { getSelectionRange: () => { from: number; to: number } | null }, content) && session.selectionScoped) {
-      if (session.segments.length === 1) {
-        deps.setPlaybackEnded(false)
-        await deps.runPlayback(session.segments, session.offset, session.resumeIndex, session.resumeTime)
+    const editorRef = editor.getEditor()
+    const sess = session.getSession()
+    if (
+      editorRef &&
+      editor.sessionMatchesEditor(editorRef as { getSelectionRange: () => { from: number; to: number } | null }, text) &&
+      sess.selectionScoped
+    ) {
+      if (sess.segments.length === 1) {
+        control.setPlaybackEnded(false)
+        await lifecycle.runPlayback(sess.segments, sess.offset, sess.resumeIndex, sess.resumeTime)
         return
       }
-      const reusableForReuse = deps.buildReusableScopedSegments(scoped, content)
+      const reusableForReuse = editor.buildReusableScopedSegments(scoped, text)
       if (
         reusableForReuse &&
-        session.segments.length === reusableForReuse.length &&
-        session.segments.every((seg, idx) => seg.text === reusableForReuse[idx].text)
+        sess.segments.length === reusableForReuse.length &&
+        sess.segments.every((seg, idx) => seg.text === reusableForReuse[idx].text)
       ) {
-        deps.setPlaybackEnded(false)
-        await deps.runPlayback(session.segments, session.offset, session.resumeIndex, session.resumeTime)
+        control.setPlaybackEnded(false)
+        await lifecycle.runPlayback(sess.segments, sess.offset, sess.resumeIndex, sess.resumeTime)
         return
       }
     }
-    const lang = deps.resolveScopedPlaybackLang(scoped.text, content)
-    const voice = deps.resolveEffectiveVoice(lang)
+    const lang = editor.resolveScopedPlaybackLang(scoped.text, text)
+    const voice = editor.resolveEffectiveVoice(lang)
     if (!voice?.edge) {
-      throw new LocalizedPlaybackError(`${UI_TEXT[deps.getLocale() as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(deps.getLocale() as keyof typeof UI_TEXT, lang)})`)
+      throw new LocalizedPlaybackError(
+        `${UI_TEXT[content.getLocale() as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(content.getLocale() as keyof typeof UI_TEXT, lang)})`,
+      )
     }
-    const reusable = deps.buildReusableScopedSegments(scoped, content)
+    const reusable = editor.buildReusableScopedSegments(scoped, text)
     if (reusable) {
-      deps.setPlaybackEnded(false)
-      deps.stopPlayback()
-      deps.setActiveInfoOffset(-1)
-      deps.setActiveInfoKind(null)
-      const newSegments = reusable.map(segment => ({
-        text: segment.text,
-        lang: segment.lang,
-        indexStart: segment.indexStart,
-        indexEnd: segment.indexEnd,
+      control.setPlaybackEnded(false)
+      lifecycle.stopPlayback()
+      control.setActiveInfoOffset(-1)
+      control.setActiveInfoKind(null)
+      const newSegments = reusable.map(s => ({
+        text: s.text,
+        lang: s.lang,
+        indexStart: s.indexStart,
+        indexEnd: s.indexEnd,
       }))
-      deps.applyScopedSession({ segments: newSegments, range, content, resumeSelection: { from: scoped.from, to: scoped.to } })
-      deps.clearSegments()
+      editor.applyScopedSession({
+        segments: newSegments,
+        range,
+        content: text,
+        resumeSelection: { from: scoped.from, to: scoped.to },
+      })
+      segment.clearSegments()
       for (let i = 0; i < reusable.length; i += 1) {
-        const segment = reusable[i]
-        deps.recordSegmentMeta(
+        const seg = reusable[i]
+        segment.recordSegmentMeta(
           i,
           buildSegmentMeta(
             i,
-            deps.getSession().segments[i],
+            session.getSession().segments[i],
             {
-              boundaries: segment.boundaries,
-              wordBoundaries: segment.wordBoundaries,
+              boundaries: seg.boundaries,
+              wordBoundaries: seg.wordBoundaries,
               spokenStart: 0,
-              spokenEnd: Math.max(0, segment.sourceEndAt - segment.sourceStartAt),
+              spokenEnd: Math.max(0, seg.sourceEndAt - seg.sourceStartAt),
               rate: CANONICAL_SYNTHESIS_RATE,
             },
-            segment.indexStart,
+            seg.indexStart,
           ),
         )
       }
-      if (Object.keys(deps.getSegmentMetaMap()).length === 0) {
+      if (Object.keys(session.getSegmentMetaMap()).length === 0) {
         // Fallback to single-segment synthesis if slicing produced nothing.
       } else {
-        deps.setMetadataAvailable(true)
-        deps.setCurrentSegmentIndex(1)
-        deps.setPlaybackElapsed(0)
-        deps.setPlaybackDuration(deps.segmentDurationAt(0))
-        deps.pinVoicesForSegments(reusable)
-        deps.updateHighlightForPosition(0, 0)
+        control.setMetadataAvailable(true)
+        control.setCurrentSegmentIndex(1)
+        control.setPlaybackElapsed(0)
+        control.setPlaybackDuration(segment.segmentDurationAt(0))
+        segment.pinVoicesForSegments(reusable)
+        segment.updateHighlightForPosition(0, 0)
         const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
-        deps.setCurrentController(controller)
-        deps.setIsPlaying(true)
-        deps.setLastStatusReason('ready')
+        session.setCurrentController(controller)
+        control.setIsPlaying(true)
+        control.setLastStatusReason('ready')
         try {
-          deps.setMeasuredTotal(0)
-          deps.setPlayedDuration(0)
+          control.setMeasuredTotal(0)
+          control.setPlayedDuration(0)
           for (let idx = 0; idx < reusable.length; idx += 1) {
             if (controller.cancelled) return
-            const segment = reusable[idx]
-            const segVoice = deps.resolveEffectiveVoice(segment.lang)
+            const seg = reusable[idx]
+            const segVoice = editor.resolveEffectiveVoice(seg.lang)
             if (!segVoice?.edge) {
-              throw new LocalizedPlaybackError(`${UI_TEXT[deps.getLocale() as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(deps.getLocale() as keyof typeof UI_TEXT, segment.lang)})`)
+              throw new LocalizedPlaybackError(
+                `${UI_TEXT[content.getLocale() as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(content.getLocale() as keyof typeof UI_TEXT, seg.lang)})`,
+              )
             }
-            const cached = peekCachedSynthesis(segment.source.text, segVoice.edge)
+            const cached = peekCachedSynthesis(seg.source.text, segVoice.edge)
             if (!cached) throw new Error('Scoped playback lost its source cache entry')
-            const meta = deps.getSegmentMetaMap()[idx]
+            const meta = session.getSegmentMetaMap()[idx]
             if (!meta) continue
-            deps.setCurrentSegmentIndex(idx + 1)
-            deps.setPlaybackDuration(deps.segmentDurationAt(idx))
-            deps.setPlaybackElapsed(0)
+            control.setCurrentSegmentIndex(idx + 1)
+            control.setPlaybackDuration(segment.segmentDurationAt(idx))
+            control.setPlaybackElapsed(0)
             const segHighlights = highlightBoundaries(meta)
-            if (segHighlights.length > 0) deps.updateHighlightForPosition(idx, 0)
+            if (segHighlights.length > 0) segment.updateHighlightForPosition(idx, 0)
             else {
-              const trimmed = trimWhitespaceRange(segment.text, 0, segment.text.length)
-              deps.applyPlaybackHighlight(segment.indexStart + trimmed.start, segment.indexStart + trimmed.end)
+              const trimmed = trimWhitespaceRange(seg.text, 0, seg.text.length)
+              segment.applyPlaybackHighlight(seg.indexStart + trimmed.start, seg.indexStart + trimmed.end)
             }
-            const slicedStartOrig = segment.sourceStartAt
-            const slicedEndOrig = segment.sourceEndAt
-            await deps.playAudioBlob(
+            const slicedStartOrig = seg.sourceStartAt
+            const slicedEndOrig = seg.sourceEndAt
+            await lifecycle.playAudioBlob(
               controller,
               cached.blob,
               currentTime => {
                 const rel = currentTime - slicedStartOrig
-                deps.updateHighlightForPosition(idx, rel)
+                segment.updateHighlightForPosition(idx, rel)
               },
-              d => deps.setSegmentDuration(idx, d),
+              d => segment.setSegmentDuration(idx, d),
               0,
               slicedStartOrig,
               slicedEndOrig,
             )
             if (controller.cancelled) return
-            deps.setMeasuredTotal(deps.getMeasuredTotal() + deps.segmentDurationAt(idx))
-            deps.setPlayedDuration(deps.getMeasuredTotal())
+            control.setMeasuredTotal(control.getMeasuredTotal() + segment.segmentDurationAt(idx))
+            control.setPlayedDuration(control.getMeasuredTotal())
           }
-          deps.finishPlaybackRun({ clearActiveInfo: false })
+          lifecycle.finishPlaybackRun({ clearActiveInfo: false })
         } catch (error) {
           if (controller.cancelled) return
-          deps.failPlaybackRun(error, { clearActiveInfo: false, clearHighlight: true })
+          lifecycle.failPlaybackRun(error, { clearActiveInfo: false, clearHighlight: true })
         }
         return
       }
     }
-    deps.setPlaybackEnded(false)
-    deps.stopPlayback()
-    deps.setActiveInfoOffset(-1)
-    deps.setActiveInfoKind(null)
-    deps.applyScopedSession({
+    control.setPlaybackEnded(false)
+    lifecycle.stopPlayback()
+    control.setActiveInfoOffset(-1)
+    control.setActiveInfoKind(null)
+    editor.applyScopedSession({
       segments: [{ text: scoped.text, lang, indexStart: scoped.from, indexEnd: scoped.to - 1 }],
       range,
-      content,
+      content: text,
       resumeSelection: { from: scoped.from, to: scoped.to },
     })
-    deps.clearSegments()
+    segment.clearSegments()
     const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
-    deps.setCurrentController(controller)
-    deps.setIsPlaying(true)
-    deps.setLastStatusReason('ready')
-    deps.setCurrentSegmentIndex(1)
-    deps.setPlaybackElapsed(0)
-    deps.setPlaybackDuration(0)
+    session.setCurrentController(controller)
+    control.setIsPlaying(true)
+    control.setLastStatusReason('ready')
+    control.setCurrentSegmentIndex(1)
+    control.setPlaybackElapsed(0)
+    control.setPlaybackDuration(0)
     try {
-      const synth = await getCachedSynthesis(scoped.text, voice.edge, deps.getEffectiveSpeed(), controller.abort.signal, deps.getCacheScopeId())
+      const synth = await getCachedSynthesis(scoped.text, voice.edge, content.getEffectiveSpeed(), controller.abort.signal, content.getCacheScopeId())
       if (controller.cancelled) return
       const duration = await readAudioDuration(synth.blob, controller.abort.signal)
       if (controller.cancelled) return
-      deps.setMetadataAvailable(synth.boundaries.length > 0 || (synth.wordBoundaries?.length ?? 0) > 0)
-      deps.setPlaybackDuration(duration)
+      control.setMetadataAvailable(synth.boundaries.length > 0 || (synth.wordBoundaries?.length ?? 0) > 0)
+      control.setPlaybackDuration(duration)
       const scopedMeta = buildSegmentMeta(
         0,
-        deps.getSession().segments[0],
+        session.getSession().segments[0],
         {
           boundaries: synth.boundaries,
           wordBoundaries: synth.wordBoundaries ?? [],
@@ -318,32 +402,32 @@ export function createScopedPlayback(deps: ScopedDeps) {
         },
         scoped.from,
       )
-      deps.recordSegmentMeta(0, scopedMeta)
-      deps.pinVoiceForWrittenLang(toWrittenLang(lang), voice.edge)
+      segment.recordSegmentMeta(0, scopedMeta)
+      segment.pinVoiceForWrittenLang(toWrittenLang(lang), voice.edge)
       const scopedHighlights = highlightBoundaries(scopedMeta, scopedMeta.wordBoundaries ?? scopedMeta.boundaries)
       const applyHighlight = (currentTime: number) => {
         const relativeAt = currentTime - (synth.spokenStart ?? 0)
-        deps.updateHighlightForPosition(0, relativeAt)
+        segment.updateHighlightForPosition(0, relativeAt)
       }
-      if (scopedHighlights.length > 0) deps.updateHighlightForPosition(0, 0)
-      else deps.applyPlaybackHighlight(scoped.from, scoped.to)
-      await deps.playAudioBlob(
+      if (scopedHighlights.length > 0) segment.updateHighlightForPosition(0, 0)
+      else segment.applyPlaybackHighlight(scoped.from, scoped.to)
+      await lifecycle.playAudioBlob(
         controller,
         synth.blob,
         applyHighlight,
         d => {
-          deps.setPlaybackDuration(d)
-          deps.setSegmentDuration(0, d)
+          control.setPlaybackDuration(d)
+          segment.setSegmentDuration(0, d)
         },
         0,
         synth.spokenStart ?? 0,
         synth.spokenEnd,
       )
       if (controller.cancelled) return
-      deps.finishPlaybackRun({ clearActiveInfo: false })
+      lifecycle.finishPlaybackRun({ clearActiveInfo: false })
     } catch (error) {
       if (controller.cancelled) return
-      deps.failPlaybackRun(error, { clearActiveInfo: false, clearHighlight: true })
+      lifecycle.failPlaybackRun(error, { clearActiveInfo: false, clearHighlight: true })
     }
   }
 

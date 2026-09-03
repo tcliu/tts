@@ -1,7 +1,5 @@
-import { REFERENCE_LANGUAGES } from '$lib/tts-reference'
-import { segmentLanguageName } from '$lib/ui-text'
-import { SPEED_OPTIONS } from '$lib/tts-reference'
-import type { UiLocale } from '$lib/ui-text'
+import { REFERENCE_LANGUAGES, SPEED_OPTIONS } from '../tts-reference'
+import { segmentLanguageName, type UiLocale } from '../ui-text'
 
 export function chipVoiceLabel(voice: { name: string; gender: string; edge: string; group?: string }): string {
   const locale = voice.edge.split('-').slice(0, 2).join('-')

@@ -1,16 +1,5 @@
 import { isEditableActiveElement } from './slider'
 
-export function panelActionDisabled(
-  action: string,
-  deps: { isPlaying: boolean; canPlay: boolean; saveDisabled: boolean; currentDocId: string | null; isDirty: boolean },
-): boolean {
-  if (action === 'play') return deps.isPlaying ? false : !deps.canPlay
-  if (action === 'copy') return !deps.canPlay
-  if (action === 'save') return deps.saveDisabled
-  if (action === 'reset') return deps.currentDocId ? !deps.isDirty : !deps.canPlay
-  return false
-}
-
 export function createPlaybackArrowHandler(deps: {
   getEditorRef: () => { hasFocus?: () => boolean } | null
   getDrawerPanelRef: () => HTMLElement | null

@@ -42,8 +42,7 @@ coherent system instead of a new parallel one.
     `src/lib/playback/segment-meta.ts`, voice-switch serialization in
     `src/lib/playback/voice-switch.ts` via `createVoiceSwitch`, and shared
     playback types in `src/lib/playback/types.ts` (`SegmentMeta`,
-    `PlaybackController`, `LocalizedPlaybackError`); `playback-helpers.ts` is a
-    deprecated re-export shim.
+    `PlaybackController`, `LocalizedPlaybackError`).
   - `use-metadata.svelte.ts` owns boundary rows (pure builder in
     `src/lib/metadata/rows.ts` via `buildSortedRows`, active indices in
     `src/lib/metadata/active-index.ts`), search/follow state, staleness, and
