@@ -3,10 +3,10 @@
   import BaseDialog from '$lib/components/BaseDialog.svelte'
   import Button from '$lib/components/Button.svelte'
   import DataTable, { type DataTableColumn } from '$lib/components/DataTable.svelte'
-  import { REFERENCE_LANGUAGES } from '$lib/tts-reference'
-  import { UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
+  import { UI_TEXT, type UiLocale } from '$lib/ui-text'
   import { formatBytes } from '$lib/format-bytes'
   import type { SynthesisCacheEntry } from '$lib/tts-client'
+  import { VOICE_LOOKUP as voiceLookup, voiceLabel, languageLabel, snippet } from '$lib/synthesis-cache/voice-helpers'
 
   interface Props {
     locale: UiLocale
@@ -40,21 +40,6 @@
   let sortKey = $state<string | null>(null)
   let sortDir = $state<'asc' | 'desc'>('asc')
 
-  const voiceLookup = new Map(
-    REFERENCE_LANGUAGES.flatMap(language =>
-      language.voices.map(voice => [
-        voice.edge,
-        {
-          languageCode: language.code,
-          languageName: language.name,
-          voiceName: voice.name,
-          gender: voice.gender,
-          group: voice.group ?? '',
-        },
-      ]),
-    ),
-  )
-
   const query = $derived(search.trim().toLowerCase())
 
   const filteredEntries = $derived.by(() => {
@@ -83,7 +68,7 @@
       let cmp = 0
       switch (sortKey) {
         case 'lang': {
-          cmp = languageLabel(a).localeCompare(languageLabel(b))
+          cmp = languageLabel(a, locale).localeCompare(languageLabel(b, locale))
           break
         }
         case 'voice': {
@@ -210,30 +195,6 @@
 
   function formatSavedAt(savedAt: number): string {
     return savedAtFormatter.format(savedAt)
-  }
-
-  function voiceMeta(entry: SynthesisCacheEntry) {
-    return voiceLookup.get(entry.voiceId)
-  }
-
-  function voiceLabel(entry: SynthesisCacheEntry): string {
-    const meta = voiceMeta(entry)
-    if (!meta && !entry.voiceId) return '\u2014'
-    if (!meta) return entry.voiceId
-    const pieces = [meta.voiceName, meta.gender]
-    if (meta.group) pieces.push(meta.group)
-    return pieces.join(' · ')
-  }
-
-  function languageLabel(entry: SynthesisCacheEntry): string {
-    const code = voiceMeta(entry)?.languageCode
-    return code ? `${segmentLanguageName(locale, code)} · ${code}` : '\u2014'
-  }
-
-  function snippet(textValue: string): string {
-    const trimmed = textValue.trim()
-    if (!trimmed) return '\u2014'
-    return trimmed.length > 160 ? `${trimmed.slice(0, 160)}...` : trimmed
   }
 
   function toggleSelection(key: string, checked: boolean) {
@@ -416,7 +377,7 @@
 </BaseDialog>
 
 {#snippet langCell(entry: SynthesisCacheEntry)}
-  <span class="text-slate-400">{languageLabel(entry)}</span>
+  <span class="text-slate-400">{languageLabel(entry, locale)}</span>
 {/snippet}
 
 {#snippet voiceCell(entry: SynthesisCacheEntry)}

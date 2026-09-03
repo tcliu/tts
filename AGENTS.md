@@ -89,16 +89,7 @@ Project-specific development conventions for the TTS web app.
   `height` (`auto`/`fixed`/`tall`); callers pick a preset instead of hardcoding
   `w-`/`h-` in `className`.
 - Settings Voices tab follows the aligned label + control-group row pattern (see `references/responsive-design.md`): voice model group = spoken-language selector (if any) + voice-model selector; support four states a) `label | spoken | voice`, b) `label | voice` (no spoken), c) `label` / `spoken + voice`, d) `label` / `spoken` / `voice` with voice-group left aligned across languages and stacked `flex-col` below `sm` so shrinking forces label and voice-group into separate rows.
-- Documents drawer is docked at `lg` with two states: expanded (`lg:static lg:w-72`) and header-toggle collapsed (`lg:static lg:w-0`), and overlayed below it (`absolute inset-y-0 left-0 w-64 z-20`) on smaller viewports; keep `DOCKED_QUERY` (`(min-width: 64rem)`) in `+page.svelte` synced with `DocumentsDrawer`'s `lg:*` classes and gate overlay-only dismissals (click-outside, Escape, swipe) with `isDocked`.
-- A docked-collapsed drawer must be non-interactive (`inert` + `aria-hidden`) so keyboard focus cannot move into hidden controls.
-- Overlay drawer must close by dragging/swiping left on mobile — the shared
-  `dragCloseLeft` action owns the pointer state machine (touch/pen only,
-  `touch-action: pan-y`, pointer capture, horizontal dominance, left-only
-  motion, clamped `translateX`) and dismisses on ~30% width or fast-swipe
-  (>0.5px/ms and >40px) threshold; `DocumentsDrawer` renders the drag offset,
-  suppresses the snap animation when `prefers-reduced-motion: reduce` is active,
-  and routes `onClose` through `dismissDrawerAndFocusTrigger` to return focus;
-  disable the gesture when docked (see `references/responsive-design.md`).
+- Documents drawer docks at `lg` (`lg:static lg:w-72` expanded, `lg:w-0` collapsed; `absolute w-64 z-20` overlay below `lg`); keep `DOCKED_QUERY` in `+page.svelte` synced with `DocumentsDrawer` and gate overlay-only dismissals with `isDocked`; collapsed docked drawer is `inert` + `aria-hidden`. Overlay drawer closes by swipe/drag left via `dragCloseLeft` gated by `!isDocked` — see `docs/spec.md` §Documents model.
 - Playback toolbar is a container-query ladder (`@container`, 9 bands `tiny→full` in `toolbar-ladder.ts`) with paired `TOOLBAR_BANDS`/`INLINE_AT_BAND`/`REVEAL_CLASS` literals; thresholds are calibrated at `--text-sm` worst-Latin (`--container-tts-*` in `src/styles.css`: `4→352`, `5→432`, `6→508`) and all three tables must change together.
 - Icon-only `Button` uses uniform padding (`p-1.5` for `sm`, `p-2.5` for `md`) so vertical/horizontal match; text buttons keep `px`/`py` distinction.
 - Dropdown/menu option panels show at most one highlighted row at a time, shared by mouse hover and keyboard (`ArrowUp/Down`, `Home/End`). The highlight follows `useListSelection` index via `onmouseenter` and `selection.move`; the selected value is `aria-selected`/`aria-checked` + checkmark only, not a second background.
@@ -120,14 +111,15 @@ Project-specific development conventions for the TTS web app.
 ## References
 
 - Follow `references/svelte.md` for Svelte 5 runes and effect rules; component
-  attributes stay camelCase in this project.
+  attributes stay camelCase in this project. Split by coherent responsibility
+  into composable factories under `src/lib/`; route components stay thin
+  orchestration layers and non-reactive domain clients stay in plain `.ts`.
+- Follow `references/svelte-i18n.md` for multilingual UI text via `UI_TEXT`.
 - Follow `references/js-ts.md` for module design; split by coherent
   responsibility, keep dependency flow one-way, and avoid micro-modules and
   over-fragmentation.
-- Follow `references/tailwind.md` for literal utility classes and runtime style
-  values.
-- Follow `references/tailwind-theming.md` for the attribute-driven palette
-  remapping that powers the app's themes.
+- Follow `references/tailwind.md` for literal utility classes, runtime style
+  values, and the attribute-driven palette remapping that powers themes.
 - Follow `references/accessibility.md` for focus management, keyboard access,
   labels, and reduced motion.
 - Follow `references/responsive-design.md` for breakpoint, touch-target, and
@@ -139,7 +131,15 @@ Project-specific development conventions for the TTS web app.
   affordances, focus-first-input), form dialogs (OK/Apply + Reset, discard
   unsaved-changes confirm), icons, comboboxes, and the two-arrow table sort
   pattern.
+- Follow `references/api-client.md` for `snake_case` wire payloads and
+  `camelCase`-at-the-boundary mapping.
+- Follow `references/cross-browser.md` for browser-owned viewport and keyboard
+  differences.
 - Follow `references/logging.md` for server-side structured event logging.
+- Follow `references/reliability.md` for state safety, async flows, and
+  concurrency guards.
+- Follow `references/verification.md` for lint, typecheck, and test validation
+  before finishing changes.
 - Follow `references/git.md` for commit message conventions and worktree
   isolation.
 

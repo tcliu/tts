@@ -123,28 +123,31 @@
 ## Metadata panel
 
 - An Info button toggles a metadata panel.
-- The panel lists each spoken sentence for the current segment during playback
-  as a table of columns; the row count equals the number of sentences, not
-  segments.
-- Columns are sentence, offset, language, and text; the spoken row is
-  highlighted while playing. When Edge under-splits a segment (e.g. CJK text
-  separated by spaces or commas), the panel synthesizes one row per highlight
-  range with interpolated timing so each sentence still appears on its own row.
+- The panel lists each spoken sentence for the current document during playback;
+  the row count equals the number of sentences, not segments.
+- The sentence table shows expand, play, number, offset, language, and text; the
+  spoken row is highlighted while playing. The expand control reveals a word
+  sub-table (play, word number, offset, text) for sentences with word timing.
+  When Edge under-splits a segment (e.g. CJK text separated by spaces or commas),
+  the panel synthesizes one row per highlight range with interpolated timing so
+  each sentence still appears on its own row.
 - The panel is empty before any playback.
 - The panel's column headers are localized with the rest of the interface.
-- Activating a row (pointer or keyboard) replays the session starting from that
-  sentence.
- - A search field filters rows by text, offset, or language.
+- Activating a sentence or word row (pointer or keyboard) replays from that
+  position; per-row speaker buttons first try already-cached segment audio
+  (derived from sentence/word boundaries and segment range offsets) and fall
+  back to isolated fragment synthesis only when the segment is absent, is not
+  cached, or no reliable time window can be derived.
+ - A search field filters rows by text, offset, language, or word text.
  - A follow toggle scrolls the panel to keep the spoken row visible; scrolling
-   respects reduced-motion preferences.
- - Each sentence with word timing has a per-row expand control revealing its word
-   table; a bulk control above the table expands or collapses all currently
-   visible word tables at once (filtered rows only, keyboard reachable, `Expand
-   all` / `Collapse all` labels, offset-stable keys so filtering does not
-   reopen the wrong rows).
+    respects reduced-motion preferences.
+ - Each sentence with word timing has a per-row expand control; a bulk control
+    above the table expands or collapses all currently visible word tables at
+    once (filtered rows only, keyboard reachable, `Expand all` / `Collapse all`
+    labels, offset-stable keys so filtering does not reopen the wrong rows).
  - Editing the editor content clears the rows and marks them stale; a status hint
-   shows the rows were cleared, and the panel shows the cached segment rows again
-   after a short pause once playback re-reads the synthesis cache.
+    shows the rows were cleared, and the panel shows the cached segment rows again
+    after a short pause once playback re-reads the synthesis cache.
 
 ## Settings dialog
 
@@ -164,11 +167,11 @@
   every cached audio file and to view cached segments in a dialog.
 - The Synthesis cache dialog shows a full-width table (`Lang`, `Voice`, `Text`,
   `Size`, `Saved`) that is sortable by header, paginated, and searchable;
-  the table body caps at `50vh`/`32rem` and scrolls internally so the dialog
-  itself never shows a vertical scrollbar. Each cached segment is keyed by
-  `text + voice` and may be shared across documents, so no `Document` column
-  is shown. Playback at any speed reuses the same `1×` cached audio via
-  `playbackRate`.
+  the table fills the remaining vertical space of a fixed tall dialog shell
+  with pagination pinned at the bottom, so the dialog itself never vertically
+  scrolls. Each cached segment is keyed by `text + voice` and may be shared
+  across documents, so no `Document` column is shown. Playback at any speed
+  reuses the same `1×` cached audio via `playbackRate`.
 - The dialog keeps the same outer size across all tabs, anchored to the Voices
   tab (largest content); switching to Speed or Synthesis does not shrink the
   dialog.

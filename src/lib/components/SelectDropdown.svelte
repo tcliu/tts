@@ -193,6 +193,14 @@
         selection.move('up', filteredOptions.length)
         revealActive()
       })
+    } else if (event.key === 'Home' || event.key === 'End') {
+      if (open && filteredOptions.length > 0) {
+        event.preventDefault()
+        flushSync(() => {
+          selection.move(event.key === 'Home' ? 'first' : 'last', filteredOptions.length)
+          revealActive()
+        })
+      }
     } else if (event.key === 'Enter') {
       if (!open) {
         if (filterable) {

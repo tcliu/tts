@@ -46,11 +46,15 @@ function cacheDir(): string {
   return path.resolve(process.cwd(), '.tts')
 }
 
-export function synthesisCacheKey(text: string, voice: string, rate: number): string {
+export function hashedSynthesisCacheKey(text: string, voice: string, rate: number): string {
   // buildSynthesisCacheKey is canonical at 1×; legacy rate-keyed files
   // (hash of [text,voice,rate≠1]) are orphaned and age out via TTL/size
   // prune below without eager migration.
   return createHash('sha256').update(buildSynthesisCacheKey(text, voice, rate)).digest('hex')
+}
+
+export function synthesisCacheKey(text: string, voice: string, rate: number): string {
+  return hashedSynthesisCacheKey(text, voice, rate)
 }
 
 export interface CachedSynthesisResult {

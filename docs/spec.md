@@ -26,21 +26,33 @@ coherent system instead of a new parallel one.
     resolution.
   - `use-playback.svelte.ts` owns the playback engine, session state, progress,
     and status messaging; selection-scope helpers live in
-    `src/lib/playback/selection-scope.ts`, duration scaling in
-    `src/lib/playback/timing.ts`, voice remapping in
+    `src/lib/playback/selection-scope.ts` and debounced selection sync in
+    `src/lib/playback/selection.ts` via `createSelectionSync` (grouped
+    `session`/`playback`/`editor` deps), duration scaling in
+    `src/lib/playback/timing.ts` and progress helpers in
+    `src/lib/playback/progress.ts`, voice remapping in
     `src/lib/playback/voice-remap.ts`, audio element lifecycle in
     `src/lib/playback/audio.ts` via `createAudioPlayer`, highlight
     computation in `src/lib/playback/highlight.ts`, segment metadata in
-    `src/lib/playback/segment-meta.ts`, and voice-switch serialization in
-    `src/lib/playback/voice-switch.ts` via `createVoiceSwitch`.
-  - `use-metadata.svelte.ts` owns boundary rows, search/follow state, staleness,
-    and background resync; `MetadataPanel` keys expanded rows by stable
-    `offset` and offers a filtered bulk expand/collapse control.
+    `src/lib/playback/segment-meta.ts`, voice-switch serialization in
+    `src/lib/playback/voice-switch.ts` via `createVoiceSwitch`, and shared
+    playback types in `src/lib/playback/types.ts` (`SegmentMeta`,
+    `PlaybackController`, `LocalizedPlaybackError`).
+  - `use-metadata.svelte.ts` owns boundary rows (pure builder in
+    `src/lib/metadata/rows.ts` via `buildSortedRows`, active indices in
+    `src/lib/metadata/active-index.ts`, and shared `syntheticRangeAt` in
+    `src/lib/metadata/synthetic.ts`), search/follow state, staleness, and
+    background resync; `MetadataPanel` keys expanded rows by stable `offset` and
+    offers a filtered bulk expand/collapse control.
   - `use-documents.svelte.ts` owns the `localStorage`-backed document store
     (list, save, rename, delete) and hydration.
   - `use-documents-drawer.svelte.ts` owns drawer open state and name search.
   - `use-document-editor.svelte.ts` owns the current-document identity, dirty
-    state, and the save/rename/clone/delete/upload/discard dialog flows.
+    state, and the save/rename/clone/delete/upload/discard dialog flows;
+    shared helpers in `src/lib/document-editor/helpers.ts` (`PendingAction`/`DiscardKind`/`UploadNotice`, `createDraftCacheId`/`nextAvailableDraftName`, `gateNavigation`).
+  - `use-synthesis-cache.svelte.ts` owns the Synthesis cache stats, dialog
+    state, and clear-all / clear-selected flows with scope invalidation via
+    `src/lib/tts-cache-clear.ts`.
   - `tts-client.ts` is the non-reactive synthesis API with its LRU cache.
 - The route component stays a thin orchestration layer that wires composables
   to view components.
@@ -49,7 +61,7 @@ coherent system instead of a new parallel one.
 
 - Reuse the `CodeEditor` component pattern for the line-numbered editor.
 - Reuse the `SelectDropdown` pattern for voice and speed selection.
-- Reuse `DataTable`/`Pagination` (with `use-column-resize` and `column-width-storage`) for the Synthesis cache dialog; the table spans `w-full`, caps body at `50vh`/`32rem`, and is sortable/paginated/resizable.
+- Reuse `DataTable`/`Pagination` (with `use-column-resize` and `column-width-storage`) for the Synthesis cache dialog; the table spans `w-full` with `fillHeight` inside the `BaseDialog` tall shell (`w-[min(96vw,96rem)] h-[min(88vh,860px)] flex-col`) so pagination stays pinned and the dialog never vertically scrolls — the table is sortable/paginated/resizable/searchable.
 - Reuse dialog structure and dismissal behavior from `BaseDialog`.
 - Reuse shared icon components or add new icon components rather than inlining
   SVGs in feature code.
@@ -85,9 +97,16 @@ coherent system instead of a new parallel one.
   Info panel with selected-text-only metadata, but it must not pre-highlight the
   first selected word in the editor.
 - Stopping or finishing playback clears only the playback-highlight overlay.
-- A metadata pipeline records per-sentence boundaries for the session. Editing
-  the content invalidates it and re-synthesizes segments in a bounded,
-  cancellable background pass to refresh boundaries.
+- A metadata pipeline records per-sentence boundaries for the session. When a
+  voice under-splits CJK text (e.g. spaces or commas separating sentences),
+  `src/lib/bracket-merge.ts` `shouldUseRangeRows` falls back to highlight ranges
+  with interpolated timing (`syntheticRangeAt`) so each sentence still surfaces as
+  its own row. Editing the content invalidates the pipeline and re-synthesizes
+  segments in a bounded, cancellable background pass to refresh boundaries. Info
+  panel sentence/word speaker buttons first reuse already-cached segment audio:
+  `src/lib/playback/isolated.ts` `createIsolatedPlayer` falls back to isolated
+  fragment synthesis (`getCachedSynthesis`) only when no reliable cached window
+  can be derived from the segment's boundaries and range offsets.
 - The session keeps two override maps: per-segment language overrides and
   per-language voice overrides. Both live only in the active session (cleared
   when the session is re-primed or reset), never touch the persisted settings,
@@ -177,11 +196,14 @@ coherent system instead of a new parallel one.
 - Each persisted entry is tagged with the document id, so the cache can be
   cleared for a single document (the Reset action clears the open document's
   cached audio) or for every document from the Settings Synthesis tab (Cache entry).
+  The Synthesis cache View dialog's `Clear` deletes only the selected keys from
+  both the in-memory LRU and IndexedDB (`deletePersistedSegments`) and refreshes
+  the summary.
 - Clearing all client-side synthesis cache while the editor is open resets the
   active playback session and metadata rows when the current document has any
   surfaced playback/cache state; clearing selected cache entries resets them
-  only when the current playback/caret scope's segment is among the cleared
-  entries.
+  only when the current playback/caret scope's segment (`src/lib/tts-cache-clear.ts`
+  `isScopeInvalidatedByClearedKeys`) is among the cleared entries.
 
 ## Settings model
 
@@ -198,7 +220,10 @@ coherent system instead of a new parallel one.
   Voices tab (largest); other tabs do not shrink it.
 - The Speed tab shows the default speed as a NumberInput (`0.25–3`, step `0.25`,
   default `1`); the Synthesis tab shows the Synthesis concurrency NumberInput
-  (`1–8`, step `1`).
+  (`1–8`, step `1`) and a Cache summary (`segments · bytes`) with `Clear all`
+  and `View` (the `View` dialog is a second `BaseDialog` with a selectable
+  `Lang`/`Voice`/`Text`/`Size`/`Saved` table, sticky header, `SearchInput`,
+  `contain-layout`, and a `Play` control that stops main playback first).
 - Default speed options must match the speed list in `tts.mjs`.
 
 ## Theming
