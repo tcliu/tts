@@ -1,0 +1,7 @@
+export type { TtsSegment, HighlightRange, TtsBoundary } from './segment/types'
+export type { EdgeBoundaryEvent } from './segment/edge'
+export { parseEdgeMetadata } from './segment/edge'
+export { splitTtsRuns, mergeAdjacentRuns, foldShortRuns, mergeBracketedCjkPrefixes, reattachBracketEdges, refineEnglishRuns } from './segment/runs'
+export { splitParagraphRanges, cleanParagraph, splitIntoSentences, hardSplit, splitLongText, pushParagraph, isCjkSentenceText } from './segment/paragraph'
+export { splitTtsSegments } from './segment/chunking'
+export { splitHighlightRanges, activeHighlightRange, splitSentenceRanges, mergeBracketRanges } from './segment/highlight'
