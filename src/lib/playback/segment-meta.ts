@@ -1,7 +1,7 @@
 import { splitHighlightRanges } from '../tts-reference'
 import type { TtsBoundary } from '../tts-reference'
 import type { TtsSegment } from '../tts-reference'
-import type { SegmentMeta } from '../use-playback.svelte'
+import type { SegmentMeta } from './types'
 import { CANONICAL_SYNTHESIS_RATE } from '../tts-cache-key'
 
 export function buildSegmentMeta(

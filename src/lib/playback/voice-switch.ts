@@ -5,7 +5,7 @@ import { getCachedSynthesis } from '../tts-client'
 import { readAudioDuration } from '../playback-helpers'
 import { buildSegmentMeta } from '../playback/segment-meta'
 import { CANONICAL_SYNTHESIS_RATE } from '../tts-cache-key'
-import type { SegmentMeta } from '../use-playback.svelte'
+import type { SegmentMeta } from './types'
 import type { TtsSegment } from '../tts-reference'
 import type { TtsVoice } from '../tts-reference'
 

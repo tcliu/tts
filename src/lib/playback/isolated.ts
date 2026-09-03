@@ -6,8 +6,7 @@ import { highlightBoundaries, activeBoundaryAt } from '../playback-helpers'
 import { activeHighlightRange } from '../tts-reference'
 import { getCachedSynthesis } from '../tts-client'
 import { readAudioDuration } from '../playback-helpers'
-import { LocalizedPlaybackError } from './errors'
-import type { SegmentMeta } from '../use-playback.svelte'
+import { LocalizedPlaybackError, type SegmentMeta } from './types'
 
 export interface IsolatedDeps {
   getSessionOffset: () => number

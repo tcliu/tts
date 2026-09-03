@@ -1,6 +1,6 @@
-import type { SegmentMeta } from '../use-playback.svelte'
+import type { SegmentMeta } from './types'
 
-export function segmentDurationForMeta(meta: SegmentMeta | undefined): number {
+export function getSegmentDuration(meta: SegmentMeta | undefined): number {
   if (!meta) return 0
   if (meta.spokenEnd != null && meta.spokenStart != null) {
     return Math.max(0, meta.spokenEnd - meta.spokenStart)
@@ -8,18 +8,21 @@ export function segmentDurationForMeta(meta: SegmentMeta | undefined): number {
   return meta.duration ?? 0
 }
 
+// Backwards-compat alias — prefer getSegmentDuration.
+export const segmentDurationForMeta = getSegmentDuration
+
 export function scaledDurationForBase(base: number, rate: number, speed: number): number {
   if (base === 0) return 0
-  const s = speed || 1
+  const s = speed ?? 1
   return (base * rate) / s
 }
 
 export function scaledAtForMediaValue(mediaAt: number, rate: number, speed: number): number {
-  const s = speed || 1
+  const s = speed ?? 1
   return (mediaAt * rate) / s
 }
 
 export function mediaAtForScaledValue(scaledAt: number, rate: number, speed: number): number {
-  const s = speed || 1
+  const s = speed ?? 1
   return (scaledAt * s) / rate
 }

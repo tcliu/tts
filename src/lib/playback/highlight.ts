@@ -1,7 +1,7 @@
 import { activeBoundaryAt, highlightBoundaries } from '../playback-helpers'
 import { activeHighlightRange } from '../tts-reference'
 import { trimWhitespaceRange } from '../playback-helpers'
-import type { SegmentMeta } from '../use-playback.svelte'
+import type { SegmentMeta } from './types'
 import type { TtsSegment } from '../tts-reference'
 
 export interface HighlightRangeResult {

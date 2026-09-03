@@ -1,10 +1,6 @@
 import { UI_TEXT, type UiLocale } from '../ui-text'
 
-interface PlaybackController {
-  cancelled: boolean
-  abort: AbortController
-  cancelAudio?: () => void
-}
+import type { PlaybackController } from './types'
 
 interface AudioPlaybackDeps {
   getLocale: () => UiLocale

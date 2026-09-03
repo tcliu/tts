@@ -15,7 +15,7 @@ import {
   onSynthesisCacheHydrated,
   peekCachedSynthesis,
 } from './tts-client'
-import { CANONICAL_SYNTHESIS_RATE } from './tts-cache-key'
+import { CANONICAL_SYNTHESIS_RATE, canonicalRate } from './tts-cache-key'
 import { UI_TEXT, segmentLanguageName, type UiLocale } from './ui-text'
 import {
   hasNonEmptySelection,
@@ -24,11 +24,12 @@ import {
   type ReusableScopedSegment,
 } from './playback/selection-scope'
 import {
-  segmentDurationForMeta,
-  scaledDurationForBase,
-  scaledAtForMediaValue,
-  mediaAtForScaledValue,
-} from './playback/timing'
+  locatePlaybackPosition as locatePlaybackPositionPure,
+  mediaAtForScaled as mediaAtForScaledPure,
+  scaledAtForMedia as scaledAtForMediaPure,
+  scaledDurationAt as scaledDurationAtPure,
+  segmentDurationAt as segmentDurationAtPure,
+} from './playback/progress'
 import {
   locateCaretBoundaryAtOrBefore as locateCaretBoundaryAtOrBeforeImpl,
   charOffsetAtPosition as charOffsetAtPositionImpl,
@@ -39,8 +40,9 @@ import { getHighlightRangeForPosition } from './playback/highlight'
 import { createVoiceSwitch } from './playback/voice-switch'
 import { buildSegmentMeta } from './playback/segment-meta'
 import { createEmptySession, type PlaybackSession } from './playback/session'
-import { LocalizedPlaybackError } from './playback/errors'
+import { LocalizedPlaybackError } from './playback/types'
 import { createIsolatedPlayer } from './playback/isolated'
+import { createSelectionSync } from './playback/selection'
 import type { SettingsHandle } from './use-settings.svelte'
 import {
   activeBoundaryAt,
@@ -68,25 +70,8 @@ export type CodeEditorHandle = {
   hasFocus: () => boolean
 }
 
-export interface SegmentMeta {
-  index: number
-  lang: string
-  text: string
-  ranges: HighlightRange[]
-  boundaries: TtsBoundary[]
-  wordBoundaries?: TtsBoundary[]
-  baseOffset: number
-  duration?: number
-  spokenStart?: number
-  spokenEnd?: number
-  rate?: number
-}
-
-interface PlaybackController {
-  cancelled: boolean
-  abort: AbortController
-  cancelAudio?: () => void
-}
+import type { SegmentMeta, PlaybackController } from './playback/types'
+export type { SegmentMeta, PlaybackController } from './playback/types'
 
 export interface PlaybackHandle {
   readonly isPlaying: boolean
@@ -189,10 +174,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let currentSplitToken: object | null = null
   let applyingResumeSelection = false
   let suppressSelectionCounter = 0
-  let pendingSelectionSeekTimer: ReturnType<typeof setTimeout> | null = null
-  let pendingSelectionRange: { from: number; to: number } | null = null
-  let pendingCaretOffset: number | null = null
-  let pendingSelectionGeneration = 0
+  let selectionSync: ReturnType<typeof createSelectionSync> | null = null
 
   const effectiveSpeed = $derived(session.speed ?? deps.settings.speed)
   const playbackSpeed = $derived(effectiveSpeed)
@@ -326,26 +308,20 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     return segment?.text ?? ''
   })
 
+  function statusForReason(reason: typeof lastStatusReason, locale: UiLocale): string {
+    const strings = UI_TEXT[locale]
+    if (reason === 'stopped') return strings.playbackStopped
+    if (reason === 'switching') return strings.voiceSwitching
+    if (reason === 'finished') return strings.playbackFinished
+    if (reason === 'error') return strings.playbackFailed
+    return strings.ready
+  }
+
   $effect(() => {
     if (isPlaying) {
       return
     }
-    const strings = UI_TEXT[deps.settings.locale]
-    if (lastStatusReason === 'stopped') {
-      statusMessage = strings.playbackStopped
-      return
-    }
-    if (lastStatusReason === 'switching') {
-      statusMessage = strings.voiceSwitching
-      return
-    }
-    if (lastStatusReason === 'finished') {
-      statusMessage = strings.playbackFinished
-      return
-    }
-    if (lastStatusReason === 'ready') {
-      statusMessage = strings.ready
-    }
+    statusMessage = statusForReason(lastStatusReason, deps.settings.locale)
   })
 
   $effect(() => {
@@ -381,13 +357,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     // tears playback down) during the switch's synthesis must leave playback
     // stopped instead of restarting it.
     voiceSwitchGeneration += 1
-    if (pendingSelectionSeekTimer) {
-      clearTimeout(pendingSelectionSeekTimer)
-      pendingSelectionSeekTimer = null
-      pendingSelectionRange = null
-      pendingCaretOffset = null
-      pendingSelectionGeneration += 1
-    }
+    selectionSync?.invalidatePendingSeek()
     if (playbackEnded) {
       activeInfoOffset = -1
       activeInfoKind = null
@@ -432,27 +402,19 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   function segmentDurationAt(index: number): number {
-    return segmentDurationForMeta(segmentMetaMap[index])
+    return segmentDurationAtPure(segmentMetaMap, index)
   }
 
   function scaledDurationAt(index: number): number {
-    const base = segmentDurationAt(index)
-    if (base === 0) return 0
-    const meta = segmentMetaMap[index]
-    const rate = meta?.rate ?? effectiveSpeed
-    return scaledDurationForBase(base, rate, effectiveSpeed)
+    return scaledDurationAtPure(segmentMetaMap, effectiveSpeed, index)
   }
 
   function scaledAtForMedia(index: number, mediaAt: number): number {
-    const meta = segmentMetaMap[index]
-    const rate = meta?.rate ?? effectiveSpeed
-    return scaledAtForMediaValue(mediaAt, rate, effectiveSpeed)
+    return scaledAtForMediaPure(segmentMetaMap, effectiveSpeed, index, mediaAt)
   }
 
   function mediaAtForScaled(index: number, scaledAt: number): number {
-    const meta = segmentMetaMap[index]
-    const rate = meta?.rate ?? effectiveSpeed
-    return mediaAtForScaledValue(scaledAt, rate, effectiveSpeed)
+    return mediaAtForScaledPure(segmentMetaMap, effectiveSpeed, index, scaledAt)
   }
 
   function rememberResumePosition() {
@@ -502,6 +464,12 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     if (!range) return null
     applyPlaybackHighlight(range.from, range.to)
     return range
+  }
+
+  function ensureSegments(content: string): ReturnType<typeof splitTtsSegments> {
+    const contentChanged = session.sourceContent !== content
+    if (session.segments.length > 0 && !contentChanged) return session.segments
+    return splitTtsSegments(content)
   }
 
   function resolveScopedPlaybackLang(scopedText: string, content: string): string {
@@ -618,190 +586,6 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     )
   }
 
-  async function seekToSelectionRange(range: { from: number; to: number }) {
-    if (session.segments.length === 0) return
-    if (session.selectionScoped) return
-    const start = locateSegmentStartByCharOffset(session.segments, range.from)
-    const meta = segmentMetaMap[start.index]
-    const boundaries = highlightBoundaries(meta)
-    const absoluteBase = session.segments[start.index]?.indexStart ?? 0
-    let targetAt = 0
-    if (boundaries.length > 0) {
-      targetAt = locateBoundaryStartWithinOrBefore(boundaries, absoluteBase, range)
-    }
-    // Stop the current playback and restart from the selected word. The
-    // existing resume position (based on audio.currentTime) is discarded in
-    // favor of the snapped word boundary inside the new selection.
-    stopPlayback()
-    playbackEnded = false
-    setResumePosition(start.index, targetAt, true)
-    await runPlayback(session.segments, session.offset, start.index, targetAt)
-  }
-
-  async function seekToCaretOffset(caretOffset: number) {
-    if (session.segments.length === 0) return
-    const start = locateSegmentStartByCharOffset(session.segments, caretOffset)
-    const meta = segmentMetaMap[start.index]
-    const boundaries = highlightBoundaries(meta)
-    const absoluteBase = session.segments[start.index]?.indexStart ?? 0
-    let targetAt = 0
-    if (boundaries.length > 0) {
-      targetAt = locateCaretBoundaryAtOrBefore(boundaries, absoluteBase, caretOffset)
-    }
-    stopPlayback()
-    playbackEnded = false
-    setResumePosition(start.index, targetAt, true)
-    await runPlayback(session.segments, session.offset, start.index, targetAt)
-  }
-
-  function scheduleSeekFromSelection(range: { from: number; to: number }) {
-    if (session.selectionScoped) return
-    pendingSelectionRange = range
-    pendingCaretOffset = null
-    pendingSelectionGeneration += 1
-    const generation = pendingSelectionGeneration
-    if (pendingSelectionSeekTimer) clearTimeout(pendingSelectionSeekTimer)
-    pendingSelectionSeekTimer = setTimeout(() => {
-      pendingSelectionSeekTimer = null
-      if (generation !== pendingSelectionGeneration) return
-      const pending = pendingSelectionRange
-      pendingSelectionRange = null
-      if (!pending || !isPlaying || isSelectionSyncSuppressed()) return
-      void seekToSelectionRange(pending)
-    }, 60)
-  }
-
-  function scheduleSeekFromCaret(caretOffset: number) {
-    pendingCaretOffset = caretOffset
-    pendingSelectionRange = null
-    pendingSelectionGeneration += 1
-    const generation = pendingSelectionGeneration
-    if (pendingSelectionSeekTimer) clearTimeout(pendingSelectionSeekTimer)
-    pendingSelectionSeekTimer = setTimeout(() => {
-      pendingSelectionSeekTimer = null
-      if (generation !== pendingSelectionGeneration) return
-      const pending = pendingCaretOffset
-      pendingCaretOffset = null
-      if (pending == null || !isPlaying || isSelectionSyncSuppressed()) return
-      void seekToCaretOffset(pending)
-    }, 60)
-  }
-
-  function syncSelectionStart(range: { from: number; to: number } | null) {
-    if (isSelectionSyncSuppressed()) return
-    if (isPlaying) {
-      if (range != null) {
-        if (session.segments.length === 0) return
-        if (session.selectionScoped) return
-        scheduleSeekFromSelection(range)
-        return
-      }
-      const caret = deps.getEditor()?.getCaretPosition?.() ?? null
-      if (caret == null || session.segments.length === 0) return
-      scheduleSeekFromCaret(caret)
-      return
-    }
-    const content = deps.settings.content
-    if (!content) {
-      resetSession()
-      return
-    }
-    // Selection changes fire on every caret move; segment the document only
-    // when a selection actually needs a resume position computed.
-    if (range && hasNonEmptySelection(range)) {
-      const contentChanged = session.sourceContent !== content
-      const segments =
-        session.segments.length > 0 && !contentChanged ? session.segments : splitTtsSegments(content)
-      if (segments.length === 0) {
-        resetSession()
-        return
-      }
-      if (contentChanged) {
-        clearSegments()
-      }
-      primeSession(segments, 0, range)
-      void warmSelectionScope(range)
-      return
-    }
-    if (range == null) {
-      const caret = deps.getEditor()?.getCaretPosition?.() ?? null
-      if (caret == null) {
-        if (!content.trim()) {
-          resetSession()
-        }
-        return
-      }
-      const contentChanged = session.sourceContent !== content
-      const segments =
-        session.segments.length > 0 && !contentChanged ? session.segments : splitTtsSegments(content)
-      if (segments.length === 0) {
-        resetSession()
-        return
-      }
-      if (contentChanged) {
-        clearSegments()
-      }
-      deps.getEditor()?.clearPlaybackHighlight?.()
-      if (session.selectionScoped) {
-        const fullSegments = splitTtsSegments(content)
-        primeSession(fullSegments, 0, null)
-        refreshSessionFromCache()
-        return
-      }
-      const start = locateSegmentStartByCharOffset(segments, caret)
-      const meta = segmentMetaMap[start.index]
-      if (!meta) {
-        primeSession(segments, 0, null)
-        refreshSessionFromCache()
-        return
-      }
-      primeSession(segments, 0, null)
-      const absoluteBase = segments[start.index]?.indexStart ?? 0
-      const boundaries = highlightBoundaries(meta)
-      if (boundaries.length === 0) {
-        return
-      }
-      setResumePosition(start.index, locateCaretBoundaryAtOrBefore(boundaries, absoluteBase, caret), false)
-      return
-    }
-    if (range.from === range.to) {
-      const contentChanged = session.sourceContent !== content
-      const segments =
-        session.segments.length > 0 && !contentChanged ? session.segments : splitTtsSegments(content)
-      if (segments.length === 0) {
-        resetSession()
-        return
-      }
-      if (contentChanged) {
-        clearSegments()
-      }
-      deps.getEditor()?.clearPlaybackHighlight?.()
-      if (session.selectionScoped) {
-        const fullSegments = splitTtsSegments(content)
-        primeSession(fullSegments, 0, range)
-        refreshSessionFromCache()
-        return
-      }
-      const start = locateSegmentStartByCharOffset(segments, range.from)
-      const meta = segmentMetaMap[start.index]
-      if (!meta) {
-        primeSession(segments, 0, range)
-        refreshSessionFromCache()
-        return
-      }
-      primeSession(segments, 0, range)
-      const absoluteBase = segments[start.index]?.indexStart ?? 0
-      const boundaries = highlightBoundaries(meta)
-      if (boundaries.length === 0) {
-        return
-      }
-      setResumePosition(start.index, locateCaretBoundaryAtOrBefore(boundaries, absoluteBase, range.from), false)
-      return
-    }
-    // Collapsed selection is treated as caret positioning, not a playback scope.
-    syncSelectionStart(null)
-  }
-
   function sessionMatchesEditor(editor: CodeEditorHandle, content: string): boolean {
     if (session.segments.length === 0 || session.sourceContent !== content) {
       return false
@@ -823,18 +607,13 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   function locatePlaybackPosition(scaledElapsed: number): { index: number; startAt: number } | null {
-    if (session.segments.length === 0) return null
-    const clampedScaled = Math.max(0, Math.min(scaledElapsed, totalDuration || scaledElapsed))
-    let total = 0
-    for (let index = 0; index < session.segments.length; index += 1) {
-      const duration = scaledDurationAt(index)
-      if (index === session.segments.length - 1 || clampedScaled <= total + duration) {
-        const scaledAt = Math.max(0, clampedScaled - total)
-        return { index, startAt: mediaAtForScaled(index, scaledAt) }
-      }
-      total += duration
-    }
-    return { index: session.segments.length - 1, startAt: 0 }
+    return locatePlaybackPositionPure({
+      segments: session.segments,
+      metaMap: segmentMetaMap,
+      effectiveSpeed,
+      totalDuration,
+      scaledElapsed,
+    })
   }
 
   async function runPlayback(
@@ -1348,6 +1127,40 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     }
   }
 
+  function recordReusableScopedMeta(reusable: NonNullable<ReturnType<typeof buildReusableScopedSegments>>) {
+    for (let i = 0; i < reusable.length; i += 1) {
+      const segment = reusable[i]
+      recordSegmentMeta(
+        i,
+        buildSegmentMeta(
+          i,
+          session.segments[i],
+          {
+            boundaries: segment.boundaries,
+            wordBoundaries: segment.wordBoundaries,
+            spokenStart: 0,
+            spokenEnd: Math.max(0, segment.sourceEndAt - segment.sourceStartAt),
+            rate: CANONICAL_SYNTHESIS_RATE,
+          },
+          segment.indexStart,
+        ),
+      )
+    }
+  }
+
+  function finalizeScopedWarmup(
+    reusable: ReturnType<typeof buildReusableScopedSegments> | null,
+    lang: string | null,
+  ) {
+    metadataAvailable = true
+    currentSegmentIndex = 1
+    playbackElapsed = 0
+    playbackDuration = segmentDurationAt(0)
+    deps.getEditor()?.clearPlaybackHighlight?.()
+    if (reusable) pinVoicesForSegments(reusable)
+    else if (lang) pinVoiceForWrittenLang(toWrittenLang(lang), resolveEffectiveVoice(lang)?.edge ?? '')
+  }
+
   function warmSelectionScope(range: { from: number; to: number }): boolean {
     const content = deps.settings.content
     const scoped = trimmedContentRange(range, content)
@@ -1363,31 +1176,9 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       applyScopedSession({ segments: newSegments, range, content, resumeSelection: { from: scoped.from, to: scoped.to } })
       deps.getEditor()?.clearPlaybackHighlight?.()
       clearSegments()
-      for (let i = 0; i < reusable.length; i += 1) {
-        const segment = reusable[i]
-        recordSegmentMeta(
-          i,
-          buildSegmentMeta(
-            i,
-            session.segments[i],
-            {
-              boundaries: segment.boundaries,
-              wordBoundaries: segment.wordBoundaries,
-              spokenStart: 0,
-              spokenEnd: Math.max(0, segment.sourceEndAt - segment.sourceStartAt),
-              rate: CANONICAL_SYNTHESIS_RATE,
-            },
-            segment.indexStart,
-          ),
-        )
-      }
+      recordReusableScopedMeta(reusable)
       if (Object.keys(segmentMetaMap).length === 0) return false
-      metadataAvailable = true
-      currentSegmentIndex = 1
-      playbackElapsed = 0
-      playbackDuration = segmentDurationAt(0)
-      deps.getEditor()?.clearPlaybackHighlight?.()
-      pinVoicesForSegments(reusable)
+      finalizeScopedWarmup(reusable, null)
       return true
     }
     const lang = resolveScopedPlaybackLang(scoped.text, content)
@@ -1403,28 +1194,54 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     })
     deps.getEditor()?.clearPlaybackHighlight?.()
     clearSegments()
-      recordSegmentMeta(
+    recordSegmentMeta(
+      0,
+      buildSegmentMeta(
         0,
-        buildSegmentMeta(
-          0,
-          session.segments[0],
-          {
-            boundaries: cached.boundaries,
-            wordBoundaries: cached.wordBoundaries,
-            spokenStart: cached.spokenStart,
-            spokenEnd: cached.spokenEnd,
-            rate: cached.rate ?? CANONICAL_SYNTHESIS_RATE,
-          },
-          scoped.from,
-        ),
-      )
-    metadataAvailable = true
-    currentSegmentIndex = 1
-    playbackElapsed = 0
-    playbackDuration = segmentDurationAt(0)
-    deps.getEditor()?.clearPlaybackHighlight?.()
-    pinVoiceForWrittenLang(toWrittenLang(lang), voice.edge)
+        session.segments[0],
+        {
+          boundaries: cached.boundaries,
+          wordBoundaries: cached.wordBoundaries,
+          spokenStart: cached.spokenStart,
+          spokenEnd: cached.spokenEnd,
+          rate: canonicalRate(cached.rate),
+        },
+        scoped.from,
+      ),
+    )
+    finalizeScopedWarmup(null, lang)
     return true
+  }
+
+  selectionSync = createSelectionSync({
+    session: {
+      getSession: () => session,
+      getSegmentMetaMap: () => segmentMetaMap,
+      ensureSegments,
+      primeSession,
+      refreshSessionFromCache,
+      clearSegments,
+      resetSession,
+      setResumePosition,
+      warmSelectionScope,
+    },
+    playback: {
+      getIsPlaying: () => isPlaying,
+      isSuppressed: isSelectionSyncSuppressed,
+      getPlaybackEnded: () => playbackEnded,
+      setPlaybackEnded: value => { playbackEnded = value },
+      stopPlayback,
+      runPlayback,
+      locateCaretBoundaryAtOrBefore,
+    },
+    editor: {
+      getEditor: deps.getEditor,
+      getContent: () => deps.settings.content,
+    },
+  })
+
+  function syncSelectionStart(range: { from: number; to: number } | null): void {
+    selectionSync!.syncSelectionStart(range)
   }
 
   async function playSelectedText(range: { from: number; to: number }) {
@@ -1645,14 +1462,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     playbackElapsed = 0
     playbackDuration = 0
     metadataAvailable = false
-    // Invalidate any pending debounced seek that was queued before the reset.
-    pendingSelectionGeneration += 1
-    if (pendingSelectionSeekTimer) {
-      clearTimeout(pendingSelectionSeekTimer)
-      pendingSelectionSeekTimer = null
-      pendingSelectionRange = null
-      pendingCaretOffset = null
-    }
+    selectionSync?.invalidatePendingSeek()
   }
 
   function resetSession() {
@@ -1683,20 +1493,12 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   }
 
   function onLocaleChanged(next: UiLocale) {
-    if (lastStatusReason === 'stopped') {
-      statusMessage = UI_TEXT[next].playbackStopped
+    if (lastStatusReason === 'ready') {
+      lastStatusReason = 'ready'
+      statusMessage = UI_TEXT[next].ready
       return
     }
-    if (lastStatusReason === 'switching') {
-      statusMessage = UI_TEXT[next].voiceSwitching
-      return
-    }
-    if (lastStatusReason === 'finished') {
-      statusMessage = UI_TEXT[next].playbackFinished
-      return
-    }
-    lastStatusReason = 'ready'
-    statusMessage = UI_TEXT[next].ready
+    statusMessage = statusForReason(lastStatusReason, next)
   }
 
   const voiceSwitch = createVoiceSwitch({

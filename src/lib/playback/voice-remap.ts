@@ -1,6 +1,6 @@
 import { activeBoundaryAt, highlightBoundaries } from '../playback-helpers'
 import type { TtsBoundary } from '../tts-reference'
-import type { SegmentMeta } from '../use-playback.svelte'
+import type { SegmentMeta } from './types'
 import type { TtsSegment } from '../tts-reference'
 
 export function locateCaretBoundaryAtOrBefore(
