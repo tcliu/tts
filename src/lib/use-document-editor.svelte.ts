@@ -3,26 +3,18 @@ import type { DocumentsHandle } from './use-documents.svelte'
 import { UI_TEXT } from './ui-text'
 import { readTextFile } from './upload-text'
 import { browser } from '$app/environment'
+import {
+  createDraftCacheId,
+  nextAvailableDraftName as nextAvailableDraftNameImpl,
+  type PendingAction,
+  type UploadNotice,
+  type DiscardKind,
+} from './document-editor/helpers'
 import { parseDocId, pushDocHistory, replaceDocHistory } from './document-history'
 
-export type DiscardKind = 'new' | 'open' | 'delete' | 'clone' | 'upload'
-
-export type UploadNotice = 'uploaded' | 'too-large' | 'read-failed' | 'binary'
-
-interface PendingAction {
-  kind: DiscardKind
-  id: string | null
-  file: File | null
-}
+export type { DiscardKind, UploadNotice, PendingAction } from './document-editor/helpers'
 
 const UPLOAD_NOTICE_MS = 4000
-
-function createDraftCacheId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `draft-${crypto.randomUUID()}`
-  }
-  return `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
 
 interface DocumentEditorDeps {
   settings: SettingsHandle
@@ -68,17 +60,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   const deleteTargetName = $derived(deleteTargetId ? (documents.findById(deleteTargetId)?.name ?? '') : '')
 
   function nextAvailableDraftName(): string {
-    const baseName = UI_TEXT[settings.locale]?.documentNamePlaceholder ?? 'Untitled'
-    const existingNames = new Set(documents.documents.map(document => document.name))
-    let fallbackName = baseName
-    if (existingNames.has(fallbackName)) {
-      let index = 1
-      while (existingNames.has(`${baseName} ${index}`)) {
-        index += 1
-      }
-      fallbackName = `${baseName} ${index}`
-    }
-    return fallbackName
+    return nextAvailableDraftNameImpl(documents, settings.locale)
   }
 
   function resetDraftCacheId() {
