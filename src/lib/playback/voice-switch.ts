@@ -5,67 +5,97 @@ import { getCachedSynthesis } from '../tts-client'
 import { readAudioDuration } from './audio-helpers'
 import { buildSegmentMeta } from '../playback/segment-meta'
 import { CANONICAL_SYNTHESIS_RATE } from '../tts-cache-key'
-import type { SegmentMeta } from './types'
+import type { SegmentMeta, StatusReason } from './types'
 import type { TtsSegment } from '../tts-reference'
 import type { TtsVoice } from '../tts-reference'
 
-export interface VoiceSwitchDeps {
-  getSessionSegments: () => TtsSegment[]
-  getSegmentMetaMap: () => Record<number, SegmentMeta>
-  getSessionOffset: () => number
+/**
+ * Session state for voice switching.
+ */
+export interface VoiceSwitchSession {
+  getSegments: () => TtsSegment[]
+  getMetaMap: () => Record<number, SegmentMeta>
+  getOffset: () => number
+  getLangOverrides: () => Map<number, string>
+  setLangOverrides: (v: Map<number, string>) => void
+  getVoiceSelections: () => Map<string, string>
+  setVoiceSelections: (v: Map<string, string>) => void
+  getSpeed: () => number | null
+  setSpeed: (v: number | null) => void
+  getTaskGeneration: () => Map<number, number>
+}
+
+/**
+ * Playback state for voice switching.
+ */
+export interface VoiceSwitchPlayback {
   getIsPlaying: () => boolean
   getCurrentSegmentIndex: () => number
   getPlaybackEnded: () => boolean
   getCurrentAudio: () => HTMLAudioElement | null
   getPlaybackElapsed: () => number
   setPlaybackElapsed: (v: number) => void
-  getResumeSegmentIndex: () => number
-  getResumeSegmentTime: () => number
-  setResumeSegmentTime: (v: number) => void
-  getVoiceSwitchGeneration: () => number
-  setVoiceSwitchGeneration: (v: number) => void
-  setVoiceSwitching: (v: boolean) => void
-  setLastStatusReason: (v: 'ready' | 'stopped' | 'switching' | 'finished' | 'error') => void
+  getResumeIndex: () => number
+  getResumeTime: () => number
+  setResumeTime: (v: number) => void
+  getSwitchGeneration: () => number
+  setSwitchGeneration: (v: number) => void
+  setSwitching: (v: boolean) => void
+  setLastStatusReason: (v: StatusReason) => void
   setStatusMessage: (v: string) => void
   setMetadataAvailable: (v: boolean) => void
-  getSegmentLangOverrides: () => Map<number, string>
-  setSegmentLangOverrides: (v: Map<number, string>) => void
-  getSessionVoiceSelections: () => Map<string, string>
-  setSessionVoiceSelections: (v: Map<string, string>) => void
-  getSessionSpeed: () => number | null
-  setSessionSpeed: (v: number | null) => void
-  getTaskGeneration: () => Map<number, number>
-  getSettings: () => { resolveVoiceForSegment: (lang: string) => TtsVoice | undefined; speed: number; locale: string }
-  getCacheScopeId: () => string
+}
+
+/**
+ * Voice resolution functions.
+ */
+export interface VoiceResolvers {
   getEffectiveSegmentLang: (index: number) => string
   getResolveEffectiveVoice: (lang: string) => TtsVoice | undefined
+  resolveVoiceForSegment: (lang: string) => TtsVoice | undefined
+}
+
+/**
+ * Operations for voice switching.
+ */
+export interface VoiceSwitchOps {
+  getCacheScopeId: () => string
   getCharOffsetAtPosition: (index: number, at: number) => number
   getResumeTimeForCharOffset: (index: number, offset: number) => number
   stopPlayback: () => void
   setResumePosition: (index: number, at: number, applySelection?: boolean) => void
   runPlayback: (segments: TtsSegment[], offset: number, startIndex: number, startAt: number) => Promise<void>
   recordSegmentMeta: (index: number, meta: SegmentMeta) => void
-  getLocale: () => string
+}
+
+export interface VoiceSwitchDeps {
+  session: VoiceSwitchSession
+  playback: VoiceSwitchPlayback
+  voice: VoiceResolvers
+  ops: VoiceSwitchOps
+  locale: string
+  defaultSpeed: number
 }
 
 export function createVoiceSwitch(deps: VoiceSwitchDeps) {
+  const { session, playback, voice, ops } = deps
   let voiceSwitchChain: Promise<void> = Promise.resolve()
 
   async function resynthesizeSegment(index: number, voiceEdge: string): Promise<void> {
-    const sessionSegments = deps.getSessionSegments()
-    if (index < 0 || index >= sessionSegments.length) return
-    const segment = sessionSegments[index]
+    const segments = session.getSegments()
+    if (index < 0 || index >= segments.length) return
+    const segment = segments[index]
     if (!segment) return
-    const taskGeneration = deps.getTaskGeneration()
+    const taskGeneration = session.getTaskGeneration()
     taskGeneration.set(index, (taskGeneration.get(index) ?? 0) + 1)
-    const effectiveLang = deps.getEffectiveSegmentLang(index)
+    const effectiveLang = voice.getEffectiveSegmentLang(index)
     const effective = { ...segment, lang: effectiveLang }
     const rate = CANONICAL_SYNTHESIS_RATE
-    const docId = deps.getCacheScopeId()
+    const docId = ops.getCacheScopeId()
     const synth = await getCachedSynthesis(segment.text, voiceEdge, rate, undefined, docId)
     const abort = new AbortController()
     const duration = await readAudioDuration(synth.blob, abort.signal)
-    const baseOffset = deps.getSessionOffset() + segment.indexStart
+    const baseOffset = session.getOffset() + segment.indexStart
     const meta = buildSegmentMeta(
       index,
       effective,
@@ -79,119 +109,119 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
       },
       baseOffset,
     )
-    deps.recordSegmentMeta(index, meta)
+    ops.recordSegmentMeta(index, meta)
     // Pin the voice for this language so the chip stays sticky after synthesis
     // (default before synthesis, sticky after). Manual picks overwrite via
     // recordSessionVoiceOverride; this only fills the gap.
     const written = toWrittenLang(effectiveLang)
-    if (voiceEdge && !deps.getSessionVoiceSelections().has(written)) {
-      const next = new Map(deps.getSessionVoiceSelections())
+    if (voiceEdge && !session.getVoiceSelections().has(written)) {
+      const next = new Map(session.getVoiceSelections())
       next.set(written, voiceEdge)
-      deps.setSessionVoiceSelections(next)
+      session.setVoiceSelections(next)
     }
   }
 
   async function overrideSegmentLanguage(index: number, lang: string): Promise<void> {
-    const sessionSegments = deps.getSessionSegments()
-    if (index < 0 || index >= sessionSegments.length) return
-    const effectiveVoice = deps.getSettings().resolveVoiceForSegment(lang)
+    const segments = session.getSegments()
+    if (index < 0 || index >= segments.length) return
+    const effectiveVoice = voice.resolveVoiceForSegment(lang)
     const edge = effectiveVoice?.edge
     if (!edge) return
-    const next = new Map(deps.getSegmentLangOverrides())
+    const next = new Map(session.getLangOverrides())
     next.set(index, lang)
-    deps.setSegmentLangOverrides(next)
+    session.setLangOverrides(next)
     await resynthesizeSegment(index, edge)
   }
 
   function recordSessionVoiceOverride(languageCode: string, voiceEdge: string) {
-    const next = new Map(deps.getSessionVoiceSelections())
+    const next = new Map(session.getVoiceSelections())
     next.set(languageCode, voiceEdge)
-    deps.setSessionVoiceSelections(next)
+    session.setVoiceSelections(next)
   }
 
   function setPlaybackSpeed(speed: number) {
     if (!SPEEDS.includes(speed as (typeof SPEEDS)[number])) return
-    if (speed === deps.getSettings().speed) {
-      deps.setSessionSpeed(null)
+    if (speed === deps.defaultSpeed) {
+      session.setSpeed(null)
     } else {
-      deps.setSessionSpeed(speed)
+      session.setSpeed(speed)
     }
   }
 
   async function overrideSegmentVoice(index: number, voiceEdge: string): Promise<void> {
-    const sessionSegments = deps.getSessionSegments()
-    if (index < 0 || index >= sessionSegments.length) return
-    if (deps.getResolveEffectiveVoice(deps.getEffectiveSegmentLang(index))?.edge === voiceEdge) return
+    const segments = session.getSegments()
+    if (index < 0 || index >= segments.length) return
+    if (voice.getResolveEffectiveVoice(voice.getEffectiveSegmentLang(index))?.edge === voiceEdge) return
     const run = voiceSwitchChain.then(() => applyVoiceOverride(index, voiceEdge))
     voiceSwitchChain = run.catch(() => {})
     await run
   }
 
   async function applyVoiceOverride(index: number, voiceEdge: string): Promise<void> {
-    const sessionSegments = deps.getSessionSegments()
-    if (index < 0 || index >= sessionSegments.length) return
-    if (deps.getIsPlaying()) {
-      await switchVoiceDuringPlayback(Math.max(0, deps.getCurrentSegmentIndex() - 1), voiceEdge)
+    const segments = session.getSegments()
+    if (index < 0 || index >= segments.length) return
+    if (playback.getIsPlaying()) {
+      await switchVoiceDuringPlayback(Math.max(0, playback.getCurrentSegmentIndex() - 1), voiceEdge)
       return
     }
-    const remapResume = index === deps.getResumeSegmentIndex() && deps.getResumeSegmentTime() > 0
-    const resumeCharOffset = remapResume ? deps.getCharOffsetAtPosition(index, deps.getResumeSegmentTime()) : null
+    const remapResume = index === playback.getResumeIndex() && playback.getResumeTime() > 0
+    const resumeCharOffset = remapResume ? ops.getCharOffsetAtPosition(index, playback.getResumeTime()) : null
     try {
       await resynthesizeSegment(index, voiceEdge)
     } catch (error) {
       console.error(error)
-      deps.setLastStatusReason('error')
-      deps.setMetadataAvailable(false)
-      deps.setStatusMessage(UI_TEXT[deps.getLocale() as keyof typeof UI_TEXT].playbackFailed)
+      playback.setLastStatusReason('error')
+      playback.setMetadataAvailable(false)
+      playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playbackFailed)
       return
     }
-    recordSessionVoiceOverride(toWrittenLang(deps.getEffectiveSegmentLang(index)), voiceEdge)
+    recordSessionVoiceOverride(toWrittenLang(voice.getEffectiveSegmentLang(index)), voiceEdge)
     if (resumeCharOffset != null) {
-      const remapped = deps.getResumeTimeForCharOffset(index, resumeCharOffset)
-      deps.setResumeSegmentTime(remapped)
-      deps.setPlaybackElapsed(remapped)
+      const remapped = ops.getResumeTimeForCharOffset(index, resumeCharOffset)
+      playback.setResumeTime(remapped)
+      playback.setPlaybackElapsed(remapped)
     }
   }
 
   async function switchVoiceDuringPlayback(playIndex: number, voiceEdge: string) {
-    deps.setVoiceSwitching(true)
+    playback.setSwitching(true)
     let generation = -1
     try {
-      const sessionSegments = deps.getSessionSegments()
-      const segment = sessionSegments[playIndex]
+      const segments = session.getSegments()
+      const segment = segments[playIndex]
       if (!segment) return
-      const languageCode = toWrittenLang(deps.getEffectiveSegmentLang(playIndex))
-      const audio = deps.getCurrentAudio()
-      const segmentMetaMap = deps.getSegmentMetaMap()
+      const languageCode = toWrittenLang(voice.getEffectiveSegmentLang(playIndex))
+      const audio = playback.getCurrentAudio()
+      const metaMap = session.getMetaMap()
       const at = audio
-        ? Math.max(0, audio.currentTime - (segmentMetaMap[playIndex]?.spokenStart ?? 0))
-        : deps.getPlaybackElapsed()
-      const charOffset = deps.getCharOffsetAtPosition(playIndex, at)
-      deps.stopPlayback()
+        ? Math.max(0, audio.currentTime - (metaMap[playIndex]?.spokenStart ?? 0))
+        : playback.getPlaybackElapsed()
+      const charOffset = ops.getCharOffsetAtPosition(playIndex, at)
+      ops.stopPlayback()
       recordSessionVoiceOverride(languageCode, voiceEdge)
-      if (deps.getPlaybackEnded()) {
+      if (playback.getPlaybackEnded()) {
         return
       }
-      deps.setLastStatusReason('switching')
-      deps.setStatusMessage(UI_TEXT[deps.getLocale() as keyof typeof UI_TEXT].voiceSwitching)
-      generation = deps.getVoiceSwitchGeneration() + 1
-      deps.setVoiceSwitchGeneration(generation)
+      playback.setLastStatusReason('switching')
+      playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].voiceSwitching)
+      generation = playback.getSwitchGeneration() + 1
+      playback.setSwitchGeneration(generation)
       await resynthesizeSegment(playIndex, voiceEdge)
-      if (generation !== deps.getVoiceSwitchGeneration()) {
+      if (generation !== playback.getSwitchGeneration()) {
         return
       }
-      const targetAt = deps.getResumeTimeForCharOffset(playIndex, charOffset)
-      deps.setResumePosition(playIndex, targetAt, true)
-      void deps.runPlayback(deps.getSessionSegments(), deps.getSessionOffset(), playIndex, targetAt)
+      const targetAt = ops.getResumeTimeForCharOffset(playIndex, charOffset)
+      ops.setResumePosition(playIndex, targetAt, true)
+      void ops.runPlayback(session.getSegments(), session.getOffset(), playIndex, targetAt)
     } catch (error) {
       console.error(error)
-      if (generation === deps.getVoiceSwitchGeneration()) {
-        deps.setLastStatusReason('error')
-        deps.setMetadataAvailable(false)
-        deps.setStatusMessage(UI_TEXT[deps.getLocale() as keyof typeof UI_TEXT].playbackFailed)
+      if (generation === playback.getSwitchGeneration()) {
+        playback.setLastStatusReason('error')
+        playback.setMetadataAvailable(false)
+        playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playbackFailed)
       }
     } finally {
-      deps.setVoiceSwitching(false)
+      playback.setSwitching(false)
     }
   }
 

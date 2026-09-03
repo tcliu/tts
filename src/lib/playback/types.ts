@@ -2,6 +2,8 @@ import type { HighlightRange, TtsBoundary } from '../tts-reference'
 
 export class LocalizedPlaybackError extends Error {}
 
+export type StatusReason = 'ready' | 'stopped' | 'switching' | 'finished' | 'error'
+
 export interface SegmentMeta {
   index: number
   lang: string

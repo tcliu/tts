@@ -5,47 +5,44 @@ import { trimWhitespaceRange, highlightBoundaries, activeBoundaryAt } from './bo
 import { activeHighlightRange } from '../tts-reference'
 import { getCachedSynthesis } from '../tts-client'
 import { readAudioDuration } from './audio-helpers'
-import { LocalizedPlaybackError, type SegmentMeta } from './types'
+import { LocalizedPlaybackError, type SegmentMeta, type PlaybackController, type StatusReason } from './types'
 
-export interface IsolatedDeps {
-  getSessionOffset: () => number
-  getEffectiveSegmentLang: (index: number) => string
-  getResolveEffectiveVoice: (lang: string) => { edge: string; name: string } | undefined
-  getEffectiveSpeed: () => number
-  getCacheScopeId: () => string
-  getLocale: () => string
-  getCurrentController: () => { cancelled: boolean; abort: AbortController; cancelAudio?: () => void } | null
-  setCurrentController: (c: { cancelled: boolean; abort: AbortController; cancelAudio?: () => void } | null) => void
-  getIsPlaying: () => boolean
+/**
+ * Mutable playback state setters for isolated playback.
+ */
+export interface IsolatedState {
+  setController: (c: PlaybackController | null) => void
   setIsPlaying: (v: boolean) => void
-  getPlaybackEnded: () => boolean
   setPlaybackEnded: (v: boolean) => void
-  getLastStatusReason: () => string
-  setLastStatusReason: (v: 'ready' | 'stopped' | 'switching' | 'finished' | 'error') => void
-  getActiveInfoOffset: () => number
+  setLastStatusReason: (v: StatusReason) => void
   setActiveInfoOffset: (v: number) => void
-  getActiveInfoKind: () => 'sentence' | 'word' | null
   setActiveInfoKind: (v: 'sentence' | 'word' | null) => void
-  getCurrentSegmentIndex: () => number
   setCurrentSegmentIndex: (v: number) => void
-  getTotalSegments: () => number
   setTotalSegments: (v: number) => void
-  getPlaybackElapsed: () => number
   setPlaybackElapsed: (v: number) => void
-  getPlaybackDuration: () => number
   setPlaybackDuration: (v: number) => void
-  getSessionSegments: () => { length: number }
-  getSegmentMetaMap: () => Record<number, SegmentMeta>
-  getSessionResumeSelection: () => { from: number; to: number } | null
-  setSessionResumeSelection: (v: { from: number; to: number } | null) => void
-  getMetadataAvailable: () => boolean
   setMetadataAvailable: (v: boolean) => void
-  getStatusMessage: () => string
   setStatusMessage: (v: string) => void
-  getEditor: () => { clearPlaybackHighlight?: () => void } | null
-  applyPlaybackHighlight: (from: number, to: number) => void
+  setResumeSelection: (v: { from: number; to: number } | null) => void
+}
+
+/**
+ * Context for isolated playback (read-only values).
+ */
+export interface IsolatedContext {
+  get sessionOffset(): number
+  get effectiveSpeed(): number
+  get cacheScopeId(): string
+  get locale(): string
+  get sessionSegmentsLength(): number
+}
+
+/**
+ * Audio and highlight operations.
+ */
+export interface IsolatedAudio {
   playAudioBlob: (
-    controller: { cancelled: boolean; abort: AbortController; cancelAudio?: () => void },
+    controller: PlaybackController,
     blob: Blob,
     onProgress?: (currentTime: number) => void,
     onDuration?: (duration: number) => void,
@@ -53,9 +50,28 @@ export interface IsolatedDeps {
     spokenStart?: number,
     spokenEnd?: number,
   ) => Promise<void>
+  applyPlaybackHighlight: (from: number, to: number) => void
+  clearPlaybackHighlight: () => void
+}
+
+/**
+ * Voice resolution for isolated playback.
+ */
+export interface IsolatedVoice {
+  getEffectiveSegmentLang: (index: number) => string
+  getResolveEffectiveVoice: (lang: string) => { edge: string; name: string } | undefined
+}
+
+export interface IsolatedDeps {
+  state: IsolatedState
+  context: IsolatedContext
+  audio: IsolatedAudio
+  voice: IsolatedVoice
 }
 
 export function createIsolatedPlayer(deps: IsolatedDeps) {
+  const { state, context, audio, voice } = deps
+
   async function playIsolatedFragment(
     kind: 'sentence' | 'word',
     segmentIndex: number,
@@ -63,7 +79,7 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
     meta: SegmentMeta,
     segment: { text: string; indexStart: number },
   ): Promise<boolean> {
-    const absoluteBase = deps.getSessionOffset() + segment.indexStart
+    const absoluteBase = context.sessionOffset + segment.indexStart
     let isolatedText: string | null = null
     let selFrom = -1
     let selTo = -1
@@ -113,38 +129,37 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
     if (!isolatedText) return false
     const fragmentText: string = isolatedText
 
-    const lang = deps.getEffectiveSegmentLang(segmentIndex)
-    const voice = deps.getResolveEffectiveVoice(lang)
-    if (!voice?.edge) {
+    const lang = voice.getEffectiveSegmentLang(segmentIndex)
+    const resolvedVoice = voice.getResolveEffectiveVoice(lang)
+    if (!resolvedVoice?.edge) {
       throw new LocalizedPlaybackError(
-        `${UI_TEXT[deps.getLocale() as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(deps.getLocale() as keyof typeof UI_TEXT, lang)})`,
+        `${UI_TEXT[context.locale as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(context.locale as keyof typeof UI_TEXT, lang)})`,
       )
     }
 
-    const controller: { cancelled: boolean; abort: AbortController; cancelAudio?: () => void } = { cancelled: false, abort: new AbortController() }
-    deps.setCurrentController(controller)
-    deps.setIsPlaying(true)
-    deps.setPlaybackEnded(false)
-    deps.setLastStatusReason('ready')
-    deps.setActiveInfoOffset(charOffset)
-    deps.setActiveInfoKind(kind)
-    deps.setCurrentSegmentIndex(segmentIndex + 1)
-    deps.setTotalSegments(deps.getSessionSegments().length)
-    deps.setPlaybackElapsed(0)
-    deps.setPlaybackDuration(0)
+    const controller: PlaybackController = { cancelled: false, abort: new AbortController() }
+    state.setController(controller)
+    state.setIsPlaying(true)
+    state.setPlaybackEnded(false)
+    state.setLastStatusReason('ready')
+    state.setActiveInfoOffset(charOffset)
+    state.setActiveInfoKind(kind)
+    state.setCurrentSegmentIndex(segmentIndex + 1)
+    state.setTotalSegments(context.sessionSegmentsLength)
+    state.setPlaybackElapsed(0)
+    state.setPlaybackDuration(0)
 
     if (selFrom >= 0 && selTo >= 0 && selFrom !== selTo) {
-      deps.applyPlaybackHighlight(selFrom, selTo)
+      audio.applyPlaybackHighlight(selFrom, selTo)
     }
 
     try {
-      const docId = deps.getCacheScopeId()
-      const synth = await getCachedSynthesis(fragmentText, voice.edge, deps.getEffectiveSpeed(), controller.abort.signal, docId)
+      const synth = await getCachedSynthesis(fragmentText, resolvedVoice.edge, context.effectiveSpeed, controller.abort.signal, context.cacheScopeId)
       if (controller.cancelled) return true
       const duration = await readAudioDuration(synth.blob, controller.abort.signal)
       if (controller.cancelled) return true
-      deps.setMetadataAvailable((synth.boundaries.length > 0 || (synth.wordBoundaries?.length ?? 0) > 0))
-      deps.setPlaybackDuration(duration)
+      state.setMetadataAvailable((synth.boundaries.length > 0 || (synth.wordBoundaries?.length ?? 0) > 0))
+      state.setPlaybackDuration(duration)
       const spokenStart = synth.spokenStart ?? 0
       const spokenEnd = kind === 'word' ? undefined : synth.spokenEnd
       const fragmentRanges = splitHighlightRanges(fragmentText)
@@ -161,7 +176,7 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
           const wordEnd = wordStart + active.text.length
           const trimmed = trimWhitespaceRange(fragmentText, wordStart, wordEnd)
           if (trimmed.end > trimmed.start) {
-            deps.applyPlaybackHighlight(selFrom + trimmed.start, selFrom + trimmed.end)
+            audio.applyPlaybackHighlight(selFrom + trimmed.start, selFrom + trimmed.end)
           }
           return
         }
@@ -169,51 +184,49 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
         if (activeRange) {
           const trimmed = trimWhitespaceRange(fragmentText, activeRange.start, activeRange.end)
           if (trimmed.end > trimmed.start) {
-            deps.applyPlaybackHighlight(selFrom + trimmed.start, selFrom + trimmed.end)
+            audio.applyPlaybackHighlight(selFrom + trimmed.start, selFrom + trimmed.end)
           }
           return
         }
         const fallbackTrimmed = trimWhitespaceRange(fragmentText, 0, fragmentText.length)
         if (fallbackTrimmed.end > fallbackTrimmed.start) {
-          deps.applyPlaybackHighlight(selFrom + fallbackTrimmed.start, selFrom + fallbackTrimmed.end)
+          audio.applyPlaybackHighlight(selFrom + fallbackTrimmed.start, selFrom + fallbackTrimmed.end)
         }
       }
-      await deps.playAudioBlob(
+      await audio.playAudioBlob(
         controller,
         synth.blob,
         isolatedHighlights.length > 0 ? applyIsolatedHighlight : undefined,
-        d => {
-          deps.setPlaybackDuration(d)
-        },
+        d => state.setPlaybackDuration(d),
         0,
         spokenStart,
         spokenEnd,
       )
       if (controller.cancelled) return true
-      deps.setCurrentController(null)
-      deps.setIsPlaying(false)
-      deps.setActiveInfoOffset(-1)
-      deps.setActiveInfoKind(null)
-      deps.setLastStatusReason('finished')
-      deps.setStatusMessage(UI_TEXT[deps.getLocale() as keyof typeof UI_TEXT].playbackFinished)
-      deps.setPlaybackElapsed(0)
+      state.setController(null)
+      state.setIsPlaying(false)
+      state.setActiveInfoOffset(-1)
+      state.setActiveInfoKind(null)
+      state.setLastStatusReason('finished')
+      state.setStatusMessage(UI_TEXT[context.locale as keyof typeof UI_TEXT].playbackFinished)
+      state.setPlaybackElapsed(0)
       if (selFrom >= 0 && selTo >= 0) {
-        deps.setSessionResumeSelection({ from: selFrom, to: selTo })
+        state.setResumeSelection({ from: selFrom, to: selTo })
       }
-      deps.getEditor()?.clearPlaybackHighlight?.()
+      audio.clearPlaybackHighlight()
       return true
     } catch (error) {
       if (controller.cancelled) return true
-      deps.setCurrentController(null)
-      deps.setIsPlaying(false)
-      deps.setActiveInfoOffset(-1)
-      deps.setActiveInfoKind(null)
-      deps.setLastStatusReason('error')
-      deps.setMetadataAvailable(false)
-      deps.getEditor()?.clearPlaybackHighlight?.()
+      state.setController(null)
+      state.setIsPlaying(false)
+      state.setActiveInfoOffset(-1)
+      state.setActiveInfoKind(null)
+      state.setLastStatusReason('error')
+      state.setMetadataAvailable(false)
+      audio.clearPlaybackHighlight()
       console.error(error)
-      deps.setStatusMessage(
-        error instanceof LocalizedPlaybackError ? error.message : UI_TEXT[deps.getLocale() as keyof typeof UI_TEXT].playbackFailed,
+      state.setStatusMessage(
+        error instanceof LocalizedPlaybackError ? error.message : UI_TEXT[context.locale as keyof typeof UI_TEXT].playbackFailed,
       )
       return true
     }
