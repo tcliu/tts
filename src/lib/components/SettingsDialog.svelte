@@ -109,6 +109,7 @@
                   activeValue={group}
                   options={validGroups.map(group => ({ value: group, label: group }))}
                   size="sm"
+                  emptyLabel={text.noOptions}
                   onSelect={group => onSelectGroup(language.code, group)} />
               {/if}
               <SelectDropdown
@@ -117,6 +118,7 @@
                 activeValue={voiceSelections[language.code]}
                 options={voicesFor(language.code, group).map(voice => ({ value: voice.edge, label: voiceLabel(voice) }))}
                 size="sm"
+                emptyLabel={text.noOptions}
                 onSelect={voiceId => onSelectVoice(language.code, voiceId)} />
             </div>
           </section>

@@ -131,7 +131,7 @@ export interface UiText {
   collapseAll: string
   playWord: string
   noWords: string
-  tableExpand: string
+  noOptions: string
   tablePlay: string
   tableWord: string
   paginationPrevious: string

@@ -129,7 +129,7 @@ export const zhTW: UiText = {
   collapseAll: '全部收合',
   playWord: '播放詞彙',
   noWords: '沒有詞彙時間資訊。',
-  tableExpand: '',
+  noOptions: '沒有選項',
   tablePlay: '',
   tableWord: '詞',
   paginationPrevious: '上一頁',

@@ -129,7 +129,7 @@ export const zhCN: UiText = {
   collapseAll: '全部收起',
   playWord: '播放词汇',
   noWords: '没有词汇时间信息。',
-  tableExpand: '',
+  noOptions: '没有选项',
   tablePlay: '',
   tableWord: '词汇',
   paginationPrevious: '上一页',

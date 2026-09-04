@@ -5,6 +5,7 @@
   import { useListSelection, revealInScrollport } from '$lib/actions/use-list-selection.svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
   import { TEXT_SIZE, type TextSize } from '$lib/text-size'
+  import CheckIcon from '$lib/icons/CheckIcon.svelte'
   import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
   import type { DropdownPanelProps } from '$lib/dropdown-chrome'
 
@@ -24,6 +25,7 @@
     buttonClass?: string
     controlClass?: string
     optionClass?: string
+    emptyLabel?: string
   }
 
   let {
@@ -39,6 +41,7 @@
     buttonClass,
     controlClass,
     optionClass,
+    emptyLabel,
     panelClass = 'w-max max-w-xs max-h-[min(50vh,20rem)] overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur',
   }: Props = $props()
 
@@ -64,9 +67,10 @@
 
   const optionRowClass = $derived(
     optionClass ??
-      `flex w-full cursor-pointer items-center justify-between rounded-md px-3 text-left outline-none transition-none ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
+      `flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 text-left outline-none transition motion-reduce:transition-none ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
+  const emptyClass = $derived(`px-3 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]} text-slate-500`)
   let open = $state(false)
   const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
@@ -290,6 +294,9 @@
       aria-label={ariaLabel}
       use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, align, autoPlace })}
       class={`fixed left-0 top-0 z-40 will-change-transform ${panelClass}`}>
+      {#if emptyLabel && filteredOptions.length === 0}
+        <div class={emptyClass}>{emptyLabel}</div>
+      {/if}
       {#each filteredOptions as option, index}
         <button
           type="button"
@@ -301,8 +308,11 @@
           onclick={() => void select(option.value)}
           onfocus={() => selection.set(index)}
           onmouseenter={() => selection.set(index)}
-          class={`${optionRowClass} ${index === selection.index ? 'bg-slate-800 text-cyan-200' : 'text-slate-300'}`}>
+          class={`${optionRowClass} ${index === selection.index ? 'bg-slate-800 text-cyan-200' : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200'}`}>
           <span class="min-w-0 truncate">{option.label}</span>
+          {#if option.value === activeValue}
+            <CheckIcon className="h-4 w-4 shrink-0 text-cyan-200" />
+          {/if}
         </button>
       {/each}
     </div>

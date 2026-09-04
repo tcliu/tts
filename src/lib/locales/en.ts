@@ -129,7 +129,7 @@ export const en: UiText = {
   collapseAll: 'Collapse all',
   playWord: 'Play word',
   noWords: 'No word timing.',
-  tableExpand: '',
+  noOptions: 'No options',
   tablePlay: '',
   tableWord: 'Word',
   paginationPrevious: 'Previous page',
