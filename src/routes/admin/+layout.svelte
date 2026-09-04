@@ -124,6 +124,8 @@
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
+        phoneSheetTitle={text.language}
+        closeLabel={text.close}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.locale}
         itemClass={(option, state) =>
@@ -152,6 +154,8 @@
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
+        phoneSheetTitle={text.theme}
+        closeLabel={text.close}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.theme}
         itemClass={(option, state) =>

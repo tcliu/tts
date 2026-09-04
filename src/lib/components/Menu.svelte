@@ -9,15 +9,17 @@
 </script>
 
 <script lang="ts" generics="T">
+  import { onMount, flushSync, tick } from 'svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
   import { createFocusoutClose } from '$lib/actions/use-focusout-close'
   import { useDropdown } from '$lib/actions/use-dropdown.svelte'
   import { useListSelection } from '$lib/actions/use-list-selection.svelte'
-  import { flushSync, tick } from 'svelte'
-  import type { DropdownPanelProps } from '$lib/dropdown-chrome'
+  import { dragCloseDown } from '$lib/actions/drag-close-down'
+  import { PHONE_SHEET_QUERY, type DropdownPanelProps } from '$lib/dropdown-chrome'
+  import CloseIcon from '$lib/icons/CloseIcon.svelte'
   import Tooltip from './Tooltip.svelte'
 
-  interface Props extends DropdownPanelProps {
+  interface MenuBaseProps extends DropdownPanelProps {
     items: T[]
     itemKey: (item: T) => string
     onSelect: (index: number) => void
@@ -32,6 +34,11 @@
     itemChecked?: (item: T) => boolean
     itemDisabled?: (item: T) => boolean
   }
+
+  // A sheet title opts into the phone bottom-sheet presentation and must
+  // carry its own close label so the dismiss button is never announced with
+  // the menu's name by accident.
+  type Props = MenuBaseProps & ({ phoneSheetTitle?: undefined; closeLabel?: string } | { phoneSheetTitle: string; closeLabel: string })
 
   let {
     items,
@@ -50,17 +57,52 @@
     itemRole = 'menuitem',
     itemChecked,
     itemDisabled = () => false,
+    phoneSheetTitle,
+    closeLabel,
   }: Props = $props()
 
   let uid = $props.id()
   const menuId = $derived(`menu-${uid}`)
+  const sheetTitleId = $derived(`${menuId}-title`)
+  // closeLabel is required alongside phoneSheetTitle (see Props); the
+  // fallback only serves plain menus, which never render the sheet branch.
+  // Derived (not a plain const) so locale switches re-resolve the label.
+  const sheetCloseLabel = $derived(closeLabel ?? ariaLabel)
 
   let open = $state(false)
   const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
   let triggerRef = $state<HTMLButtonElement | null>(null)
+  let overlayRef = $state<HTMLDivElement | null>(null)
   let panelRef = $state<HTMLDivElement | null>(null)
+  let dialogRef = $state<HTMLDivElement | null>(null)
   let itemRefs = $state<HTMLButtonElement[]>([])
+  let isPhoneViewport = $state(false)
+  let sheetDragOffset = $state(0)
+  let sheetDragging = $state(false)
+  let reduceMotion = $state(false)
+
+  const usePhoneSheet = $derived(phoneSheetTitle !== undefined && isPhoneViewport)
+
+  onMount(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const viewportQuery = window.matchMedia(PHONE_SHEET_QUERY)
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const syncViewport = () => {
+      isPhoneViewport = viewportQuery.matches
+    }
+    const syncMotion = () => {
+      reduceMotion = motionQuery.matches
+    }
+    syncViewport()
+    syncMotion()
+    viewportQuery.addEventListener('change', syncViewport)
+    motionQuery.addEventListener('change', syncMotion)
+    return () => {
+      viewportQuery.removeEventListener('change', syncViewport)
+      motionQuery.removeEventListener('change', syncMotion)
+    }
+  })
 
   function isDisabled(item: T): boolean {
     return itemDisabled(item)
@@ -68,6 +110,8 @@
 
   function close(returnFocus = true) {
     open = false
+    sheetDragOffset = 0
+    sheetDragging = false
     if (returnFocus) {
       triggerRef?.focus()
     }
@@ -80,7 +124,7 @@
 
   function toggle() {
     if (open) {
-      open = false
+      close(false)
       return
     }
     openWithSelection(initialActiveIndex())
@@ -160,6 +204,11 @@
     itemRefs[index]?.focus()
   }
 
+  function itemButtonClass(itemValue: T, state: MenuItemState): string | undefined {
+    const classes = itemClass ? itemClass(itemValue, state) : ''
+    return usePhoneSheet ? `${classes} min-h-11`.trim() : classes || undefined
+  }
+
   function handleTriggerKeydown(event: KeyboardEvent) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
@@ -189,12 +238,17 @@
     onSelect(index)
   }
 
+  const sheetTransition = $derived(sheetDragging || reduceMotion ? 'none' : undefined)
+
   $effect(() => {
-    if (open) {
-      tick().then(() => {
-        itemRefs[selection.index]?.focus()
-      })
-    }
+    if (!open) return
+    // Track the presentation so a viewport switch while open remounts the
+    // branch and moves focus onto the new branch's active item.
+    const sheet = usePhoneSheet
+    void sheet
+    tick().then(() => {
+      itemRefs[selection.index]?.focus()
+    })
   })
 
   $effect(() => {
@@ -204,7 +258,10 @@
 
   const handleFocusOut = createFocusoutClose(
     () => open,
-    () => ({ container: containerRef, panel: panelRef }),
+    // Intentionally the dialog panel, not the overlay: keyboard focus never
+    // lands on the tabindex=-1 backdrop, while outside-click must include
+    // the whole overlay so backdrop taps use the explicit close-with-return.
+    () => ({ container: containerRef, panel: usePhoneSheet ? dialogRef : panelRef }),
     () => close(false),
   )
 
@@ -215,8 +272,8 @@
     onEscape: () => {
       close()
     },
-    onScrollClose: () => close(false),
-    panel: () => panelRef,
+    onScrollClose: usePhoneSheet ? undefined : () => close(false),
+    panel: () => (usePhoneSheet ? overlayRef : panelRef),
   }))
 </script>
 
@@ -235,6 +292,25 @@
   </button>
 {/snippet}
 
+{#snippet menuOptions()}
+  {#each items as itemValue, index (itemKey(itemValue))}
+    {@const state = { index, active: index === selection.index, disabled: isDisabled(itemValue) }}
+    <button
+      type="button"
+      role={itemRole}
+      aria-checked={itemRole === 'menuitemradio' && itemChecked ? itemChecked(itemValue) : undefined}
+      bind:this={itemRefs[index]}
+      tabindex={index === selection.index ? 0 : -1}
+      onclick={() => handleItemClick(index)}
+      onfocus={() => selection.set(index)}
+      onmouseenter={() => setActive(index)}
+      disabled={state.disabled}
+      class={itemButtonClass(itemValue, state)}>
+      {@render item(itemValue, state)}
+    </button>
+  {/each}
+{/snippet}
+
 <div
   class="relative inline-flex"
   bind:this={containerRef}
@@ -249,32 +325,92 @@
     {@render triggerButton()}
   {/if}
   {#if open}
-    <div
-      bind:this={panelRef}
-      id={menuId}
-      role="menu"
-      tabindex="-1"
-      aria-label={ariaLabel}
-      onfocusout={handleFocusOut}
-      onkeydown={handlePanelKeydown}
-      use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, align, autoPlace })}
-      class={`fixed left-0 top-0 z-40 will-change-transform overflow-hidden rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur ${panelClass}`}>
-      {#each items as itemValue, index (itemKey(itemValue))}
-        {@const state = { index, active: index === selection.index, disabled: isDisabled(itemValue) }}
+    {#if usePhoneSheet}
+      <div
+        bind:this={overlayRef}
+        use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, presentation: 'sheet' })}
+        class="fixed inset-0 z-40 flex items-end justify-center">
         <button
           type="button"
-          role={itemRole}
-          aria-checked={itemRole === 'menuitemradio' && itemChecked ? itemChecked(itemValue) : undefined}
-          bind:this={itemRefs[index]}
-          tabindex={index === selection.index ? 0 : -1}
-          onclick={() => handleItemClick(index)}
-          onfocus={() => selection.set(index)}
-          onmouseenter={() => setActive(index)}
-          disabled={state.disabled}
-          class={itemClass ? itemClass(itemValue, state) : undefined}>
-          {@render item(itemValue, state)}
-        </button>
-      {/each}
-    </div>
+          aria-label={sheetCloseLabel}
+          tabindex="-1"
+          class="absolute inset-0 bg-slate-950/80 outline-none"
+          onclick={() => close()}></button>
+        <div
+          bind:this={dialogRef}
+          role="dialog"
+          aria-labelledby={sheetTitleId}
+          onfocusout={handleFocusOut}
+          style:transform={sheetDragging || sheetDragOffset !== 0 ? `translateY(${sheetDragOffset}px)` : undefined}
+          style:transition={sheetTransition}
+          style:animation={sheetDragging ? 'none' : undefined}
+          style:will-change={sheetDragging ? 'transform' : undefined}
+          class="menu-sheet-enter relative flex w-full max-h-[min(75dvh,32rem)] flex-col overflow-hidden rounded-t-2xl border border-slate-800 border-b-0 border-x-0 bg-slate-900/95 shadow-2xl shadow-slate-950/60 backdrop-blur transition-transform duration-200 ease-out motion-reduce:transition-none">
+          <div
+            class="relative flex flex-none cursor-grab touch-pan-x items-start justify-between gap-3 border-b border-slate-800 px-4 pb-3 pt-4 active:cursor-grabbing"
+            use:dragCloseDown={{
+              isEnabled: () => usePhoneSheet && open,
+              onDragUpdate: (offset, active) => {
+                sheetDragOffset = offset
+                sheetDragging = active
+              },
+              onClose: () => close(),
+            }}>
+            <div aria-hidden="true" class="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-slate-700"></div>
+            <h2 id={sheetTitleId} class="pt-3 text-base font-semibold tracking-tight text-slate-100">{phoneSheetTitle}</h2>
+            <button
+              type="button"
+              aria-label={sheetCloseLabel}
+              onclick={() => close()}
+              class="relative shrink-0 rounded-md p-2.5 text-slate-500 outline-none transition hover:text-slate-100 focus-visible:text-slate-100 motion-reduce:transition-none before:absolute before:-inset-1.5 before:content-['']">
+              <CloseIcon className="h-4 w-4" />
+            </button>
+          </div>
+          <div
+            id={menuId}
+            role="menu"
+            tabindex="-1"
+            aria-label={ariaLabel}
+            onkeydown={handlePanelKeydown}
+            class="min-h-0 overflow-y-auto px-2 py-2 outline-none pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
+            {@render menuOptions()}
+          </div>
+        </div>
+      </div>
+    {:else}
+      <div
+        bind:this={panelRef}
+        id={menuId}
+        role="menu"
+        tabindex="-1"
+        aria-label={ariaLabel}
+        onfocusout={handleFocusOut}
+        onkeydown={handlePanelKeydown}
+        use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, align, autoPlace })}
+        class={`fixed left-0 top-0 z-40 will-change-transform overflow-hidden rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur ${panelClass}`}>
+        {@render menuOptions()}
+      </div>
+    {/if}
   {/if}
 </div>
+
+<style>
+  @keyframes menu-sheet-up {
+    from {
+      transform: translateY(1.5rem);
+      opacity: 0;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  .menu-sheet-enter {
+    animation: menu-sheet-up 180ms ease-out;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .menu-sheet-enter {
+      animation: none;
+    }
+  }
+</style>
