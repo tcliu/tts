@@ -39,8 +39,11 @@
     speedChipOptions,
   } from '$lib/page/chips'
   import { createPlaybackArrowHandler as handlePlaybackArrowKeyImpl } from '$lib/page/toolbar'
-  import { panelActionDisabled as panelActionDisabledImpl } from '$lib/page/panel'
+  import { panelActionDisabled as panelActionDisabledImpl, createPanelActionHandler } from '$lib/page/panel'
   import { createWarmCacheController } from '$lib/page/warm-cache'
+  import { useKeyboardShortcuts } from '$lib/page/use-keyboard-shortcuts.svelte'
+  import { useBeforeUnloadGuard } from '$lib/page/use-beforeunload-guard.svelte'
+  import { usePlaybackSlider } from '$lib/page/use-playback-slider.svelte'
   import { usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
   import { useMetadata, RESYNC_DEBOUNCE_MS } from '$lib/use-metadata.svelte'
   import { useSynthesisCache } from '$lib/use-synthesis-cache.svelte'
@@ -158,9 +161,6 @@
   const chipVoiceOptions = $derived(buildChipVoiceOptions(voiceChipOptions))
   const activeChipVoiceEdge = $derived(playback.positionVoiceEdge)
 
-  function handleLangChipSelect(code: string) { return handleLangChipSelectImpl(playback, code) }
-  function handleVoiceChipSelect(edge: string) { return handleVoiceChipSelectImpl(playback, edge) }
-
   function handleSpeedChipSelect(value: string) { playback.setPlaybackSpeed(Number(value)) }
 
   const statusMessage = $derived(
@@ -175,38 +175,18 @@
             : playback.statusMessage,
   )
   const uploadNoticeIsError = $derived(editor.uploadNotice !== null && editor.uploadNotice !== 'uploaded')
-  const playbackSliderMax = $derived(Math.max(playback.totalDuration, playback.totalElapsed, 0))
-  const playbackSliderValue = $derived(
-    playback.isPlaybackEnded ? playback.totalDuration : Math.min(playback.totalElapsed, playbackSliderMax),
-  )
-  let playbackSliderDraft = $state<string | null>(null)
-  const playbackSliderDisplayValue = $derived(
-    playbackSliderDraft === null ? playbackSliderValue : Number(playbackSliderDraft),
-  )
-  const playbackSliderProgress = $derived(
-    playbackSliderMax > 0
-      ? Math.min(100, Math.max(0, (playbackSliderDisplayValue / playbackSliderMax) * 100))
-      : 0,
-  )
+  const playbackSlider = usePlaybackSlider({
+    getTotalDuration: () => playback.totalDuration,
+    getTotalElapsed: () => playback.totalElapsed,
+    getIsPlaybackEnded: () => playback.isPlaybackEnded,
+  })
 
-  function handlePlaybackSliderInput(event: Event) {
-    const t = event.currentTarget
-    if (t instanceof HTMLInputElement) playbackSliderDraft = t.value
-  }
-
-  async function commitPlaybackSlider(event: Event) {
-    const t = event.currentTarget
-    if (!(t instanceof HTMLInputElement)) { playbackSliderDraft = null; return }
-    playbackSliderDraft = null
-    await playback.seekTo(Number(t.value))
-  }
-
-  // toolbar arrow handler — defined after slider so playbackSliderMax is in scope via getter
+  // toolbar arrow handler — defined after slider so playbackSlider.max is in scope via getter
   const handlePlaybackArrowKey = handlePlaybackArrowKeyImpl({
     getEditorRef: () => editorRef,
     getDrawerPanelRef: () => drawerPanelRef,
     getPlayback: () => playback,
-    getSliderMax: () => playbackSliderMax,
+    getSliderMax: () => playbackSlider.max,
     dialogsOpen,
   })
 
@@ -250,29 +230,12 @@
     }
   }
 
-  function handlePanelAction(action: PanelAction) {
-    if (action === 'play') {
-      if (playback.isPlaying) {
-        playback.stopPlayback()
-      } else {
-        playback.startPlayback()
-      }
-    } else if (action === 'reset') {
-      editor.resetEditor()
-    } else if (action === 'save') {
-      editor.saveDocument()
-    } else if (action === 'copy') {
-      void editor.copyEditorContent()
-    } else if (action === 'info') {
-      showMetadata = !showMetadata
-    } else if (action === 'clone') {
-      editor.requestCloneDocument()
-    } else if (action === 'upload') {
-      editor.requestUpload()
-    } else if (editor.currentDocId) {
-      editor.requestDeleteDocument(editor.currentDocId)
-    }
-  }
+  const handlePanelAction = createPanelActionHandler({
+    getPlayback: () => playback,
+    getEditor: () => editor,
+    getShowMetadata: () => showMetadata,
+    setShowMetadata: (v: boolean) => { showMetadata = v },
+  })
 
   async function handleFileChange() {
     const file = fileInputRef?.files?.[0]
@@ -420,35 +383,8 @@
     void tick().then(() => input.focus())
   })
 
-  $effect(() => {
-    function handleGlobalKeydown(event: KeyboardEvent) {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
-        return
-      }
-      if (event.key.toLowerCase() !== 's') {
-        return
-      }
-      event.preventDefault()
-      if (dialogsOpen()) {
-        return
-      }
-      editor.saveDocument()
-    }
-    window.addEventListener('keydown', handleGlobalKeydown)
-    return () => window.removeEventListener('keydown', handleGlobalKeydown)
-  })
-
-  $effect(() => {
-    if (!editor.isDirty) {
-      return
-    }
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  })
+  useKeyboardShortcuts(() => editor, dialogsOpen)
+  useBeforeUnloadGuard(() => editor.isDirty)
 </script>
 
 <svelte:head>
@@ -731,7 +667,7 @@
                     filterPlaceholder={text.languageSearch}
                     emptyText={text.noMatchingLanguages}
                     disabled={playback.isPlaying}
-                    onSelect={(v) => void handleLangChipSelect(v)} />
+                    onSelect={(v) => void handleLangChipSelectImpl(playback, v)} />
                   {#if playback.positionVoiceName}
                     <span class="inline-flex max-w-full items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-200">
                       <span class="truncate">{playback.positionVoiceLocale}</span>
@@ -749,7 +685,7 @@
                       filterPlaceholder={text.voiceSearch}
                       emptyText={text.noMatchingVoices}
                       disabled={voiceChipOptions.length === 0}
-                      onSelect={(v) => void handleVoiceChipSelect(v)} />
+                      onSelect={(v) => void handleVoiceChipSelectImpl(playback, v)} />
                   {/if}
                   <ChipDropdown
                     label={`${playback.playbackSpeed}x`}
@@ -768,14 +704,14 @@
             </div>
             {#if playback.segments[playback.positionSegmentIndex]}
               <PlaybackSlider
-                displayValue={playbackSliderDisplayValue}
+                displayValue={playbackSlider.displayValue}
                 totalDuration={playback.totalDuration}
-                max={playbackSliderMax}
-                progress={playbackSliderProgress}
-                disabled={playbackSliderMax <= 0}
+                max={playbackSlider.max}
+                progress={playbackSlider.progress}
+                disabled={playbackSlider.max <= 0}
                 seekLabel={text.seek}
-                onInput={handlePlaybackSliderInput}
-                onCommit={commitPlaybackSlider} />
+                onInput={playbackSlider.handleInput}
+                onCommit={(e) => playbackSlider.commit(e, elapsed => playback.seekTo(elapsed))} />
             {/if}
           </div>
         {/if}

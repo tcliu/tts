@@ -1,5 +1,7 @@
+import type { PanelAction } from '../toolbar-ladder'
+
 export function panelActionDisabled(
-  action: string,
+  action: PanelAction,
   deps: { isPlaying: boolean; canPlay: boolean; saveDisabled: boolean; currentDocId: string | null; isDirty: boolean },
 ): boolean {
   if (action === 'play') return deps.isPlaying ? false : !deps.canPlay
@@ -23,7 +25,7 @@ export function createPanelActionHandler(deps: {
   getShowMetadata: () => boolean
   setShowMetadata: (v: boolean) => void
 }) {
-  return (action: string) => {
+  return (action: PanelAction) => {
     const playback = deps.getPlayback()
     const editor = deps.getEditor()
     if (action === 'play') {
