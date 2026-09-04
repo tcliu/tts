@@ -170,18 +170,6 @@
       {:else}
         <span>{text.segmentHint}</span>
       {/if}
-      {#if visibleExpandableOffsets.length > 0}
-        <Button
-          variant="ghost"
-          size="sm"
-          ariaLabel={allVisibleExpanded ? text.collapseAll : text.expandAll}
-          tooltip={allVisibleExpanded ? text.collapseAll : text.expandAll}
-          preventFocusSteal
-          onClick={toggleExpandAll}
-          className="ml-auto border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:text-slate-200 focus-visible:ring-2 focus-visible:ring-cyan-500">
-          {allVisibleExpanded ? text.collapseAll : text.expandAll}
-        </Button>
-      {/if}
     </div>
     {#if metadata.rows.length === 0}
       <p class="text-xs text-slate-500">{metadata.search.trim() ? text.metadataNoResults : text.noMetadata}</p>
@@ -195,7 +183,22 @@
           </colgroup>
           <thead class="sticky top-0 z-10 bg-slate-950">
             <tr class="text-left text-xs text-slate-400">
-              <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tableExpand}></th>
+              <th scope="col" class="w-6 px-1 py-1 font-medium">
+                {#if visibleExpandableOffsets.length > 0}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    ariaLabel={allVisibleExpanded ? text.collapseAll : text.expandAll}
+                    tooltip={allVisibleExpanded ? text.collapseAll : text.expandAll}
+                    preventFocusSteal
+                    onClick={toggleExpandAll}
+                    className="text-slate-400 hover:text-slate-200">
+                    {#snippet icon()}
+                      <ChevronDownSmallIcon className={`h-3 w-3 transition-transform motion-reduce:transition-none ${allVisibleExpanded ? '' : '-rotate-90'}`} />
+                    {/snippet}
+                  </Button>
+                {/if}
+              </th>
               <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
               <th scope="col" class="px-2 py-1 font-medium" aria-label={text.tableSentence}>{text.tableNumber}</th>
               <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
