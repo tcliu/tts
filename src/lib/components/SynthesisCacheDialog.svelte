@@ -3,6 +3,9 @@
   import BaseDialog from '$lib/components/BaseDialog.svelte'
   import Button from '$lib/components/Button.svelte'
   import DataTable, { type DataTableColumn } from '$lib/components/DataTable.svelte'
+  import DeleteIcon from '$lib/icons/DeleteIcon.svelte'
+  import SpeakerIcon from '$lib/icons/SpeakerIcon.svelte'
+  import StopIcon from '$lib/icons/StopIcon.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
   import { formatBytes } from '$lib/format-bytes'
   import type { SynthesisCacheEntry } from '$lib/tts-client'
@@ -327,11 +330,21 @@
           {/if}
         </p>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" disabled={!hasSelection} ariaLabel={text.clearSelectedCacheEntries} onClick={() => void clearSelected()}>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <Button variant="secondary" size="sm" disabled={!hasSelection} ariaLabel={text.clearSelectedCacheEntries} onClick={() => void clearSelected()}>
+          {#snippet icon()}
+            <DeleteIcon className="h-4 w-4" />
+          {/snippet}
           {text.clear}
         </Button>
-        <Button variant={playing ? 'outline' : 'primary'} disabled={!hasSelection} ariaLabel={playing ? text.stopSelectedCachePlayback : text.playSelectedCacheEntries} onClick={() => void playSelected()}>
+        <Button variant="outline" accent="cyan" size="sm" ariaPressed={playing} disabled={!hasSelection} ariaLabel={playing ? text.stopSelectedCachePlayback : text.playSelectedCacheEntries} onClick={() => void playSelected()}>
+          {#snippet icon()}
+            {#if playing}
+              <StopIcon className="h-4 w-4" />
+            {:else}
+              <SpeakerIcon className="h-4 w-4" />
+            {/if}
+          {/snippet}
           {playing ? text.stop : text.playback}
         </Button>
       </div>
