@@ -4,12 +4,21 @@ import { logAccess, logEvent, getRequestIp } from '$lib/server/logging'
 import { synthesizeEdgeTts } from '$lib/server/edge-tts'
 import { synthesisCacheKey, getCachedSynthesis, setCachedSynthesis, matchesIfNoneMatch } from '$lib/server/tts-cache'
 import { isRateLimited, RETRY_AFTER_S } from '$lib/server/rate-limit'
+import { getMaxTextLength } from '$lib/server/admin-properties'
 import { CANONICAL_SYNTHESIS_RATE } from '$lib/tts-cache-key'
 import { REFERENCE_LANGUAGES, SPEEDS } from '$lib/tts-reference'
 
 const KNOWN_VOICES = new Set(REFERENCE_LANGUAGES.flatMap(language => language.voices.map(voice => voice.edge)))
 // Client segments are capped at 500 chars; allow headroom for direct API use.
-const MAX_TEXT_LENGTH = 2000
+const DEFAULT_MAX_TEXT_LENGTH = 2000
+
+function maxTextLength(): number {
+  try {
+    return getMaxTextLength()
+  } catch {
+    return DEFAULT_MAX_TEXT_LENGTH
+  }
+}
 
 // Edge TTS synthesis can take several seconds; give the serverless function
 // enough headroom. Vercel caps this per plan (Hobby: 60s max). The runtime
@@ -33,8 +42,9 @@ export const POST: RequestHandler = async event => {
   if (!text) {
     return json({ error: 'Text must not be empty' }, { status: 400 })
   }
-  if (text.length > MAX_TEXT_LENGTH) {
-    return json({ error: `Text must not exceed ${MAX_TEXT_LENGTH} characters` }, { status: 413 })
+  const maxText = maxTextLength()
+  if (text.length > maxText) {
+    return json({ error: `Text must not exceed ${maxText} characters` }, { status: 413 })
   }
   if (!voice) {
     return json({ error: 'Voice must not be empty' }, { status: 400 })
@@ -115,6 +125,8 @@ export const POST: RequestHandler = async event => {
       wordBoundaries: result.wordBoundaries,
       spokenStart: result.spokenStart,
       spokenEnd: result.spokenEnd,
+      text,
+      voice,
     }
     const etag = await setCachedSynthesis(key, stored)
     const payload = {

@@ -1,10 +1,15 @@
+import { getRateLimitMax } from './admin-properties'
+
 export const WINDOW_MS = 60_000
 export const RETRY_AFTER_S = 60
 export const DEFAULT_MAX_REQUESTS = 60
-export const MAX_REQUESTS = (() => {
-  const raw = Number(process.env.TTS_RATE_LIMIT_MAX)
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_MAX_REQUESTS
-})()
+export function maxRequests(): number {
+  try {
+    return getRateLimitMax()
+  } catch {
+    return DEFAULT_MAX_REQUESTS
+  }
+}
 
 interface Bucket {
   count: number
@@ -28,12 +33,13 @@ function ensureGc() {
 export function isRateLimited(ip: string): boolean {
   ensureGc()
   const now = Date.now()
+  const limit = maxRequests()
   const bucket = buckets.get(ip)
   if (!bucket || now >= bucket.resetAt) {
     buckets.set(ip, { count: 1, resetAt: now + WINDOW_MS })
     return false
   }
-  if (bucket.count >= MAX_REQUESTS) return true
+  if (bucket.count >= limit) return true
   bucket.count += 1
   return false
 }

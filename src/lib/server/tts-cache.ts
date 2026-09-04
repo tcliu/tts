@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, stat, writeFile, unlink } from 'node:fs/promi
 import path from 'node:path'
 import { synthesisCacheKey as buildSynthesisCacheKey } from '$lib/tts-cache-key'
 import type { TtsBoundary } from '$lib/tts-reference'
+import { getCacheMaxBytes, getCacheMaxEntries, getCacheTtlMs } from './admin-properties'
 import { logEvent } from './logging'
 
 export interface CachedSynthesis {
@@ -11,6 +12,8 @@ export interface CachedSynthesis {
   wordBoundaries?: TtsBoundary[]
   spokenStart?: number
   spokenEnd?: number
+  text?: string
+  voice?: string
 }
 
 interface CacheEnvelope {
@@ -19,9 +22,33 @@ interface CacheEnvelope {
   etag: string
 }
 
-const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
-const CACHE_MAX_ENTRIES = 500
-const CACHE_MAX_BYTES = 200 * 1024 * 1024
+const DEFAULT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const DEFAULT_CACHE_MAX_ENTRIES = 500
+const DEFAULT_CACHE_MAX_BYTES = 200 * 1024 * 1024
+
+export function cacheTtlMs(): number {
+  try {
+    return getCacheTtlMs()
+  } catch {
+    return DEFAULT_CACHE_TTL_MS
+  }
+}
+
+export function cacheMaxEntries(): number {
+  try {
+    return getCacheMaxEntries()
+  } catch {
+    return DEFAULT_CACHE_MAX_ENTRIES
+  }
+}
+
+export function cacheMaxBytes(): number {
+  try {
+    return getCacheMaxBytes()
+  } catch {
+    return DEFAULT_CACHE_MAX_BYTES
+  }
+}
 
 // Content hash for ETag/If-None-Match so a client can verify its IndexedDB
 // copy is still current without re-downloading the audio. Deterministic by
@@ -84,7 +111,7 @@ export async function getCachedSynthesis(key: string): Promise<CachedSynthesisRe
     const rawEnvelope = JSON.parse(raw) as Partial<CacheEnvelope> & { value?: Record<string, unknown> }
     if (
       typeof rawEnvelope.savedAt !== 'number' ||
-      Date.now() - rawEnvelope.savedAt > CACHE_TTL_MS ||
+      Date.now() - rawEnvelope.savedAt > cacheTtlMs() ||
       !rawEnvelope.value ||
       typeof (rawEnvelope.value as { audio?: unknown }).audio !== 'string'
     ) {
@@ -99,6 +126,8 @@ export async function getCachedSynthesis(key: string): Promise<CachedSynthesisRe
       wordBoundaries: (v.wordBoundaries as TtsBoundary[] | undefined) ?? (v.word_boundaries as TtsBoundary[] | undefined),
       spokenStart: (v.spokenStart as number | undefined) ?? (v.spoken_start as number | undefined),
       spokenEnd: (v.spokenEnd as number | undefined) ?? (v.spoken_end as number | undefined),
+      text: typeof v.text === 'string' ? v.text : undefined,
+      voice: typeof v.voice === 'string' ? v.voice : undefined,
     }
     const envelope: CacheEnvelope = {
       savedAt: rawEnvelope.savedAt as number,
@@ -175,7 +204,10 @@ export async function pruneCache(): Promise<void> {
     totalBytes += fileStat.size
   }
   const now = Date.now()
-  const expired = entries.filter(e => e.savedAt > 0 && now - e.savedAt > CACHE_TTL_MS)
+  const ttl = cacheTtlMs()
+  const maxEntries = cacheMaxEntries()
+  const maxBytes = cacheMaxBytes()
+  const expired = entries.filter(e => e.savedAt > 0 && now - e.savedAt > ttl)
   for (const entry of expired) {
     await unlink(entry.file).catch(() => {})
     totalBytes -= entry.bytes
@@ -184,7 +216,7 @@ export async function pruneCache(): Promise<void> {
   remaining.sort((a, b) => a.savedAt - b.savedAt)
   let pruned = expired.length
   let prunedBytes = expired.reduce((sum, e) => sum + e.bytes, 0)
-  while (remaining.length > CACHE_MAX_ENTRIES || totalBytes > CACHE_MAX_BYTES) {
+  while (remaining.length > maxEntries || totalBytes > maxBytes) {
     const oldest = remaining.shift()
     if (!oldest) break
     await unlink(oldest.file).catch(() => {})
@@ -209,4 +241,121 @@ export function matchesIfNoneMatch(header: string, etag: string): boolean {
   return header
     .split(',')
     .some(candidate => candidate.trim().replace(/^W\//, '').replaceAll('"', '') === etag)
+}
+
+export interface ServerCacheEntry {
+  key: string
+  text?: string
+  voice?: string
+  savedAt: number
+  bytes: number
+}
+
+export interface ServerCacheStats {
+  entries: number
+  bytes: number
+}
+
+async function readEnvelopeMeta(file: string): Promise<{ savedAt: number; text?: string; voice?: string } | null> {
+  try {
+    const raw = await readFile(file, 'utf-8')
+    const envelope = JSON.parse(raw) as Partial<CacheEnvelope> & { value?: Record<string, unknown> }
+    if (typeof envelope.savedAt !== 'number') return null
+    const value = envelope.value
+    if (!value || typeof value !== 'object' || typeof (value as { audio?: unknown }).audio !== 'string') {
+      return null
+    }
+    const record = value as Record<string, unknown>
+    return {
+      savedAt: envelope.savedAt,
+      text: typeof record.text === 'string' ? record.text : undefined,
+      voice: typeof record.voice === 'string' ? record.voice : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+interface CacheFileMeta {
+  key: string
+  savedAt: number
+  text?: string
+  voice?: string
+  bytes: number
+}
+
+async function readAllCacheMetas(): Promise<CacheFileMeta[]> {
+  const dir = cacheDir()
+  let files: string[]
+  try {
+    files = await readdir(dir)
+  } catch {
+    return []
+  }
+  const metas: CacheFileMeta[] = []
+  for (const file of files) {
+    if (!file.endsWith('.json')) continue
+    const full = path.join(dir, file)
+    let size = 0
+    try {
+      size = (await stat(full)).size
+    } catch {
+      continue
+    }
+    const meta = await readEnvelopeMeta(full)
+    if (!meta) continue
+    metas.push({ key: file.slice(0, -'.json'.length), savedAt: meta.savedAt, text: meta.text, voice: meta.voice, bytes: size })
+  }
+  return metas
+}
+
+export async function listServerCacheEntries(): Promise<ServerCacheEntry[]> {
+  const ttl = cacheTtlMs()
+  const now = Date.now()
+  const entries = (await readAllCacheMetas()).filter(meta => now - meta.savedAt <= ttl)
+  entries.sort((a, b) => b.savedAt - a.savedAt)
+  return entries
+}
+
+export interface ServerCacheOverview {
+  stats: ServerCacheStats
+  entries: ServerCacheEntry[]
+}
+
+// One directory scan serves both the visible (unexpired) entries and the
+// disk-usage stats, which cover every cache file including expired ones.
+export async function loadServerCacheOverview(): Promise<ServerCacheOverview> {
+  const ttl = cacheTtlMs()
+  const now = Date.now()
+  const metas = await readAllCacheMetas()
+  const entries = metas
+    .filter(meta => now - meta.savedAt <= ttl)
+    .sort((a, b) => b.savedAt - a.savedAt)
+  return {
+    stats: { entries: metas.length, bytes: metas.reduce((total, meta) => total + meta.bytes, 0) },
+    entries,
+  }
+}
+
+function isSafeCacheKey(key: string): boolean {
+  return /^[A-Za-z0-9_-]{1,128}$/.test(key)
+}
+
+export async function deleteServerCacheEntries(keys: string[]): Promise<{ deleted: number }> {
+  let deleted = 0
+  for (const key of keys) {
+    if (!isSafeCacheKey(key)) continue
+    try {
+      await unlink(path.join(cacheDir(), `${key}.json`))
+      deleted += 1
+    } catch {
+      continue
+    }
+  }
+  return { deleted }
+}
+
+export async function clearServerCache(): Promise<{ deleted: number }> {
+  const metas = await readAllCacheMetas()
+  return deleteServerCacheEntries(metas.map(meta => meta.key))
 }
