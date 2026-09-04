@@ -63,11 +63,16 @@
   clicked.
 - Dragging the seek slider previews the position; releasing starts or resumes
   playback there.
-- The language and voice chips are dropdowns. Picking a value overrides the
-  position segment's language, respectively the voice for its language, for the
-  active session only; the persisted default voice settings stay untouched.
-  The language chip requires paused playback; the voice chip also works during
-  playback.
+- The language, locale, gender, and voice chips are dropdowns forming a
+  cascade: language → locale → gender → voice. Picking a value overrides the
+  position segment's language, respectively the voice for its language (locale
+  and gender picks resolve to the first matching voice), for the active
+  session only; the persisted default voice settings stay untouched. The
+  locale chip lists the locales available for the current language and the
+  gender chip lists the genders for the current language and locale; each is
+  hidden when only one option exists. The voice chip lists only voices in the
+  current locale. The language, locale, and gender chips require paused
+  playback; the voice chip also works during playback.
 - Changing the voice model during playback stops at the current word,
   resynthesizes the current segment with the new voice, and resumes from the
   same word once synthesis is ready; the status line reports the switch while

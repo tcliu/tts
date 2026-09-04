@@ -30,10 +30,14 @@
   import { THEME_ICONS, THEME_MENU_OPTIONS } from '$lib/page/theme'
   import PaletteIcon from '$lib/icons/PaletteIcon.svelte'
   import {
+    buildChipLocaleOptions,
+    buildChipGenderOptions,
     buildChipLangOptions,
     buildWrittenLabel,
     buildVoiceChipOptions,
     buildChipVoiceOptions,
+    handleLocaleChipSelect as handleLocaleChipSelectImpl,
+    handleGenderChipSelect as handleGenderChipSelectImpl,
     handleLangChipSelect as handleLangChipSelectImpl,
     handleVoiceChipSelect as handleVoiceChipSelectImpl,
     speedChipOptions,
@@ -156,8 +160,10 @@
   )
 
   const chipLangOptions = $derived(buildChipLangOptions(settings.locale))
+  const chipLocaleOptions = $derived(buildChipLocaleOptions(playback.positionLanguageCode))
+  const chipGenderOptions = $derived(buildChipGenderOptions(playback.positionLanguageCode, playback.positionVoiceLocale))
   const writtenLabel = $derived(buildWrittenLabel(settings.locale, playback.positionLanguageCode))
-  const voiceChipOptions = $derived(buildVoiceChipOptions(playback.positionLanguageCode))
+  const voiceChipOptions = $derived(buildVoiceChipOptions(playback.positionLanguageCode, playback.positionVoiceLocale))
   const chipVoiceOptions = $derived(buildChipVoiceOptions(voiceChipOptions))
   const activeChipVoiceEdge = $derived(playback.positionVoiceEdge)
 
@@ -669,12 +675,29 @@
                     disabled={playback.isPlaying}
                     onSelect={(v) => void handleLangChipSelectImpl(playback, v)} />
                   {#if playback.positionVoiceName}
-                    <span class="inline-flex max-w-full items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-200">
-                      <span class="truncate">{playback.positionVoiceLocale}</span>
-                    </span>
-                    <span class="inline-flex max-w-full items-center rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-0.5 text-xs font-medium text-fuchsia-200">
-                      <span class="truncate">{playback.positionVoiceGender}</span>
-                    </span>
+                    {#if chipLocaleOptions.length > 1}
+                      <ChipDropdown
+                        label={playback.positionVoiceLocale}
+                        options={chipLocaleOptions}
+                        activeValue={playback.positionVoiceLocale}
+                        ariaLabel={text.segmentLocale}
+                        variant="amber"
+                        filterable
+                        filterPlaceholder={text.localeSearch}
+                        emptyText={text.noMatchingLocales}
+                        disabled={playback.isPlaying}
+                        onSelect={(v) => void handleLocaleChipSelectImpl(playback, v)} />
+                    {/if}
+                    {#if chipGenderOptions.length > 1}
+                      <ChipDropdown
+                        label={playback.positionVoiceGender}
+                        options={chipGenderOptions}
+                        activeValue={playback.positionVoiceGender}
+                        ariaLabel={text.segmentGender}
+                        variant="fuchsia"
+                        disabled={playback.isPlaying}
+                        onSelect={(v) => void handleGenderChipSelectImpl(playback, v)} />
+                    {/if}
                     <ChipDropdown
                       label={playback.positionVoiceName}
                       options={chipVoiceOptions}

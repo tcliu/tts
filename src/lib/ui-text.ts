@@ -121,6 +121,10 @@ export interface UiText {
   languageSearch: string
   noMatchingLanguages: string
   segmentLanguage: string
+  segmentLocale: string
+  segmentGender: string
+  localeSearch: string
+  noMatchingLocales: string
   expandSentence: string
   collapseSentence: string
   expandAll: string
