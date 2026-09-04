@@ -2,23 +2,23 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 // Speed values live in stringly-typed sync points that the compiler cannot
-// fully cross-check: the canonical array in tts-reference (the source of truth
+// fully cross-check: the canonical array in tts/catalog.ts (the source of truth
 // for the UI's NumberInput min/max, the dropdown options, and the SPEED_STEP
 // derivation), the legacy reference script in tts.mjs, and the server's rate
 // allowlist. This test fails when any of them drifts away from the canonical
 // list, keeping spec.md §Settings' "default speed options must match the
 // speed list in tts.mjs" contract enforceable.
-const referenceSource = readFileSync('src/lib/tts-reference.ts', 'utf-8')
+const catalogSource = readFileSync('src/lib/tts/catalog.ts', 'utf-8')
 const ttsMjs = readFileSync('tts.mjs', 'utf-8')
 const serverSource = readFileSync('src/routes/api/tts/synthesize/+server.ts', 'utf-8')
 
 function canonicalSpeeds(): number[] {
   const marker = 'export const SPEEDS = ['
-  const start = referenceSource.indexOf(marker)
+  const start = catalogSource.indexOf(marker)
   expect(start, 'the SPEEDS array declaration must stay findable').toBeGreaterThanOrEqual(0)
-  const end = referenceSource.indexOf(']', start)
+  const end = catalogSource.indexOf(']', start)
   expect(end, 'the SPEEDS array must be a single-line literal').toBeGreaterThan(start)
-  const literal = referenceSource.slice(start + marker.length, end)
+  const literal = catalogSource.slice(start + marker.length, end)
   return literal
     .split(',')
     .map(token => Number(token.trim()))
