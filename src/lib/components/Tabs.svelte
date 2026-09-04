@@ -13,9 +13,10 @@
     state: TState
     pathname?: string
     ariaLabel?: string
+    headerClass?: string
   }
 
-  let { tabs, state: tabState, pathname, ariaLabel = 'Tabs' }: Props<TState> = $props()
+  let { tabs, state: tabState, pathname, ariaLabel = 'Tabs', headerClass = 'bg-transparent' }: Props<TState> = $props()
 
   let activePath = $state('')
 
@@ -23,7 +24,7 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col">
-  <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 bg-slate-900 pb-3">
+  <div class={`sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 pb-3 ${headerClass}`}>
     <nav aria-label={ariaLabel} class="inline-flex rounded-xl border border-slate-700 bg-slate-950 p-1">
       {#each tabs as tab}
         {#if pathname !== undefined}

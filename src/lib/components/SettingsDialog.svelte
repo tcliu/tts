@@ -130,7 +130,7 @@
 
   {#snippet speedContent()}
     <div class="rounded-xl border border-slate-800 bg-slate-950/50">
-      <div class="grid items-center gap-2 p-3 md:grid-cols-[minmax(0,1fr)_11rem]">
+      <div class="grid items-center gap-2 p-3 @min-md:grid-cols-[minmax(0,1fr)_11rem]">
         <label for="default-speed" class="text-sm font-medium text-slate-100">{text.defaultSpeed}</label>
         <NumberInput
           id="default-speed"
@@ -158,7 +158,7 @@
 
   {#snippet synthesisContent()}
     <div class="rounded-xl border border-slate-800 bg-slate-950/50">
-      <div class="grid items-center gap-2 p-3 md:grid-cols-[minmax(0,1fr)_11rem]">
+      <div class="grid items-center gap-2 p-3 @min-md:grid-cols-[minmax(0,1fr)_11rem]">
         <label for="concurrent-synthesis" class="text-sm font-medium text-slate-100">{text.synthesisConcurrency}</label>
         <NumberInput
           id="concurrent-synthesis"
@@ -181,7 +181,7 @@
             onSelectConcurrent(Number.isFinite(raw) ? raw : 1)
           }} />
       </div>
-      <div class="grid items-center gap-2 border-t border-slate-800 p-3 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div class="grid items-center gap-2 border-t border-slate-800 p-3 @min-md:grid-cols-[minmax(0,1fr)_auto]">
         <div class="text-sm">
           <span class="font-medium text-slate-100">{text.synthesisCache}</span>
           <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
