@@ -23,9 +23,17 @@
   let pending = $state(false)
   let error = $state('')
   let usernameInput = $state<HTMLInputElement | null>(null)
+  let passwordInput = $state<{ focus: () => void } | null>(null)
 
+  // Focus the first empty field: username when blank, otherwise password.
   onMount(() => {
-    void tick().then(() => usernameInput?.focus())
+    void tick().then(() => {
+      if (!username) {
+        usernameInput?.focus()
+      } else {
+        passwordInput?.focus()
+      }
+    })
   })
 
   async function handleSubmit(event: SubmitEvent) {
@@ -70,7 +78,7 @@
       </label>
       <label class="flex flex-col gap-1.5">
         <span class="text-sm font-medium text-slate-200">{text.adminPassword}</span>
-        <PasswordInput bind:value={password} {locale} disabled={pending} />
+        <PasswordInput bind:this={passwordInput} bind:value={password} {locale} disabled={pending} />
       </label>
       {#if error}
         <p class="text-sm text-rose-400" role="alert">{error}</p>
