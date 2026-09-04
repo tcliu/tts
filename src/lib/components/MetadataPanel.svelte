@@ -189,6 +189,7 @@
                     variant="ghost"
                     size="sm"
                     ariaLabel={allVisibleExpanded ? text.collapseAll : text.expandAll}
+                    ariaExpanded={allVisibleExpanded}
                     tooltip={allVisibleExpanded ? text.collapseAll : text.expandAll}
                     preventFocusSteal
                     onClick={toggleExpandAll}
