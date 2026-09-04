@@ -11,10 +11,12 @@
 - The right side shows a toolbar with a language button, a theme button, and a
   settings button.
 - Activating the Documents button toggles the documents drawer.
-- Activating the language button opens a language panel.
+- Activating the language button opens a language panel; on phone-class
+  viewports it opens as a bottom sheet instead of an anchored popover.
 - The language panel lists English, Traditional Chinese, and Simplified Chinese
   in their respective languages.
-- Activating the theme button opens a color-theme panel.
+- Activating the theme button opens a color-theme panel; on phone-class
+  viewports it opens as a bottom sheet instead of an anchored popover.
 - The theme panel lists Dark, Ember, Forest, Midnight, Nebula, Light, Mint,
   Sepia, Lavender, and Sky; the active theme shows a selected marker and each
   option carries its own icon, while the trigger uses a static palette icon.
@@ -202,6 +204,11 @@
 
 - The page works on both desktop and mobile layouts.
 - Toolbar actions remain reachable and comfortably tappable on mobile.
+- The header language and theme menus use a bottom-sheet presentation on
+  phone-class viewports so options stay thumb-friendly without switching to
+  a native picker. The sheet slides up on open, follows a downward drag with
+  snap-back, and dismisses past the drag threshold; motion is disabled when
+  reduced motion is requested.
 - Dialogs and option panels remain usable without hover.
 
 ## Accessibility

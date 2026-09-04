@@ -3,6 +3,11 @@ export interface PositionPanelOptions {
   getOpen: () => boolean
   align?: 'left' | 'right'
   autoPlace?: boolean
+  /**
+   * Sheet mode only portals the node to `document.body` (no measuring,
+   * no observers); `align`, `autoPlace`, and `getTrigger` are ignored.
+   */
+  presentation?: 'anchored' | 'sheet'
 }
 
 const VIEWPORT_MARGIN = 8
@@ -49,9 +54,20 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
   }
 
   function updatePanelPosition() {
-    const { getTrigger, getOpen, align = 'left', autoPlace = true } = options()
+    const { getTrigger, getOpen, align = 'left', autoPlace = true, presentation = 'anchored' } = options()
+    if (!getOpen()) {
+      return
+    }
+    if (presentation === 'sheet') {
+      node.style.transform = ''
+      node.style.left = ''
+      node.style.top = ''
+      node.style.maxWidth = ''
+      node.style.visibility = 'visible'
+      return
+    }
     const trigger = getTrigger()
-    if (!getOpen() || !trigger) {
+    if (!trigger) {
       return
     }
     const rect = trigger.getBoundingClientRect()
@@ -93,7 +109,7 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
   node.style.visibility = 'hidden'
 
   $effect(() => {
-    const { getTrigger, getOpen } = options()
+    const { getTrigger, getOpen, presentation = 'anchored' } = options()
     if (!getOpen()) {
       node.style.visibility = 'hidden'
       node.style.transform = ''
@@ -105,6 +121,12 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
     }
     attachPanelToBody()
     updatePanelPosition()
+    if (presentation === 'sheet') {
+      return () => {
+        node.style.visibility = 'hidden'
+        restorePanelParent()
+      }
+    }
     scrollableAncestor = findScrollableAncestor(getTrigger())
     scrollableAncestor?.addEventListener('scroll', updatePanelPosition, { passive: true })
     window.addEventListener('resize', updatePanelPosition)

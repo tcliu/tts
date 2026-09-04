@@ -65,9 +65,12 @@
       `${SIZE_CLASS[size].minW} field-sizing-content cursor-pointer rounded-md border border-slate-700 bg-slate-950 pl-3 pr-8 text-slate-100 outline-none transition motion-reduce:transition-none hover:border-cyan-500 focus-visible:border-cyan-500 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
+  // Phone viewports get a 44px minimum row height via pure CSS so in-dialog
+  // dropdowns (e.g. Settings Voices) stay thumb-friendly without switching
+  // to a bottom sheet, which must never stack inside a dialog.
   const optionRowClass = $derived(
     optionClass ??
-      `flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 text-left outline-none transition motion-reduce:transition-none ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
+      `flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 text-left outline-none transition motion-reduce:transition-none max-[28rem]:min-h-11 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
   const emptyClass = $derived(`px-3 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]} text-slate-500`)

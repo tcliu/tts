@@ -233,9 +233,25 @@ speeds, text segmentation, and sequential segment playback behavior.
   enumerate the themes; the trigger uses a static palette icon. Extend them
   together with the union.
 - Both header radio menus render through the shared `Menu` component
-  (radio variant with `Tooltip`), which owns open state, portal placement
-  via `positionPanel`, dismissal via `useDropdown`, and roving keyboard
-  handling via `useListSelection`.
+  (radio variant with `Tooltip`). On phone-class viewports (the same
+  `<28rem` threshold used for dialog sheet mode), those menus switch from an
+  anchored popover to a backdrop bottom sheet while preserving the same
+  checked state, roving keyboard navigation, Escape/backdrop/drag-down
+  dismissal, and focus return to the trigger; they do not switch to native
+  pickers. The sheet is pointer-modal via its backdrop but does not trap
+  keyboard focus: tabbing out dismisses it through focus-out handling.
+  The sheet chrome is a labelled dialog wrapping an inner radio menu so the
+  title and close button are not menu children; entrance motion and the
+  drag snap-back are disabled under `prefers-reduced-motion`. `Menu` owns
+  the open state, portal placement for anchored popovers via
+  `positionPanel`, dismissal via `useDropdown`, drag dismissal via
+  `dragCloseDown`, and roving keyboard handling via `useListSelection`.
+- In-dialog dropdowns (e.g. Settings Voices) keep the anchored popover on
+  every viewport instead of a bottom sheet: a sheet stacked over the
+  full-screen phone dialog would fight the dialog focus trap, since sheet
+  focus moves outside the dialog DOM while popover focus stays on the
+  in-dialog trigger. Phone tap targets there come from a CSS-only row
+  minimum height.
 
 ## Constraints
 
