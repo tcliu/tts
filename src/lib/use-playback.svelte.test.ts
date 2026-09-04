@@ -400,8 +400,10 @@ describe('usePlayback stop', () => {
     expect(vi.mocked(getCachedSynthesis).mock.calls[0]?.[0]).toBe(segments[1].text)
     expect(playback.playedDuration).toBeCloseTo(4, 2)
     const audio = await vi.waitFor(() => {
-      const instance = AudioStub.instances[AudioStub.instances.length - 1]
-      expect(instance).toBeDefined()
+      const instance = [...AudioStub.instances].reverse().find(item => !item.paused)
+      if (!instance) {
+        throw new Error('Expected a playing audio instance')
+      }
       return instance
     })
     await vi.waitFor(() => expect(audio.currentTime).toBeCloseTo(1.5, 2))
