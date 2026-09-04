@@ -143,6 +143,54 @@ export interface UiText {
   tableSortAsc: string
   tableSortDesc: string
   tableResize: string
+  adminTitle: string
+  adminLoginDescription: string
+  adminNotConfigured: string
+  adminUsername: string
+  adminPassword: string
+  adminPasswordShow: string
+  adminPasswordHide: string
+  adminRememberMe: string
+  adminSignIn: string
+  adminSignOut: string
+  adminBackToEditor: string
+  adminLoginFillBoth: string
+  adminLoginFailed: string
+  adminSections: string
+  adminPropertiesActions: string
+  adminTabProperties: string
+  adminTabSynthesisCache: string
+  adminSourceFile: string
+  adminSourceEnvironment: string
+  adminSourceDefault: string
+  adminEnv: string
+  adminRevertToDefault: string
+  adminApply: string
+  adminReload: string
+  adminReset: string
+  adminRetry: string
+  adminServerCache: string
+  adminServerCacheEmpty: string
+  adminClearAllServerCache: string
+  adminPropRateLimitMaxLabel: string
+  adminPropRateLimitMaxDesc: string
+  adminPropMaxTextLengthLabel: string
+  adminPropMaxTextLengthDesc: string
+  adminPropCacheTtlLabel: string
+  adminPropCacheTtlDesc: string
+  adminPropCacheMaxEntriesLabel: string
+  adminPropCacheMaxEntriesDesc: string
+  adminPropCacheMaxBytesLabel: string
+  adminPropCacheMaxBytesDesc: string
+  adminPropEdgeTtsTimeoutLabel: string
+  adminPropEdgeTtsTimeoutDesc: string
+  adminErrorGeneric: string
+  adminErrorBadRequest: string
+  adminErrorRateLimited: string
+  adminErrorInvalidProperty: string
+  adminErrorTimeout: string
+  adminPropNotInteger: string
+  adminPropOutOfRange: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [

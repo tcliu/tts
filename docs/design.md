@@ -183,6 +183,18 @@
 - The Voices tab has a search box filtering languages and voices by language
   name or voice name.
 
+## Admin page
+
+- `/admin` shows a sign-in card (username, password with show/hide,
+  remember-me) when unauthenticated and `Properties` / `Synthesis cache`
+  tabs when authenticated; the header carries language/theme menus plus
+  back-to-editor and sign-out actions.
+- The Properties tab edits rate limit, text length, cache TTL/count/size,
+  and Edge timeout with per-row source badges (`File`/`Environment`/`Default`)
+  and revert-to-default for file-sourced values.
+- The Synthesis cache tab shows a searchable, sortable, paginated table of
+  server cache entries with selective and clear-all actions.
+
 ## Responsive behavior
 
 - The page works on both desktop and mobile layouts.

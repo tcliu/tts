@@ -1,0 +1,309 @@
+<script lang="ts">
+  import Button from './Button.svelte'
+  import DataTable, { type DataTableColumn } from './DataTable.svelte'
+  import DeleteIcon from '$lib/icons/DeleteIcon.svelte'
+  import { adminErrorMessage } from '$lib/admin-client'
+  import { UI_TEXT, type UiLocale } from '$lib/ui-text'
+  import { formatBytes } from '$lib/format-bytes'
+  import type { AdminServerCacheEntry } from '$lib/admin-client'
+  import type { useAdminSynthesisCache } from '$lib/use-admin-synthesis-cache.svelte'
+
+  interface Props {
+    locale: UiLocale
+    cacheState: ReturnType<typeof useAdminSynthesisCache>
+  }
+
+  let { locale, cacheState }: Props = $props()
+
+  const text = $derived(UI_TEXT[locale])
+
+  let search = $state('')
+  let selectedKeys = $state(new Set<string>())
+  let page = $state(1)
+  let pageSize = $state(10)
+  let sortKey = $state<string | null>(null)
+  let sortDir = $state<'asc' | 'desc'>('asc')
+
+  const query = $derived(search.trim().toLowerCase())
+
+  const filteredEntries = $derived.by(() => {
+    if (!query) return cacheState.entries
+    return cacheState.entries.filter(entry => {
+      const haystack = [entry.key, entry.text ?? '', entry.voice ?? ''].join('\n').toLowerCase()
+      return haystack.includes(query)
+    })
+  })
+
+  const sortedEntries = $derived.by(() => {
+    if (!sortKey) return filteredEntries
+    const copy = [...filteredEntries]
+    copy.sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case 'text': {
+          cmp = (a.text ?? '').localeCompare(b.text ?? '')
+          break
+        }
+        case 'voice': {
+          cmp = (a.voice ?? '').localeCompare(b.voice ?? '')
+          break
+        }
+        case 'size': {
+          cmp = a.bytes - b.bytes
+          break
+        }
+        case 'saved': {
+          cmp = a.savedAt - b.savedAt
+          break
+        }
+        default:
+          cmp = 0
+      }
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return copy
+  })
+
+  const total = $derived(sortedEntries.length)
+  const totalPages = $derived(Math.max(1, Math.ceil(total / pageSize)))
+  const paginatedEntries = $derived(sortedEntries.slice((page - 1) * pageSize, page * pageSize))
+
+  $effect(() => {
+    void total
+    void pageSize
+    if (page > totalPages) page = totalPages
+  })
+  $effect(() => {
+    void query
+    void sortKey
+    void sortDir
+    page = 1
+  })
+
+  const visibleSelectedCount = $derived(paginatedEntries.filter(entry => selectedKeys.has(entry.key)).length)
+  const allVisibleSelected = $derived(paginatedEntries.length > 0 && visibleSelectedCount === paginatedEntries.length)
+  const someVisibleSelected = $derived(visibleSelectedCount > 0 && !allVisibleSelected)
+  const hasSelection = $derived(selectedKeys.size > 0)
+
+  const columns = $derived.by<DataTableColumn<AdminServerCacheEntry>[]>(() => [
+    {
+      key: 'text',
+      header: text.tableText,
+      width: '36%',
+      minWidth: 200,
+      sortable: true,
+      searchable: true,
+      cell: textCell,
+    },
+    {
+      key: 'voice',
+      header: text.tableVoice,
+      width: '24%',
+      minWidth: 160,
+      sortable: true,
+      searchable: true,
+      cell: voiceCell,
+    },
+    {
+      key: 'size',
+      header: text.tableSize,
+      width: '12%',
+      minWidth: 90,
+      sortable: true,
+      cell: sizeCell,
+    },
+    {
+      key: 'saved',
+      header: text.tableSaved,
+      width: '18%',
+      minWidth: 140,
+      sortable: true,
+      cell: savedCell,
+    },
+  ])
+
+  $effect(() => {
+    const liveKeys = new Set(cacheState.entries.map(entry => entry.key))
+    let changed = false
+    const next = new Set<string>()
+    for (const key of selectedKeys) {
+      if (liveKeys.has(key)) {
+        next.add(key)
+      } else {
+        changed = true
+      }
+    }
+    if (changed) {
+      selectedKeys = next
+    }
+  })
+
+  const savedAtFormatter = $derived(
+    new Intl.DateTimeFormat(locale, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  )
+
+  function formatSavedAt(savedAt: number): string {
+    return savedAtFormatter.format(savedAt)
+  }
+
+  function toggleSelection(key: string, checked: boolean) {
+    const next = new Set(selectedKeys)
+    if (checked) {
+      next.add(key)
+    } else {
+      next.delete(key)
+    }
+    selectedKeys = next
+  }
+
+  function toggleAllVisible() {
+    const next = new Set(selectedKeys)
+    if (allVisibleSelected) {
+      for (const entry of paginatedEntries) {
+        next.delete(entry.key)
+      }
+    } else {
+      for (const entry of paginatedEntries) {
+        next.add(entry.key)
+      }
+    }
+    selectedKeys = next
+  }
+
+  function handleSort(key: string, direction: 'asc' | 'desc') {
+    sortKey = key
+    sortDir = direction
+  }
+
+  function handlePageChange(next: number) {
+    if (next < 1 || next > totalPages || next === page) return
+    page = next
+  }
+
+  function handlePageSizeChange(size: number) {
+    pageSize = size
+    page = 1
+  }
+
+  async function clearSelected() {
+    const keys = [...selectedKeys]
+    if (keys.length === 0) return
+    if (await cacheState.clearSelected(keys)) {
+      selectedKeys = new Set()
+    }
+  }
+</script>
+
+<div class="flex min-h-0 flex-1 flex-col gap-1.5">
+  {#if cacheState.loadError}
+    <p class="rounded-lg border border-rose-700 bg-rose-950/50 px-3 py-2 text-sm text-rose-200" role="alert">
+      {adminErrorMessage(cacheState.loadError, text)}
+    </p>
+  {/if}
+  <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+    <div class="min-w-0 flex-1">
+      <p class="text-sm font-medium text-slate-100">{text.adminServerCache}</p>
+      <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
+        {#if selectedKeys.size === 0}
+          {cacheState.stats?.entries ?? 0} {text.segmentsUnit} · {formatBytes(cacheState.stats?.bytes ?? 0)}
+        {:else}
+          {selectedKeys.size} {text.cacheEntriesSelected} ·
+          {cacheState.stats?.entries ?? 0} {text.segmentsUnit} · {formatBytes(cacheState.stats?.bytes ?? 0)}
+        {/if}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5">
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={!hasSelection || cacheState.pending}
+        pending={cacheState.pending}
+        ariaLabel={text.clearSelectedCacheEntries}
+        onClick={() => void clearSelected()}>
+        {#snippet icon()}
+          <DeleteIcon className="h-4 w-4" />
+        {/snippet}
+        {text.clear}
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={cacheState.pending || (cacheState.stats?.entries ?? 0) === 0}
+        pending={cacheState.pending}
+        ariaLabel={text.adminClearAllServerCache}
+        onClick={() => void cacheState.clearAll()}>
+        {#snippet icon()}
+          <DeleteIcon className="h-4 w-4" />
+        {/snippet}
+        {text.clearAll}
+      </Button>
+    </div>
+  </div>
+
+  <DataTable
+    rows={paginatedEntries}
+    rowId={entry => entry.key}
+    {columns}
+    loading={cacheState.loading}
+    emptyMessage={search.trim() ? text.noMatchingCacheEntries : text.adminServerCacheEmpty}
+    bind:searchValue={search}
+    searchAriaLabel={text.cacheSearch}
+    searchPlaceholder={text.cacheSearch}
+    selectable
+    selectedIds={selectedKeys}
+    onToggleSelection={toggleSelection}
+    onToggleAll={toggleAllVisible}
+    allSelected={allVisibleSelected}
+    someSelected={someVisibleSelected}
+    selectAllAriaLabel={text.selectAllCacheEntries}
+    rowSelectAriaLabel={() => text.selectCacheEntry}
+    total={total}
+    pageSize={pageSize}
+    currentPage={page}
+    onPageChange={handlePageChange}
+    onPageSizeChange={handlePageSizeChange}
+    bind:sortKey={sortKey}
+    bind:sortDirection={sortDir}
+    onSort={handleSort}
+    sortAriaLabel={(col, dir) => (dir === 'asc' ? text.tableSortAsc : text.tableSortDesc).replace('{name}', col.header)}
+    resizeAriaLabel={col => text.tableResize.replace('{name}', col.header)}
+    paginationPreviousLabel={text.paginationPrevious}
+    paginationNextLabel={text.paginationNext}
+    paginationPageSizeLabel={text.paginationPageSize}
+    paginationCurrentLabel={text.paginationPage}
+    paginationLabel={text.paginationPage}
+    fillHeight
+    tableClass="w-full"
+    resizable
+    storageKey="admin-synthesis-cache" />
+</div>
+
+{#snippet textCell(entry: AdminServerCacheEntry)}
+  {#if entry.text}
+    <div class="whitespace-pre-wrap break-words text-slate-200">{entry.text.slice(0, 200)}</div>
+  {:else}
+    <div class="truncate font-mono text-xs text-slate-500" title={entry.key}>{entry.key}</div>
+  {/if}
+{/snippet}
+
+{#snippet voiceCell(entry: AdminServerCacheEntry)}
+  {#if entry.voice}
+    <div class="truncate text-slate-300">{entry.voice}</div>
+  {:else}
+    <span class="text-slate-500">—</span>
+  {/if}
+{/snippet}
+
+{#snippet sizeCell(entry: AdminServerCacheEntry)}
+  <span class="text-slate-400">{formatBytes(entry.bytes)}</span>
+{/snippet}
+
+{#snippet savedCell(entry: AdminServerCacheEntry)}
+  <span class="text-slate-400">{formatSavedAt(entry.savedAt)}</span>
+{/snippet}

@@ -47,6 +47,9 @@
   import { createWarmCacheController } from '$lib/page/warm-cache'
   import { useKeyboardShortcuts } from '$lib/page/use-keyboard-shortcuts.svelte'
   import { useBeforeUnloadGuard } from '$lib/page/use-beforeunload-guard.svelte'
+  import { goto } from '$app/navigation'
+  import { useAdminPresence } from '$lib/use-admin-presence.svelte'
+  import ProfileIcon from '$lib/icons/ProfileIcon.svelte'
   import { usePlaybackSlider } from '$lib/page/use-playback-slider.svelte'
   import { usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
   import { useMetadata, RESYNC_DEBOUNCE_MS } from '$lib/use-metadata.svelte'
@@ -59,6 +62,7 @@
   import { useDocumentsDrawer } from '$lib/use-documents-drawer.svelte'
 
   const settings = useSettings()
+  const adminPresence = useAdminPresence()
   const documents = useDocuments()
   const drawer = useDocumentsDrawer(documents)
 
@@ -298,6 +302,7 @@
 
   onMount(() => {
     const disposeSettings = settings.hydrate()
+    void adminPresence.refresh()
     documents.hydrate()
     // Restore the document referenced by the URL (deep link / reload); this
     // also settles the history baseline before any user navigation.
@@ -492,6 +497,13 @@
           <SettingsIcon className="h-4 w-4" />
         {/snippet}
       </Button>
+      {#if adminPresence.isAdmin}
+        <Button variant="secondary" size="sm" ariaLabel={text.adminTitle} tooltip={text.adminTitle} onClick={() => goto('/admin')}>
+          {#snippet icon()}
+            <ProfileIcon className="h-4 w-4" />
+          {/snippet}
+        </Button>
+      {/if}
     </div>
   </header>
 

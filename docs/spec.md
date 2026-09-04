@@ -196,6 +196,32 @@ speeds, text segmentation, and sequential segment playback behavior.
   via `positionPanel`, dismissal via `useDropdown`, and roving keyboard
   handling via `useListSelection`.
 
+## Admin model
+
+- `/admin` hosts sign-in plus `Properties` and `Synthesis cache` tabs; bare
+  `/admin` redirects to `/admin/properties`.
+- Sign-in requires `ADMIN_PASSWORD_HASH` (or `ADMIN_PASSWORD`, hashed in
+  memory) plus `SESSION_SECRET`; sessions are `httpOnly` `sameSite=strict`
+  cookies bound to a fingerprint of the credential material, so rotating
+  credentials invalidates issued cookies. Login attempts are rate-limited
+  per IP.
+- Properties (`tts_rate_limit_max`, `tts_max_text_length`, `tts_cache_ttl_ms`,
+  `tts_cache_max_entries`, `tts_cache_max_bytes`, `edge_tts_timeout_ms`)
+  resolve file store > environment > compiled default; the file store lives
+  at `TTS_PROPERTIES_FILE` (else `.data/admin-properties.json`, `/tmp` on
+  Vercel). Out-of-range file/environment values fall back to defaults.
+  Updates apply atomically in one write.
+- Admin wire payloads use `snake_case` (`remember_me`, `label_key`,
+  `default_value`, `saved_at`); error bodies carry stable codes
+  (`invalid_credentials`, `rate_limited`, `invalid_property`, …) that the
+  client maps to localized `UI_TEXT` strings.
+- The Synthesis cache tab lists unexpired server entries (`key`, `text`,
+  `voice`, `saved_at`, `bytes`) with search/sort/pagination and selective
+  or total clear; stats cover every cache file including expired ones.
+- State-changing admin actions log `admin_*_start`/`admin_*_end` with
+  `elapsed_ms` per `references/logging.md`; secrets and document contents
+  are never logged.
+
 ## Constraints
 
 - Ignore everything under `archive/` for implementation decisions.

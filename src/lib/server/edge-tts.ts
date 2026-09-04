@@ -2,11 +2,20 @@ import { createHash, randomUUID } from 'node:crypto'
 import WebSocket from 'ws'
 import type { RawData } from 'ws'
 import { parseEdgeMetadata, type TtsBoundary } from '$lib/tts-reference'
+import { getEdgeTtsTimeoutMs } from './admin-properties'
 
 const EDGE_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4'
 const EDGE_CHROMIUM = '143.0.3650.75'
 const WINDOWS_FILE_TIME_EPOCH = 11644473600n
-const SYNTHESIS_TIMEOUT_MS = 30_000
+const DEFAULT_SYNTHESIS_TIMEOUT_MS = 30_000
+
+function synthesisTimeoutMs(): number {
+  try {
+    return getEdgeTtsTimeoutMs()
+  } catch {
+    return DEFAULT_SYNTHESIS_TIMEOUT_MS
+  }
+}
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0'
 
@@ -74,7 +83,7 @@ export async function synthesizeEdgeTts(
       closed = true
       ws.terminate()
       reject(new Error('Edge TTS synthesis timed out'))
-    }, SYNTHESIS_TIMEOUT_MS)
+    }, synthesisTimeoutMs())
 
     const settle = (fn: () => void) => {
       clearTimeout(timeout)
