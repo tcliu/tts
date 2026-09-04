@@ -171,6 +171,47 @@ speeds, text segmentation, and sequential segment playback behavior.
   `contain-layout`, and a `Play` control that stops main playback first).
 - Default speed options must match the speed list in `tts.mjs`.
 
+## Admin model
+
+- `/admin` hosts sign-in plus `Properties` and `Synthesis cache` tabs; bare
+  `/admin` redirects to `/admin/properties`. `+layout.server.ts` returns only
+  the session boolean so first paint picks the right state; all admin data
+  loads client-side through cookie-guarded APIs.
+- Sign-in requires `ADMIN_PASSWORD_HASH` (or `ADMIN_PASSWORD`, hashed in
+  memory) plus `SESSION_SECRET`; sessions are `httpOnly` `sameSite=strict`
+  cookies (`tts-admin-session`) bound to a fingerprint of the credential
+  material, so rotating credentials invalidates issued cookies. TTL is 24h
+  (30d with remember-me); login attempts are rate-limited per IP (5 per
+  15 min).
+- Application properties persist in a file-backed JSON store
+  (`TTS_PROPERTIES_FILE`, else `.data/admin-properties.json`; `/tmp` variant
+  on Vercel). Precedence is file, then environment, then compiled default;
+  out-of-range file/environment values fall back to defaults and updates
+  apply atomically in one write. Server readers use a sync read with a
+  short TTL cache.
+- Managed properties (all numeric, `key` → env key → default):
+  `tts_rate_limit_max` → `TTS_RATE_LIMIT_MAX` → `60`,
+  `tts_max_text_length` → `TTS_MAX_TEXT_LENGTH` → `2000`,
+  `tts_cache_ttl_ms` → `TTS_CACHE_TTL_MS` → `604800000`,
+  `tts_cache_max_entries` → `TTS_CACHE_MAX_ENTRIES` → `500`,
+  `tts_cache_max_bytes` → `TTS_CACHE_MAX_BYTES` → `209715200`,
+  `edge_tts_timeout_ms` → `EDGE_TTS_TIMEOUT_MS` → `30000`.
+- Synthesis consumers read effective values: per-IP rate limit window,
+  request text cap, cache TTL/caps, Edge WebSocket timeout. Cache hits and
+  `304` responses stay exempt from the rate limit.
+- Admin APIs (`snake_case` wire, `camelCase` at the boundary):
+  `GET /api/admin/session`, `POST /api/admin/login`,
+  `POST /api/admin/logout`, `GET`/`PUT /api/admin/properties`,
+  `GET`/`DELETE /api/admin/synthesis-cache` (clear all or selected keys).
+  Error bodies carry stable codes the client maps to localized `UI_TEXT`
+  strings.
+- The Synthesis cache tab lists unexpired server entries (`key`, `text`,
+  `voice`, `saved_at`, `bytes`) with search/sort/pagination and selective
+  or total clear; stats cover every cache file including expired ones.
+- State-changing admin actions log `admin_*_start`/`admin_*_end` with
+  `elapsed_ms` per `references/logging.md`; secrets and document contents
+  are never logged.
+
 ## Theming
 
 - `use-settings` owns the theme preference (`dark`, `light`, `ember`, `sepia`,
@@ -218,10 +259,6 @@ speeds, text segmentation, and sequential segment playback behavior.
 - The Synthesis cache tab lists unexpired server entries (`key`, `text`,
   `voice`, `saved_at`, `bytes`) with search/sort/pagination and selective
   or total clear; stats cover every cache file including expired ones.
-- State-changing admin actions log `admin_*_start`/`admin_*_end` with
-  `elapsed_ms` per `references/logging.md`; secrets and document contents
-  are never logged.
-
 ## Constraints
 
 - Ignore everything under `archive/` for implementation decisions.

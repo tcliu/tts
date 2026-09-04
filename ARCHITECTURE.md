@@ -24,8 +24,17 @@ tts/
 │   │   ├── +layout.server.ts     # Passes DEV_TAG env to layout
 │   │   ├── [[docId]]/
 │   │   │   └── +page.svelte      # Single page — thin orchestration layer
-│   │   └── api/tts/synthesize/
-│   │       └── +server.ts        # POST endpoint — validation, caching, TTS
+│   │   ├── admin/
+│   │   │   ├── +layout.svelte    # Admin shell: header, tabs, login gate (thin orchestration)
+│   │   │   ├── +layout.server.ts # Session boolean for first paint
+│   │   │   ├── +page.server.ts   # Redirects bare /admin to /admin/properties
+│   │   │   ├── +page.svelte      # Route placeholder (content via layout tabs)
+│   │   │   ├── properties/+page.svelte
+│   │   │   └── synthesis-cache/+page.svelte
+│   │   └── api/
+│   │       ├── admin/            # Session, login, logout, properties, synthesis-cache
+│   │       └── tts/synthesize/
+│   │           └── +server.ts    # POST endpoint — validation, caching, TTS
 │   └── lib/
 │       ├── use-*.svelte.ts       # Composable factories (domain state)
 │       ├── components/           # Presentational UI components
@@ -59,6 +68,12 @@ tts/
    - `use-documents.svelte.ts` → localStorage document store
    - `use-document-editor.svelte.ts` → current doc, dirty state, dialog flows
    - `use-synthesis-cache.svelte.ts` → cache stats, clear flows
+   - `admin-client.ts` → session-aware fetch client for `/api/admin/*`
+     (`snake_case` at the wire, `camelCase` at the boundary)
+   - `use-admin-auth.svelte.ts`, `use-admin-presence.svelte.ts`,
+     `use-admin-properties.svelte.ts`, `use-admin-synthesis-cache.svelte.ts`
+     → admin login/session, editor presence flag, properties,
+     server cache management
 
 3. **`src/lib/playback/engine.ts`** — the core playback loop (segment
    sequencing, voice-switch remap, caching logic).
@@ -67,7 +82,13 @@ tts/
 
 5. **`src/lib/server/edge-tts.ts`** — server-side WebSocket TTS client.
 
-6. **`src/lib/tts-reference.ts`** + `reference-languages.json` — voice and
+6. **`src/lib/server/admin-auth.ts`** — admin credentials, HMAC session
+   tokens, login rate limit.
+
+7. **`src/lib/server/admin-properties.ts`** — file-backed application
+   properties with env override precedence.
+
+8. **`src/lib/tts-reference.ts`** + `reference-languages.json` — voice and
    language data model.
 
 ## Layering
@@ -104,9 +125,10 @@ Server endpoints (+server.ts) ──► edge-tts.ts, server/tts-cache.ts
   (settings, editor ref) as arguments to avoid circular imports.
 - **Thin routes** — `+page.svelte` is mostly declarative markup; all logic
   lives in composables and `page/` helpers.
-- **Server/client boundary** — the synthesis API is the only network
+- **Server/client boundary** — the synthesis API is the only public network
   boundary. The client (`tts-client.ts`) talks to `POST /api/tts/synthesize`;
-  the server (`+server.ts`) validates and delegates to Edge TTS.
+  the server (`+server.ts`) validates and delegates to Edge TTS. The admin
+  client (`admin-client.ts`) talks to `/api/admin/*` under a session cookie.
 - **Theme system** — themes are CSS variable overrides in `src/styles.css`
   under `[data-theme='…']`. A pre-paint inline script in `app.html` applies
   the stored theme before first paint.

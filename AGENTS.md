@@ -16,9 +16,9 @@ Project-specific development conventions for the TTS web app.
 - The project root hosts the browser app; `tts.mjs` stays in the repo as the
   behavioral reference for supported voices, speeds, segmentation, and playback
   flow.
-- Follow the same Svelte 5, SvelteKit, and Tailwind conventions used by
-  `../share-text` so UI pieces can be reused with minimal reshaping.
-- Reuse existing UI primitives and patterns from `../share-text` when they fit,
+- Follow the Svelte 5, SvelteKit, and Tailwind conventions named in
+  `References` below so UI pieces stay mutually consistent.
+- Reuse this project's existing UI primitives and patterns when they fit,
   especially dialog, dropdown, editor, and icon components; do not build a
   parallel design system for equivalent controls.
 - Do not read or reuse any archived web implementation under `archive/`; it is
@@ -94,7 +94,8 @@ Project-specific development conventions for the TTS web app.
 - Icon-only `Button` uses uniform padding (`p-1.5` for `sm`, `p-2.5` for `md`) so vertical/horizontal match; text buttons keep `px`/`py` distinction.
 - Dropdown/menu option panels show at most one highlighted row at a time, shared by mouse hover and keyboard (`ArrowUp/Down`, `Home/End`). The highlight follows `useListSelection` index via `onmouseenter` and `selection.move`; the selected value is `aria-selected`/`aria-checked` + checkmark only, not a second background.
 - Option panels hide only when their trigger is clipped or out of viewport after scroll (via `useDropdown` `isHostHidden` check), not on any ancestor scroll; scrolling the panel's own list never dismisses.
-- Synthesis cache dialog's table spans the dialog width (`w-full`), uses `DataTable` `fillHeight` (`min-h-0 overflow-auto`) inside the `BaseDialog` `maxWidth="wide" height="tall"` (`w-[min(96vw,96rem)] h-[min(88vh,860px)] flex-col`) shell so the dialog itself never vertically scrolls; pagination handles overflow. The table is the shared `DataTable` (`tableClass` `w-full`, `resizable` via `use-column-resize`, `storageKey` `synthesis-cache`) following the admin Users table (`src/lib/components/AdminUsersView.svelte` in `../share-text`).
+- Synthesis cache dialog's table spans the dialog width (`w-full`), uses `DataTable` `fillHeight` (`min-h-0 overflow-auto`) inside the `BaseDialog` `maxWidth="wide" height="tall"` (`w-[min(96vw,96rem)] h-[min(88vh,860px)] flex-col`) shell so the dialog itself never vertically scrolls; pagination handles overflow. The table is the shared `DataTable` (`tableClass`
+  `w-full`, `resizable` via `use-column-resize`, `storageKey` `synthesis-cache`).
 - Dialogs containing `DataTable` keep a fixed outer height via `BaseDialog` `height` preset (`fixed`/`tall`) and let the table `fillHeight` fill the remaining vertical space with pagination pinned at the bottom; do not size the dialog to the table height.
 
 ## Theming

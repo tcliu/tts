@@ -189,11 +189,14 @@
   remember-me) when unauthenticated and `Properties` / `Synthesis cache`
   tabs when authenticated; the header carries language/theme menus plus
   back-to-editor and sign-out actions.
-- The Properties tab edits rate limit, text length, cache TTL/count/size,
-  and Edge timeout with per-row source badges (`File`/`Environment`/`Default`)
-  and revert-to-default for file-sourced values.
-- The Synthesis cache tab shows a searchable, sortable, paginated table of
-  server cache entries with selective and clear-all actions.
+- The Properties tab lists each managed property with its label, description,
+  key and env key, source badge (`File`/`Environment`/`Default`), a number
+  input, per-row revert-to-default, and Apply/Reload/Reset buttons.
+- The Synthesis cache tab shows server cache stats (`entries · bytes`), a
+  Clear-all action, and a selectable, sortable, paginated, searchable table
+  (`Text`/`Voice`/`Size`/`Saved`) with clear-selected. New entries record
+  text/voice metadata; legacy entries show the hash key with `—` for
+  text/voice until re-synthesized.
 
 ## Responsive behavior
 
