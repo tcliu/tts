@@ -113,7 +113,7 @@
 <div class="flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-200">
   <header class="flex flex-none items-center justify-between border-b border-slate-800 px-3 py-3 sm:px-4">
     <h1 class="text-base font-semibold tracking-tight text-slate-200 sm:text-lg">
-      {authState.state === 'authenticated' ? text.adminTitle : text.appShortTitle}
+      {text.adminTitle}
     </h1>
     <div class="flex items-center gap-2">
       <Menu
