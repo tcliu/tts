@@ -77,9 +77,9 @@
 
   function handleAuthenticated() {
     authState.markAuthenticated()
-    // The effects below load properties (and the cache on its tab); no
-    // eager fetch here so login issues exactly one properties request.
-    void goto(PROPERTIES_PATH, { replaceState: true })
+    // Stay at /admin: the tabs below render the Properties content for the
+    // bare path, and the effects above load properties (and the cache on
+    // its tab). No navigation so the URL never leaves /admin on login.
   }
 
   $effect(() => {
@@ -97,13 +97,7 @@
 
   onMount(() => {
     const disposeSettings = settings.hydrate()
-    if (data.adminAuthenticated) {
-      // Authenticated loads are driven by the effects above; only normalize
-      // a bare /admin path here.
-      if (page.url.pathname !== PROPERTIES_PATH && page.url.pathname !== CACHE_PATH) {
-        void goto(PROPERTIES_PATH, { replaceState: true })
-      }
-    } else {
+    if (!data.adminAuthenticated) {
       void authState.checkSession()
     }
     return () => {

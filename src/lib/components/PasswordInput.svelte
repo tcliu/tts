@@ -36,6 +36,10 @@
   let visible = $state(false)
   let input = $state<HTMLInputElement>()
 
+  export function focus() {
+    input?.focus()
+  }
+
   function toggleVisibility() {
     visible = !visible
     requestAnimationFrame(() => {
