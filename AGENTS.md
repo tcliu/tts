@@ -156,7 +156,7 @@ Project-specific development conventions for the TTS web app.
 - This `AGENTS.md` holds project-specific *development conventions* — rules to
   follow when writing code — not feature descriptions or implementation
   narratives. Keep each bullet to the rule plus the briefest rationale;
-  architecture detail belongs in `docs/spec.md` and user-facing behavior in
+  architecture detail belongs in `ARCHITECTURE.md` and user-facing behavior in
   `docs/design.md`.
 
 ## Quality checks

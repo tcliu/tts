@@ -1,74 +1,15 @@
-# Spec — Web app architecture
+# Spec — Behavioral contracts
+
+This document describes what the system does and the contracts it obeys. For
+how the code is organized, see `ARCHITECTURE.md`; for what the user sees and
+does, see `docs/design.md`; for how to write code in this project, see
+`AGENTS.md`.
 
 ## Overview
 
-The project will expose a browser-based TTS editor. The existing `tts.mjs`
-script remains in the repository as the reference for:
-
-- supported languages and voices
-- supported playback speeds
-- text segmentation rules
-- sequential segment playback behavior
-
-The browser implementation should reuse the same stack and UI primitives as
-`../share-text` so the settings dialog, dropdowns, editor, and icons follow one
-coherent system instead of a new parallel one.
-
-## Planned app structure
-
-- A root page containing a full-height shell.
-- A top toolbar with the title on the left and language/theme/settings actions
-  on the right.
-- A main column containing playback controls and the editor.
-- A settings dialog built on the shared `BaseDialog` pattern.
-- Domain logic lives in composable factories under `src/lib/`:
-  - `use-settings.svelte.ts` owns user preferences, persistence, and voice
-    resolution.
-  - `use-playback.svelte.ts` owns the playback engine, session state, progress,
-    and status messaging; selection-scope helpers live in
-    `src/lib/playback/selection-scope.ts` and debounced selection sync in
-    `src/lib/playback/selection.ts` via `createSelectionSync` (grouped
-    `session`/`playback`/`editor` deps), duration/clock helpers and
-    `syntheticRangeAt` in `src/lib/playback/timing.ts` (`formatClock`,
-    `RESUME_EPSILON`, `syntheticRangeAt`), progress helpers in
-    `src/lib/playback/progress.ts`, boundary helpers in
-    `src/lib/playback/boundaries.ts` (`highlightBoundaries`,
-    `activeBoundaryAt`, `locateSegmentStartByCharOffset`,
-    `locateBoundaryStartWithinOrBefore`, `trimWhitespaceRange`), audio helpers
-    in `src/lib/playback/audio-helpers.ts` (`readAudioDuration`), voice
-    remapping in `src/lib/playback/voice-remap.ts`, audio element lifecycle in
-    `src/lib/playback/audio.ts` via `createAudioPlayer`, highlight
-    computation in `src/lib/playback/highlight.ts`, segment metadata in
-    `src/lib/playback/segment-meta.ts`, voice-switch serialization in
-    `src/lib/playback/voice-switch.ts` via `createVoiceSwitch`, and shared
-    playback types in `src/lib/playback/types.ts` (`SegmentMeta`,
-    `PlaybackController`, `LocalizedPlaybackError`).
-  - `use-metadata.svelte.ts` owns boundary rows (pure builder in
-    `src/lib/metadata/rows.ts` via `buildSortedRows`, active indices in
-    `src/lib/metadata/active-index.ts`), search/follow state, staleness, and
-    background resync; `MetadataPanel` keys expanded rows by stable `offset` and
-    offers a filtered bulk expand/collapse control.
-  - `use-documents.svelte.ts` owns the `localStorage`-backed document store
-    (list, save, rename, delete) and hydration.
-  - `use-documents-drawer.svelte.ts` owns drawer open state and name search.
-  - `use-document-editor.svelte.ts` owns the current-document identity, dirty
-    state, and the save/rename/clone/delete/upload/discard dialog flows;
-    shared helpers in `src/lib/document-editor/helpers.ts` (`PendingAction`/`DiscardKind`/`UploadNotice`, `createDraftCacheId`/`nextAvailableDraftName`, `gateNavigation`).
-  - `use-synthesis-cache.svelte.ts` owns the Synthesis cache stats, dialog
-    state, and clear-all / clear-selected flows with scope invalidation via
-    `src/lib/tts-cache-clear.ts`.
-  - `tts-client.ts` is the non-reactive synthesis API with its LRU cache.
-- The route component stays a thin orchestration layer that wires composables
-  to view components.
-
-## Shared component reuse
-
-- Reuse the `CodeEditor` component pattern for the line-numbered editor.
-- Reuse the `SelectDropdown` pattern for voice and speed selection.
-- Reuse `DataTable`/`Pagination` (with `use-column-resize` and `column-width-storage`) for the Synthesis cache dialog; the table spans `w-full` with `fillHeight` inside the `BaseDialog` tall shell (`w-[min(96vw,96rem)] h-[min(88vh,860px)] flex-col`) so pagination stays pinned and the dialog never vertically scrolls — the table is sortable/paginated/resizable/searchable.
-- Reuse dialog structure and dismissal behavior from `BaseDialog`.
-- Reuse shared icon components or add new icon components rather than inlining
-  SVGs in feature code.
+The project exposes a browser-based TTS editor. The existing `tts.mjs` script
+remains in the repository as the reference for supported languages, voices,
+speeds, text segmentation, and sequential segment playback behavior.
 
 ## Playback model
 
