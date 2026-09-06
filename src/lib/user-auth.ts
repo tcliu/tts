@@ -27,11 +27,14 @@ export type LoginResult = { kind: 'user'; user: User } | { kind: 'admin' }
 const AUTH_PATH = '/api/auth'
 
 async function parseResponse<T>(response: Response, fallback: string): Promise<T> {
-  const body = await response.json().catch(() => ({}))
+  const body: unknown = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(
-      typeof body === 'object' && body !== null && typeof body.error === 'string' ? body.error : fallback,
-    )
+    // Errors travel as stable wire codes (`error`) plus the optional
+    // `min_length` context — never raw English literals or technical detail —
+    // so every mapper below resolves a localized UI_TEXT string.
+    const record = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : null
+    const code = record && typeof record.error === 'string' ? record.error : fallback
+    throw new UserAuthError(code, record && typeof record.min_length === 'number' ? record.min_length : null)
   }
   return body as T
 }
@@ -42,14 +45,14 @@ export async function login(identifier: string, password: string, rememberMe = f
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ identifier, password, remember_me: rememberMe }),
   })
-  const body = await parseResponse<{ user?: User | null; admin?: boolean }>(response, 'Failed to sign in')
+  const body = await parseResponse<{ user?: User | null; admin?: boolean }>(response, 'invalid_credentials')
   if (body.admin) {
     return { kind: 'admin' }
   }
   if (body.user) {
     return { kind: 'user', user: body.user }
   }
-  throw new Error('Unexpected login response')
+  throw new UserAuthError('invalid_response')
 }
 
 export async function register(username: string, email: string, password: string): Promise<User> {
@@ -58,14 +61,9 @@ export async function register(username: string, email: string, password: string
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username, email, password }),
   })
-  const body = (await response.json().catch(() => ({}))) as { user?: User; error?: unknown; min_length?: unknown }
-  if (!response.ok) {
-    const code = typeof body.error === 'string' ? body.error : 'Failed to create account'
-    const minLength = typeof body.min_length === 'number' ? body.min_length : null
-    throw new UserAuthError(code, minLength)
-  }
+  const body = await parseResponse<{ user?: User }>(response, 'registration_failed')
   if (!body.user) {
-    throw new UserAuthError('Unexpected register response')
+    throw new UserAuthError('registration_failed')
   }
   return body.user
 }
