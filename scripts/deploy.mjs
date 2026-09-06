@@ -12,7 +12,8 @@ import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { parseEnvFile } from './env-file.mjs'
-import { c, promptYesNo, selectOne } from './_terminal.mjs'
+import { c } from './_terminal.mjs'
+import { interactiveShell } from './_interactive-shell.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = join(SCRIPT_DIR, '..')
@@ -51,7 +52,7 @@ Targets (--target, prod profile only):
 
 Options:
   --profile dev|prod   Backend profile to deploy (also read from $PROFILE).
-                       Missing and interactive: arrow-key picker.
+                       Missing and interactive: arrow-key picker (default prod).
                        Missing and non-interactive: abort.
   --target vercel      Deploy target; only valid with the prod profile
                        (dev has no deploy target). Defaults to vercel.
@@ -378,50 +379,140 @@ function syncProjectDomains() {
   writeManagedDomainState(configuredDomainValue)
 }
 
-async function promptPick(title, items, defaultValue) {
-  const picked = await selectOne(items, {
-    output: process.stderr,
-    defaultValue,
-    render(entries, state) {
-      const lines = [`${c.bold}${title}${c.reset}`, '']
-      for (let i = 0; i < entries.length; i++) {
-        const item = entries[i]
-        const cursor = i === state.cursor ? `${c.cyan}>${c.reset}` : ' '
-        lines.push(` ${cursor} ${c.green}${item.value}${c.reset} ${c.gray}(${item.description})${c.reset}`)
-      }
-      lines.push('', `${c.dim}Up/Down: move | Enter: confirm | q: cancel${c.reset}`)
-      return lines
-    },
-  })
-  return picked?.value ?? ''
+// Interactive defaults: every interview question resolves on Enter.
+const DEFAULT_PROFILE = 'prod'
+const DEFAULT_CONFIRM = 'yes'
+
+const SYNC_ENV_CHOICES = [
+  { value: 'yes', label: 'Yes', description: 'sync .env.vercel first' },
+  { value: 'no', label: 'No', description: 'dashboard env already carries PROFILE=prod' },
+]
+
+const APPLY_SCHEMA_CHOICES = [
+  { value: 'yes', label: 'Yes', description: 'apply sql/schema.sql to Neon' },
+  { value: 'no', label: 'No', description: 'schema already applied to Neon' },
+]
+
+function renderProfilePicker() {
+  return (entries, state) => {
+    const lines = []
+    for (let i = 0; i < entries.length; i++) {
+      const item = entries[i]
+      const cursor = i === state.cursor ? `${c.cyan}>${c.reset}` : ' '
+      lines.push(` ${cursor} ${c.green}${item.value}${c.reset} ${c.gray}(${item.description})${c.reset}`)
+    }
+    lines.push('', `${c.dim}Up/Down: move | Enter: confirm (default prod) | q: cancel${c.reset}`)
+    return lines
+  }
 }
 
-// Precedence: --profile flag, $PROFILE, interactive picker, abort.
-async function resolveProfile(profileFlag) {
-  let profile = profileFlag || process.env.PROFILE || ''
-  if (!profile && process.stdin.isTTY) {
-    profile = await promptPick('Select deploy profile:', PROFILES)
+function renderConfirmPicker() {
+  return (entries, state) => {
+    const lines = []
+    for (let i = 0; i < entries.length; i++) {
+      const item = entries[i]
+      const cursor = i === state.cursor ? `${c.cyan}>${c.reset}` : ' '
+      lines.push(` ${cursor} ${c.green}${item.label}${c.reset} ${c.gray}(${item.description})${c.reset}`)
+    }
+    lines.push('', `${c.dim}Up/Down: move | Enter: confirm (default yes) | q: cancel${c.reset}`)
+    return lines
   }
+}
+
+// Linear interview: profile -> sync-env -> apply-schema -> exit. Flag/env
+// seeds skip their node; q/Ctrl-C aborts via fail. Non-interactive callers
+// never enter the graph (see deployVercelWithTarget branch below).
+function buildDeployGraph() {
+  const graph = {
+    profile: {
+      message: 'Select deploy profile:',
+      async process(ctx) {
+        if (ctx.profile !== 'dev' && ctx.profile !== 'prod') {
+          const picked = await ctx.selectOne(PROFILES, {
+            defaultValue: DEFAULT_PROFILE,
+            render: renderProfilePicker(),
+          })
+          if (!picked) {
+            fail('Deploy cancelled.')
+          }
+          ctx.profile = picked.value
+        }
+        if (ctx.profile !== 'prod') {
+          fail("Target 'vercel' supports only the prod profile; dev has no deploy target.")
+        }
+        return graph.syncEnv
+      },
+    },
+    syncEnv: {
+      message: 'Sync .env.vercel to Vercel production env before deploy?',
+      async process(ctx) {
+        if (ctx.syncEnv !== 'yes' && ctx.syncEnv !== 'no') {
+          const picked = await ctx.selectOne(SYNC_ENV_CHOICES, {
+            defaultValue: DEFAULT_CONFIRM,
+            render: renderConfirmPicker(),
+          })
+          if (!picked) {
+            fail('Deploy cancelled.')
+          }
+          ctx.syncEnv = picked.value
+        }
+        return graph.applySchema
+      },
+    },
+    applySchema: {
+      message: 'Apply sql/schema.sql to the Neon database before deploy?',
+      async process(ctx) {
+        if (ctx.applySchema !== 'yes' && ctx.applySchema !== 'no') {
+          const picked = await ctx.selectOne(APPLY_SCHEMA_CHOICES, {
+            defaultValue: DEFAULT_CONFIRM,
+            render: renderConfirmPicker(),
+          })
+          if (!picked) {
+            fail('Deploy cancelled.')
+          }
+          ctx.applySchema = picked.value
+        }
+        return null
+      },
+    },
+  }
+  return graph
+}
+
+async function runDeployInterview(options) {
+  const graph = buildDeployGraph()
+  return interactiveShell(graph.profile, {
+    options: {
+      ctx: {
+        profile: options.profileFlag || process.env.PROFILE || '',
+        syncEnv: options.syncEnvFlag || '',
+        applySchema: options.applySchemaFlag || '',
+      },
+      output: process.stderr,
+    },
+    chrome: { cancelText: `${c.yellow}Deploy cancelled.${c.reset}` },
+  })
+}
+
+// Pure fallback for the non-interactive path (no TTY prompts here).
+function resolveProfileSync(profileFlag) {
+  const profile = profileFlag || process.env.PROFILE || ''
   if (profile !== 'dev' && profile !== 'prod') {
     fail('PROFILE is mandatory: pass --profile dev|prod, set $PROFILE, or run interactively.')
   }
   return profile
 }
 
-// Precedence: explicit flag, interactive default-yes, non-interactive skip.
-async function resolveProdConfirm(profile, flag, question, skipNotice) {
+// Precedence: explicit flag, non-interactive skip with notice.
+function resolveProdConfirmSync(profile, flag, skipNotice) {
   if (profile !== 'prod') {
     return 'no'
   }
-  let answer = flag
-  if (!answer && process.stdin.isTTY) {
-    answer = (await promptYesNo(question, true, process.stderr)) ? 'yes' : 'no'
+  if (flag) {
+    return flag
   }
-  if (!answer) {
-    console.error(skipNotice)
-    answer = 'no'
-  }
-  return answer
+  console.error(skipNotice)
+  return 'no'
 }
 
 
@@ -480,24 +571,36 @@ async function main() {
 
 
 async function deployVercelWithTarget(options) {
-  const profileValue = await resolveProfile(options.profileFlag)
   const target = options.targetFlag || 'vercel'
   if (target !== 'vercel') {
     fail(`Unknown target: ${target}`)
   }
+  // Explicit invalid sources fail fast; the interview only fills gaps.
+  if (options.profileFlag && options.profileFlag !== 'dev' && options.profileFlag !== 'prod') {
+    fail('PROFILE is mandatory: pass --profile dev|prod, set $PROFILE, or run interactively.')
+  }
+  const envProfile = options.profileFlag ? '' : process.env.PROFILE || ''
+  if (envProfile && envProfile !== 'dev' && envProfile !== 'prod') {
+    fail('PROFILE is mandatory: pass --profile dev|prod, set $PROFILE, or run interactively.')
+  }
+  const seededProfile = options.profileFlag || process.env.PROFILE || ''
+  if (process.stdin.isTTY && seededProfile !== 'dev' && (seededProfile === '' || !options.syncEnvFlag || !options.applySchemaFlag)) {
+    const answers = await runDeployInterview(options)
+    await runDeployFlow(answers.profile, answers.syncEnv, answers.applySchema)
+    return
+  }
+  const profileValue = resolveProfileSync(options.profileFlag)
   if (profileValue !== 'prod') {
     fail("Target 'vercel' supports only the prod profile; dev has no deploy target.")
   }
-  const syncEnv = await resolveProdConfirm(
+  const syncEnv = resolveProdConfirmSync(
     profileValue,
     options.syncEnvFlag,
-    'Sync .env.vercel to Vercel production env before deploy?',
     '-> Non-interactive prod deploy without --sync-env: skipping Vercel env sync.',
   )
-  const applySchema = await resolveProdConfirm(
+  const applySchema = resolveProdConfirmSync(
     profileValue,
     options.applySchemaFlag,
-    'Apply sql/schema.sql to the Neon database before deploy?',
     '-> Non-interactive prod deploy without --apply-schema: skipping schema apply.',
   )
   await runDeployFlow(profileValue, syncEnv, applySchema)
