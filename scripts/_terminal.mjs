@@ -9,9 +9,13 @@ const c = {
   yellow: '\x1b[33m',
   cyan: '\x1b[36m',
   gray: '\x1b[90m',
+  reverse: '\x1b[7m',
+  bgCyan: '\x1b[46m',
+  black: '\x1b[30m',
 }
 
 export { c }
+export { displayWidth, padRight, wrapText, truncate } from './_tui.mjs'
 
 // Line prompt in the convert-yaml style: cyan label, yellow hint.
 // `output` carries the query so prompt drivers consumed via stdout

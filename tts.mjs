@@ -10,6 +10,21 @@ import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+import {
+  c,
+  charWidth,
+  displayWidth,
+  padRight,
+  wrapText,
+  truncate,
+  progressBar,
+  fmtSec,
+  createScreenRenderer,
+  parseSgrMouse,
+  createTerminalManager,
+} from './scripts/_tui.mjs';
+
+
 
 const EDGE_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
 const EDGE_CHROMIUM = '143.0.3650.75';
@@ -23,19 +38,8 @@ const CACHE_MAX = Number(process.env.TTS_CACHE_MAX) > 0 ? Number(process.env.TTS
 const SELECTION_PATH = path.join(TTS_DIR, 'selection.json');
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3];
 
-const c = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
-  gray: '\x1b[90m',
-  reverse: '\x1b[7m',
-  bgCyan: '\x1b[46m',
-  black: '\x1b[30m',
-};
+// Palette and terminal utilities imported from ./scripts/_tui.mjs
+
 
 const LANGUAGES = JSON.parse(readFileSync(new URL('./src/lib/reference-languages.json', import.meta.url), 'utf8'));
 
@@ -636,79 +640,11 @@ function splitHighlightRanges(text) {
   return mergeBracketRanges(ranges, text);
 }
 
-function displayWidth(s) {
-  let w = 0;
-  let inEsc = false;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (inEsc) {
-      if (ch === 'm') inEsc = false;
-      continue;
-    }
-    if (ch === '\x1b') {
-      inEsc = true;
-      continue;
-    }
-    w += /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/.test(ch) ? 2 : 1;
-  }
-  return w;
-}
-
-function padRight(s, width) {
-  return s + ' '.repeat(Math.max(0, width - displayWidth(s)));
-}
-
-function wrapText(text, width) {
-  const words = text.split(' ');
-  const lines = [];
-  let cur = '';
-  for (const w of words) {
-    const trial = cur ? cur + ' ' + w : w;
-    if (displayWidth(trial) > width && cur) {
-      lines.push(cur);
-      cur = w;
-    } else {
-      cur = trial;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
 const HELP_TEXT = 'Tab: menu · ←/→: tab/pane · ↑/↓: option/group · Shift+Arrows: select · Mouse: click=move, drag=select, click menu · Ctrl+A: all · Enter: newline · Alt+Enter: speak · Ctrl+K: clear · Esc: stop · PgUp/PgDn: history · Ctrl+C: quit';
 
 function helpLineCount() {
   const cols = Math.max(60, stdout.columns || 80);
   return wrapText(HELP_TEXT, cols).slice(0, 3).length;
-}
-
-function progressBar(fraction, width) {
-  const filled = Math.round(Math.max(0, Math.min(1, fraction)) * width);
-  return `${c.cyan}${'█'.repeat(filled)}${c.gray}${'░'.repeat(Math.max(0, width - filled))}${c.reset}`;
-}
-
-function truncate(s, width) {
-  let w = 0;
-  let out = '';
-  let inEsc = false;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (inEsc) {
-      out += ch;
-      if (ch === 'm') inEsc = false;
-      continue;
-    }
-    if (ch === '\x1b') {
-      out += ch;
-      inEsc = true;
-      continue;
-    }
-    const cw = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/.test(ch) ? 2 : 1;
-    if (w + cw > width) break;
-    w += cw;
-    out += ch;
-  }
-  return out;
 }
 
 // Japanese-exclusive kanji variants are missing from some zh voice lexicons:
@@ -865,11 +801,6 @@ function clearSegmentTimer() {
   }
 }
 
-function fmtSec(sec) {
-  const t = Math.max(0, Math.floor(sec));
-  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
-}
-
 function getAudioDuration(buffer, source) {
   const ext = 'mp3';
   const tmp = path.join('/tmp', `dur-${randomUUID()}.${ext}`);
@@ -912,6 +843,8 @@ function playSegmentWithTimer(i, n, segLang, voice, engine, buffer) {
   return playBuffer(buffer).finally(() => clearSegmentTimer());
 }
 
+let terminal;
+
 const state = {
   voiceByLang: {},
   input: [],
@@ -935,7 +868,6 @@ const state = {
   segments: [],
   segIndex: -1,
   hlRange: null,
-  lastLines: null,
   fullClear: true,
   mouseSelecting: false,
 };
@@ -1024,12 +956,6 @@ function moveMenuHorizontal(delta) {
   moveMenuTab(delta);
 }
 
-const CJK_RE = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/;
-
-function cjkWidth(ch) {
-  return CJK_RE.test(ch) ? 2 : 1;
-}
-
 function contentWidth() {
   return Math.max(1, state.boxWidth - 4);
 }
@@ -1049,12 +975,12 @@ function visualRows() {
       wordStart = start;
       continue;
     }
-    const cw = cjkWidth(ch);
+    const cw = charWidth(ch);
     if (w + cw > width) {
       if (wordStart > start) {
         rows.push({ start, end: wordStart });
         let carried = 0;
-        for (let k = wordStart; k < i; k++) carried += cjkWidth(state.input[k]);
+        for (let k = wordStart; k < i; k++) carried += charWidth(state.input[k]);
         start = wordStart;
         w = carried;
       } else {
@@ -1362,7 +1288,7 @@ function offsetAtScreen(R, C) {
   const contentX = Math.max(0, C - 3);
   let w = 0;
   for (let k = 0; k < raw.length; k++) {
-    const cw = cjkWidth(raw[k]);
+    const cw = charWidth(raw[k]);
     if (w + cw > contentX) return start + k;
     w += cw;
   }
@@ -1527,62 +1453,11 @@ function handleMouseRelease() {
   state.mouseSelecting = false;
 }
 
-function parseMouse(s, i) {
-  let j = i + 3;
-  const nums = [];
-  let cur = '';
-  let endChar = '';
-  while (j < s.length) {
-    const ch = s[j];
-    if (ch === ';') {
-      nums.push(cur === '' ? 0 : parseInt(cur, 10));
-      cur = '';
-      j++;
-      continue;
-    }
-    if (ch === 'M' || ch === 'm') {
-      endChar = ch;
-      nums.push(cur === '' ? 0 : parseInt(cur, 10));
-      j++;
-      break;
-    }
-    if (ch < '0' || ch > '9') return null;
-    cur += ch;
-    j++;
-  }
-  if (endChar === '') return null;
-  if (nums.length < 3) return null;
-  return { button: nums[0], x: nums[1], y: nums[2], release: endChar === 'm', len: j - i };
-}
-
 function handleMouse(button, x, y, release) {
   if (release) { handleMouseRelease(); return; }
   const b = (button & ~32) & 3;
   if (button >= 32) handleMouseDrag(x, y);
   else handleMousePress(x, y, b);
-}
-
-function truncateAnsi(s, maxWidth) {
-  let w = 0;
-  let out = '';
-  let esc = false;
-  for (const ch of s) {
-    if (esc) {
-      out += ch;
-      if (ch === 'm') esc = false;
-      continue;
-    }
-    if (ch === '\x1b') {
-      out += ch;
-      esc = true;
-      continue;
-    }
-    const cw = cjkWidth(ch);
-    if (w + cw > maxWidth) break;
-    w += cw;
-    out += ch;
-  }
-  return out;
 }
 
 function styledLine(raw, absStart, selA, selB) {
@@ -1656,7 +1531,7 @@ function renderInputBox(maxLines, borderColor) {
         cell = styledLine(raw, start, a, b);
       }
     }
-    cell = padRight(truncateAnsi(cell, content), content);
+    cell = padRight(truncate(cell, content), content);
     out.push(`${borderColor}│ ${c.reset}${cell}${borderColor} │${c.reset}`);
   }
   out.push(border(`└${'─'.repeat(inner)}┘`));
@@ -1711,24 +1586,11 @@ function draw() {
   writeLines(bg);
 }
 
+// Screen renderer — differential full-screen redraw via _tui.mjs.
+const screen = createScreenRenderer();
+
 function writeLines(lines) {
-  const prev = state.lastLines;
-  const full = state.fullClear || prev === null;
-  let out = '\x1b[?25l';
-  if (full) out += '\x1b[2J\x1b[H';
-  const max = Math.max(prev ? prev.length : 0, lines.length);
-  for (let k = 0; k < max; k++) {
-    const cur = lines[k];
-    const old = prev ? prev[k] : undefined;
-    if (!full && cur === old) continue;
-    if (cur === undefined) {
-      out += `\x1b[${k + 1};1H\x1b[K`;
-    } else {
-      out += `\x1b[${k + 1};1H\x1b[K${cur}`;
-    }
-  }
-  process.stdout.write(out);
-  state.lastLines = lines;
+  screen.render(lines, { fullClear: state.fullClear });
   state.fullClear = false;
 }
 
@@ -1972,9 +1834,7 @@ async function speakCurrent() {
 }
 
 function quit() {
-  process.stdout.write('\x1b[?25h\x1b[?1006l\x1b[?1002l\x1b[?1049l');
-  stdin.setRawMode(false);
-  stdin.pause();
+  terminal.exit();
   console.log(`\nBye. ${state.spoken} utterance(s).`);
   process.exit(0);
 }
@@ -2049,7 +1909,7 @@ function onData(chunk) {
 
     if (ch === '\x1b') {
       if (s[i + 1] === '[' && s[i + 2] === '<') {
-        const m = parseMouse(s, i);
+        const m = parseSgrMouse(s, i);
         if (!m) { pending = s.slice(i); break; }
         handleMouse(m.button, m.x, m.y, m.release);
         i += m.len;
@@ -2297,18 +2157,16 @@ async function main() {
   await loadHistory();
   await loadCache();
 
-  stdin.setRawMode(true);
-  stdin.resume();
-  stdin.setEncoding('utf-8');
-  stdout.on('resize', () => { state.fullClear = true; redraw(); });
+  terminal = createTerminalManager();
+  terminal.enter();
+  terminal.onResize(() => { state.fullClear = true; redraw(); });
 
   state.voiceByLang = Object.fromEntries(LANGUAGES.map((l) => [l.code, 0]));
   await loadSelection();
   state.status = `${c.green}Ready.${c.reset} Enter = newline, Alt+Enter = speak.`;
 
-  process.stdout.write('\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h');
   draw();
-  stdin.on('data', onData);
+  terminal.onData(onData);
 }
 
 main().catch((e) => {
