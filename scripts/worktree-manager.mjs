@@ -11,10 +11,13 @@
 // branch name comes from a foreign .git and may collide with a real main-repo
 // branch.
 //
-// Command actions run inside a sub-pane split from the worktrees frame: the
-// child's output is streamed into the pane (ANSI-stripped), Ctrl-C stops it,
-// Esc closes it, PgUp/PgDn scrolls. The interactive shell keeps the fullscreen
-// suspend/resume flow because it needs a real TTY.
+// Command mode splits a persistent sub-pane off the worktrees frame and works
+// like an embedded shell session: the status line acts as the prompt, each
+// entered command spawns as a child in the pane's worktree, and its
+// (ANSI-stripped) output streams into the pane, which stays open for the next
+// command. Ctrl-C stops the running command, Ctrl-D (empty prompt) or Esc
+// closes the pane, PgUp/PgDn scrolls. The interactive shell keeps the
+// fullscreen suspend/resume flow because it needs a real TTY.
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 import { stdin, stdout } from "node:process";
@@ -394,14 +397,46 @@ function paneClose() {
   redraw();
 }
 
+function cmdPromptActive() {
+  return state.mode === "run" && !!state.pane && !state.pane.running;
+}
+
 function paneStatusText() {
   const pane = state.pane;
   if (pane.running) {
     return `${c.yellow}Running in ${c.gray}${pane.row.name}${c.reset}${c.yellow} · Ctrl-C stops · PgUp/PgDn scroll${c.reset}`;
   }
-  const code = pane.exit;
-  const colored = code === 0 ? c.green : c.red;
-  return `${colored}exit ${code ?? "signal"}${c.reset} · ${c.gray}${pane.cmd}${c.reset} in ${c.gray}${pane.row.name}${c.reset} · ${c.dim}Esc closes${c.reset}`;
+  const exitTag =
+    pane.cmd === ""
+      ? ""
+      : pane.exit === 0
+        ? `${c.green}exit 0${c.reset} · `
+        : `${c.red}exit ${pane.exit ?? "signal"}${c.reset} · `;
+  return (
+    `${exitTag}${c.gray}${pane.row.name}${c.reset}` +
+    `${c.dim} · Enter runs · ↑ history · Ctrl-C clears · Esc closes${c.reset}`
+  );
+}
+
+function openPane(row) {
+  state.mode = "run";
+  state.pane = {
+    row,
+    cmd: "",
+    child: null,
+    lines: [],
+    pending: "",
+    scroll: 0,
+    running: false,
+    exit: null,
+    dirty: true,
+    timer: setInterval(paneFlush, 120),
+    escalate: null,
+  };
+  state.cmdInput = [];
+  state.cmdCaret = 0;
+  state.cmdHistIndex = -1;
+  redraw();
 }
 
 function runInWorktree(cmd, row) {
@@ -410,27 +445,28 @@ function runInWorktree(cmd, row) {
     redraw();
     return;
   }
+  if (!state.pane) openPane(row);
+  const pane = state.pane;
+  if (pane.running) return;
+  if (pane.lines.length) pane.lines.push("");
+  pane.lines.push(`$ ${cmd}`);
+  if (pane.lines.length > OUTPUT_MAX_LINES) {
+    pane.lines.splice(0, pane.lines.length - OUTPUT_MAX_LINES);
+  }
+  pane.pending = "";
+  pane.scroll = 0;
+  pane.exit = null;
+  pane.cmd = cmd;
   const decoder = new StringDecoder("utf8");
   const child = spawn(cmd, {
     shell: true,
-    cwd: row.path,
+    cwd: pane.row.path,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true, // own process group so Ctrl-C can kill the whole tree
   });
-  state.mode = "run";
-  state.pane = {
-    cmd,
-    row,
-    child,
-    lines: [],
-    pending: "",
-    scroll: 0,
-    running: true,
-    exit: null,
-    dirty: true,
-    timer: null,
-    escalate: null,
-  };
+  pane.child = child;
+  pane.running = true;
+  pane.dirty = true;
   child.stdout.on("data", (chunk) => panePushOutput(chunk, decoder));
   child.stderr.on("data", (chunk) => panePushOutput(chunk, decoder));
   child.on("error", (err) => {
@@ -440,16 +476,17 @@ function runInWorktree(cmd, row) {
     }
   });
   child.on("close", (code) => {
-    const pane = state.pane;
-    if (!pane || pane.child !== child) return;
-    pane.running = false;
-    pane.exit = code;
-    if (pane.timer) clearInterval(pane.timer);
-    if (pane.escalate) clearTimeout(pane.escalate);
-    pane.dirty = true;
+    const p = state.pane;
+    if (!p || p.child !== child) return;
+    p.running = false;
+    p.exit = code;
+    if (p.escalate) {
+      clearTimeout(p.escalate);
+      p.escalate = null;
+    }
+    p.dirty = true;
     draw();
   });
-  state.pane.timer = setInterval(paneFlush, 120);
   redraw();
 }
 
@@ -478,19 +515,29 @@ function draw() {
   if (cmdH > 0) {
     const pane = state.pane;
     const dividerColor = pane.running ? c.cyan : c.gray;
-    const title = `─ COMMAND · ${pane.cmd} `;
+    const title = pane.cmd ? `─ COMMAND · ${pane.cmd} ` : "─ COMMAND ";
     const fill = Math.max(1, boxW - 2 - displayWidth(title));
     lines.push(
       `${dividerColor}├${title}${"─".repeat(fill)}┤${c.reset}`,
     );
+    const prompt = cmdPromptActive();
+    const outH = prompt ? cmdH - 1 : cmdH; // last pane row hosts the prompt
     const total = pane.lines.length;
     pane.scroll = Math.max(0, Math.min(pane.scroll, total));
     const end = total - pane.scroll;
-    const start = Math.max(0, end - cmdH);
-    for (let i = 0; i < cmdH; i++) {
+    const start = Math.max(0, end - outH);
+    for (let i = 0; i < outH; i++) {
       const idx = start + i;
       const out = idx >= 0 && idx < total ? pane.lines[idx] : "";
       lines.push(side(padRight(truncateAnsi(out, boxW - 4), boxW - 4)));
+    }
+    if (prompt) {
+      const before = state.cmdInput.slice(0, state.cmdCaret).join("");
+      const after = state.cmdInput.slice(state.cmdCaret).join("");
+      const line =
+        `${c.gray}${pane.row.name}${c.reset}${c.cyan}$ ${c.reset}` +
+        `${before}${c.reverse} ${c.reset}${after}`;
+      lines.push(side(padRight(truncateAnsi(line, boxW - 4), boxW - 4)));
     }
   }
   lines.push(border(`└${"─".repeat(boxW - 2)}┘`));
@@ -498,10 +545,6 @@ function draw() {
   let status;
   if (state.mode === "run" && state.pane) {
     status = truncateAnsi(paneStatusText(), cols);
-  } else if (state.mode === "command") {
-    const before = state.cmdInput.slice(0, state.cmdCaret).join("");
-    const after = state.cmdInput.slice(state.cmdCaret).join("");
-    status = `${c.cyan}command: ${c.reset}${before}${c.reverse} ${c.reset}${after}`;
   } else {
     status = truncateAnsi(state.status, cols);
   }
@@ -570,11 +613,8 @@ function closeMenu() {
 }
 
 function startCommandInput() {
-  state.mode = "command";
-  state.cmdInput = [];
-  state.cmdCaret = 0;
-  state.cmdHistIndex = -1;
-  redraw();
+  const row = state.rows[state.cursor];
+  if (row) openPane(row);
 }
 
 function moveCmdCaret(delta) {
@@ -716,16 +756,16 @@ function confirmDeleteFlow(targets) {
 
 async function submitCommand() {
   const cmd = state.cmdInput.join("");
-  const row = state.rows[state.cursor];
-  state.mode = "list";
   state.cmdInput = [];
+  state.cmdCaret = 0;
+  state.cmdHistIndex = -1;
   if (!cmd) {
     redraw();
     return;
   }
   if (!state.cmdHistory.includes(cmd)) state.cmdHistory.push(cmd);
   if (state.cmdHistory.length > 50) state.cmdHistory.shift();
-  runInWorktree(cmd, row);
+  runInWorktree(cmd, state.pane ? state.pane.row : state.rows[state.cursor]);
 }
 
 function launchShell(row) {
@@ -893,6 +933,19 @@ function onData(chunk) {
         paneKillChild();
         state.pane.dirty = true;
         draw();
+      } else if (cmdPromptActive()) {
+        // Bash-like Ctrl-C: with text on the line it clears the input; on an
+        // empty line it quits. Ctrl-D on an empty line closes the pane (EOF).
+        if (state.cmdInput.length || state.cmdCaret) {
+          state.cmdInput = [];
+          state.cmdCaret = 0;
+          state.cmdHistIndex = -1;
+          redraw();
+        } else if (ch === "\x04") {
+          paneClose();
+        } else {
+          quit();
+        }
       } else {
         quit();
       }
@@ -1008,25 +1061,25 @@ function onData(chunk) {
     }
 
     if (ch === "\x01") {
-      if (state.mode === "command") moveCmdCaret(-state.cmdCaret);
+      if (cmdPromptActive()) moveCmdCaret(-state.cmdCaret);
       else handleHome();
       i += 1;
       continue;
     }
     if (ch === "\x05") {
-      if (state.mode === "command") moveCmdCaret(state.cmdInput.length - state.cmdCaret);
+      if (cmdPromptActive()) moveCmdCaret(state.cmdInput.length - state.cmdCaret);
       else handleEnd();
       i += 1;
       continue;
     }
     if (ch === "\x10") {
-      if (state.mode === "command") historyUp();
+      if (cmdPromptActive()) historyUp();
       else handleArrowUp();
       i += 1;
       continue;
     }
     if (ch === "\x0e") {
-      if (state.mode === "command") historyDown();
+      if (cmdPromptActive()) historyDown();
       else handleArrowDown();
       i += 1;
       continue;
@@ -1069,7 +1122,7 @@ function onData(chunk) {
       continue;
     }
 
-    if (state.mode === "command") {
+    if (cmdPromptActive()) {
       const cp = String.fromCodePoint(s.codePointAt(i));
       // Ignore control characters that reached this point (e.g. Ctrl-L) so
       // they never end up inside the executed command string.
@@ -1088,7 +1141,7 @@ function onData(chunk) {
 }
 
 function handleArrowUp() {
-  if (state.mode === "command") {
+  if (cmdPromptActive()) {
     historyUp();
   } else if (state.mode === "menu") {
     state.menuCursor = Math.max(0, state.menuCursor - 1);
@@ -1102,7 +1155,7 @@ function handleArrowUp() {
 }
 
 function handleArrowDown() {
-  if (state.mode === "command") {
+  if (cmdPromptActive()) {
     historyDown();
   } else if (state.mode === "menu") {
     state.menuCursor = Math.min(currentOptions().length - 1, state.menuCursor + 1);
@@ -1123,7 +1176,7 @@ function handleArrowLeft() {
   } else if (state.mode === "confirm") {
     state.confirm.yes = 0;
     redraw();
-  } else if (state.mode === "command") {
+  } else if (cmdPromptActive()) {
     moveCmdCaret(-1);
   }
 }
@@ -1136,13 +1189,13 @@ function handleArrowRight() {
   } else if (state.mode === "confirm") {
     state.confirm.yes = 1;
     redraw();
-  } else if (state.mode === "command") {
+  } else if (cmdPromptActive()) {
     moveCmdCaret(1);
   }
 }
 
 function handleHome() {
-  if (state.mode === "command") moveCmdCaret(-state.cmdCaret);
+  if (cmdPromptActive()) moveCmdCaret(-state.cmdCaret);
   else if (state.mode === "list") {
     state.cursor = 0;
     redraw();
@@ -1150,7 +1203,7 @@ function handleHome() {
 }
 
 function handleEnd() {
-  if (state.mode === "command") moveCmdCaret(state.cmdInput.length - state.cmdCaret);
+  if (cmdPromptActive()) moveCmdCaret(state.cmdInput.length - state.cmdCaret);
   else if (state.mode === "list") {
     state.cursor = Math.max(0, state.rows.length - 1);
     redraw();
@@ -1168,7 +1221,7 @@ function handleShiftArrow(dir) {
     } else if (dir === "A") handleArrowUp();
     else if (dir === "B") handleArrowDown();
     redraw();
-  } else if (state.mode === "command") {
+  } else if (cmdPromptActive()) {
     if (dir === "C") moveCmdCaret(1);
     else if (dir === "D") moveCmdCaret(-1);
   } else if (state.mode === "confirm") {
@@ -1185,7 +1238,7 @@ function handleEnter() {
     state.mode = "list";
     state.confirm = null;
     redraw();
-  } else if (state.mode === "command") {
+  } else if (cmdPromptActive()) {
     submitCommand();
   } else if (state.mode === "list") {
     openMenu();
@@ -1193,7 +1246,7 @@ function handleEnter() {
 }
 
 function handleBackspace() {
-  if (state.mode === "command" && state.cmdCaret > 0) {
+  if (cmdPromptActive() && state.cmdCaret > 0) {
     state.cmdInput.splice(--state.cmdCaret, 1);
     redraw();
   }
@@ -1203,10 +1256,6 @@ function handleEscape() {
   if (state.mode === "run") {
     // Running: Esc stops the command and closes the pane. Finished: just close.
     paneClose();
-  } else if (state.mode === "command") {
-    state.mode = "list";
-    state.cmdInput = [];
-    redraw();
   } else if (state.mode === "confirm") {
     state.mode = "list";
     state.confirm = null;
