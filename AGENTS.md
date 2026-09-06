@@ -59,6 +59,7 @@ When modifying files, make edits using the smallest possible range.
 - Server-side events log through `src/lib/server/logging` following `references/logging.md`: every state-changing action emits a structured `ip=<ip> action=<action> ...` line carrying key identifying info, and async operations also log `_start`/`_end` with `elapsed_ms`; never log secrets, tokens, or document contents.
 - Server validates required prod env at startup via `assertProdEnv` (`src/lib/server/env.ts`, called from `hooks.server.ts`): missing prod credentials log `env_invalid` and throw fail-fast; see `docs/spec.md` for the gate semantics.
 - User accounts self-register at `/login` with HMAC-signed `httpOnly` `sameSite=strict` sessions; normalize usernames/emails, hash with scrypt, reject the admin username, and share the admin IP-keyed brute-force bucket — see `docs/spec.md` §Auth model.
+- Expose tunable policy thresholds as managed admin properties (file → environment → compiled default via `src/lib/server/admin-properties`) instead of hardcoded constants, per `references/js-ts.md`.
 - Throwaway e2e accounts use `e2e_<purpose>_<timestamp>` usernames (`load_<purpose>_<timestamp>` for stress runs, which never target prod); machine rows are identifiable via `LIKE 'e2e\_%'` and must be deleted after the run.
 - Database is dual-backend (dev SQLite, prod Neon via `DATABASE_URL`); follow `references/sql.md` with Postgres-first `sql/schema.sql` and apply prod schema via `npm run schema:apply` — see `ARCHITECTURE.md` for backend topology.
 - Persist shared authentication throttles in the configured database, not process-local memory, so limits hold across serverless instances. Do not clear a shared IP failure bucket after an unrelated successful login; let the configured window expire.
@@ -86,7 +87,9 @@ When modifying files, make edits using the smallest possible range.
   Play is clicked.
 - Document navigation is reflected in the URL as `{base}/{docId}` and history-backed so Back/Forward moves between documents.
 - All user-facing strings must go through `UI_TEXT` (keyed by `UiLocale`); add
-  each new string to every locale (`en`, `zh-TW`, `zh-CN`).
+  each new string to every locale (`en`, `zh-TW`, `zh-CN`). Surface server
+  failures as stable wire codes mapped to localized strings; never surface raw
+  English literals or technical detail as user-facing errors.
 - The app shell fills the dynamic viewport with `h-dvh` over the
   `html/body { min-height: 100% }` base, with non-shrinking chrome
   (`shrink-0` header, `flex-none` rows) and one flexible editor region; do not
