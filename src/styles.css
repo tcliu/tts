@@ -27,18 +27,18 @@
 
 :root {
   color-scheme: dark;
-  --toast-success-bg: #064e3b;
-  --toast-success-fg: #d1fae5;
-  --toast-success-border: #34d399;
-  --toast-info-bg: #164e63;
-  --toast-info-fg: #cffafe;
-  --toast-info-border: #22d3ee;
-  --toast-warning-bg: #78350f;
-  --toast-warning-fg: #fef3c7;
-  --toast-warning-border: #fbbf24;
-  --toast-error-bg: #881337;
-  --toast-error-fg: #ffe4e6;
-  --toast-error-border: #fb7185;
+  --toast-success-bg: #27ae49;
+  --toast-success-fg: #ffffff;
+  --toast-success-border: #168337;
+  --toast-info-bg: #18a4b8;
+  --toast-info-fg: #ffffff;
+  --toast-info-border: #0d7180;
+  --toast-warning-bg: #f0b800d1;
+  --toast-warning-fg: #ffffff;
+  --toast-warning-border: #b38300c6;
+  --toast-error-bg: #df3046;
+  --toast-error-fg: #ffffff;
+  --toast-error-border: #a91d2f;
 
 
   /* CodeMirror chrome — see src/lib/components/CodeEditor.svelte. Values are
@@ -85,18 +85,18 @@
 [data-theme='sky'],
 [data-theme='mint'],
 [data-theme='lavender'] {
-  --toast-success-bg: #ecfdf5;
-  --toast-success-fg: #065f46;
-  --toast-success-border: #059669;
-  --toast-info-bg: #ecfeff;
-  --toast-info-fg: #155e75;
-  --toast-info-border: #0891b2;
-  --toast-warning-bg: #fffbeb;
-  --toast-warning-fg: #92400e;
-  --toast-warning-border: #d97706;
-  --toast-error-bg: #fff1f2;
-  --toast-error-fg: #9f1239;
-  --toast-error-border: #e11d48;
+  --toast-success-bg: #27ae49;
+  --toast-success-fg: #ffffff;
+  --toast-success-border: #168337;
+  --toast-info-bg: #18a4b8;
+  --toast-info-fg: #ffffff;
+  --toast-info-border: #0d7180;
+  --toast-warning-bg: #f0b900;
+  --toast-warning-fg: #ffffff;
+  --toast-warning-border: #b38300;
+  --toast-error-bg: #df3046;
+  --toast-error-fg: #ffffff;
+  --toast-error-border: #a91d2f;
 
   color-scheme: light;
 
@@ -134,18 +134,18 @@
   --color-slate-800: #e2e8f0;
   --color-slate-900: #ffffff;
   --color-slate-950: #f8fafc;
-  --toast-success-bg: #ecfdf5;
-  --toast-success-fg: #065f46;
-  --toast-success-border: #059669;
-  --toast-info-bg: #ecfeff;
-  --toast-info-fg: #155e75;
-  --toast-info-border: #0891b2;
-  --toast-warning-bg: #fffbeb;
-  --toast-warning-fg: #92400e;
-  --toast-warning-border: #d97706;
-  --toast-error-bg: #fff1f2;
-  --toast-error-fg: #9f1239;
-  --toast-error-border: #e11d48;
+  --toast-success-bg: #27ae49;
+  --toast-success-fg: #ffffff;
+  --toast-success-border: #168337;
+  --toast-info-bg: #18a4b8;
+  --toast-info-fg: #ffffff;
+  --toast-info-border: #0d7180;
+  --toast-warning-bg: #f0b900;
+  --toast-warning-fg: #ffffff;
+  --toast-warning-border: #b38300;
+  --toast-error-bg: #df3046;
+  --toast-error-fg: #ffffff;
+  --toast-error-border: #a91d2f;
 
   --cm-caret: #0e7490;
   --cm-gutterColor: #64748b;

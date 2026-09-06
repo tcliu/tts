@@ -36,11 +36,13 @@
 
   const typeClasses: Record<ToastType, string> = {
     success:
-      'border-[var(--toast-success-border)] bg-[var(--toast-success-bg)] text-[var(--toast-success-fg)]',
-    info: 'border-[var(--toast-info-border)] bg-[var(--toast-info-bg)] text-[var(--toast-info-fg)]',
+      'border border-transparent border-l-8 border-l-[var(--toast-success-border)] bg-[var(--toast-success-bg)] text-[var(--toast-success-fg)]',
+    info:
+      'border border-transparent border-l-8 border-l-[var(--toast-info-border)] bg-[var(--toast-info-bg)] text-[var(--toast-info-fg)]',
     warning:
-      'border-[var(--toast-warning-border)] bg-[var(--toast-warning-bg)] text-[var(--toast-warning-fg)]',
-    error: 'border-[var(--toast-error-border)] bg-[var(--toast-error-bg)] text-[var(--toast-error-fg)]',
+      'border border-transparent border-l-8 border-l-[var(--toast-warning-border)] bg-[var(--toast-warning-bg)] text-[var(--toast-warning-fg)]',
+    error:
+      'border border-transparent border-l-8 border-l-[var(--toast-error-border)] bg-[var(--toast-error-bg)] text-[var(--toast-error-fg)]',
   }
 
   // Escape dismisses the toast. Dialogs consume Escape first in the capture
@@ -60,7 +62,7 @@
 <div
   role="status"
   aria-live="polite"
-  class={`fixed z-40 flex items-start gap-3 rounded-lg border px-4 py-3 shadow-lg shadow-slate-950/25 backdrop-blur-sm ${typeClasses[type]} ${positionClasses[position]}`}>
+  class={`fixed z-40 flex items-start gap-3 rounded-md px-4 py-3 shadow-lg shadow-slate-950/25 backdrop-blur-sm ${typeClasses[type]} ${positionClasses[position]}`}>
   <p class={`min-w-0 flex-1 font-medium ${sizeClasses[size]}`}>{message}</p>
   <Button
     variant="ghost"
