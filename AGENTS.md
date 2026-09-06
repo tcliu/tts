@@ -3,28 +3,20 @@ Project-specific development conventions for the TTS web app.
 
 ## Agent progress
 
-- Apply the `agent-progress` skill for bounded, observable progress and repeated-approach control.
+- For non-trivial tasks, apply the `agent-progress` skill alongside the primary skill; trivial single-step edits skip it.
 
 ## Skill routing
 
-- Use the `skill-routing` skill for non-trivial, composite, or ambiguous requests to select and sequence the appropriate skills.
+- Trivial single-skill requests invoke the matching skill directly, without routing; route non-trivial, composite, or ambiguous requests through the `skill-routing` skill.
 - Honor the selected skills' approval, verification, and scope constraints.
 
 ## File editing
 
-When modifying files, make edits using the smallest possible range.
-
-* Select a range containing **only the lines that actually change**.
-* The edit body must contain the **complete final content of that selected range**.
-* Do not include unchanged lines before or after the changed range as implicit context.
-* Do not use lines below the selected range to indicate where the edit ends.
-* After another edit changes the file, re-read the relevant section before issuing another line-based edit; never rely on stale line numbers.
-* If an edit is rejected because the range/body is inconsistent, re-read the current file and issue a new minimal edit rather than retrying the same edit.
-* Prefer a uniquely identifiable small text range over a large line-number range when the editing interface supports it.
+- Edit with the smallest possible range: select only the lines that change and put their complete final content in the edit body; if an edit is rejected or the file changed since the last read, re-read the section and issue a new minimal edit rather than retrying.
 
 ## Read first
-- Read this `AGENTS.md` and the shared references applicable to the files
-  being edited before editing.
+- Read the shared references applicable to the files being edited before
+  editing, keeping pre-edit investigation within the `agent-progress` read cap.
 - When reviewing completed work, follow the `code-review` skill and report
   findings with severity, location, rule, and fix.
 - When a task is ambiguous about what to change or how to approach it, ask the
@@ -195,7 +187,10 @@ When modifying files, make edits using the smallest possible range.
 
 ## Quality checks
 
-Run before finishing implementation changes:
+- Trivial non-behavioral edits (docs, comments, strings) need only a targeted
+  check (e.g. `npm run check` or the single affected test).
+- Run the full suite before finishing behavior-affecting changes or handing
+  off a worktree:
 
 ```bash
 npm run check
