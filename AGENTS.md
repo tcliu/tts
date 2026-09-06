@@ -10,9 +10,21 @@ Project-specific development conventions for the TTS web app.
 - Use the `skill-routing` skill for non-trivial, composite, or ambiguous requests to select and sequence the appropriate skills.
 - Honor the selected skills' approval, verification, and scope constraints.
 
-## Read first
+## File editing
 
-- Read this `AGENTS.md` and the shared references it relies on before editing.
+When modifying files, make edits using the smallest possible range.
+
+* Select a range containing **only the lines that actually change**.
+* The edit body must contain the **complete final content of that selected range**.
+* Do not include unchanged lines before or after the changed range as implicit context.
+* Do not use lines below the selected range to indicate where the edit ends.
+* After another edit changes the file, re-read the relevant section before issuing another line-based edit; never rely on stale line numbers.
+* If an edit is rejected because the range/body is inconsistent, re-read the current file and issue a new minimal edit rather than retrying the same edit.
+* Prefer a uniquely identifiable small text range over a large line-number range when the editing interface supports it.
+
+## Read first
+- Read this `AGENTS.md` and the shared references applicable to the files
+  being edited before editing.
 - When reviewing completed work, follow the `code-review` skill and report
   findings with severity, location, rule, and fix.
 - When a task is ambiguous about what to change or how to approach it, ask the
@@ -31,16 +43,19 @@ Project-specific development conventions for the TTS web app.
   parallel design system for equivalent controls.
 - Do not read or reuse any archived web implementation under `archive/`; it is
   out of scope for this project.
-- Code changes are applied in a separate git branch and worktree under
-  `.worktrees/` per the shared `references/git.md` worktree practice, unless the
-  user opts to apply them on top of the current worktree. Create worktrees with
-  `node scripts/create-worktree.mjs <branch>` from the default worktree; it
-  copies the gitignored local dev files (`.env`, `.env.local`) and
-  sets `DEV_TAG=<branch>` in the new worktree's `.env.local` so the bottom-left
-  worktree-tag block identifies the branch. Z ladder: sticky content `z-10`,
-  drawer `z-20`, overlays (dialog scrim, menus, dropdown panels, tooltip)
-  `z-40`, dev tag `z-50` — keep overlays at or below `z-40` so the tag is never
-  covered by a tooltip or modal scrim.
+  - Code changes are applied in a separate git branch and worktree under
+    `.worktrees/` per the shared `references/git.md` worktree practice, unless the
+    user opts to apply them on top of the current worktree. Branch names use
+    `<type>/<change-name>` (`type` from the conventional-commit set: `feat`,
+    `fix`, `refactor`, …) and the worktree path mirrors the branch
+    (`.worktrees/<type>/<change-name>`). Create worktrees with
+    `node scripts/create-worktree.mjs <branch>` from the default worktree; it
+    copies the gitignored local dev files (`.env`, `.env.local`) and
+    sets `DEV_TAG=<branch>` in the new worktree's `.env.local` so the bottom-left
+    worktree-tag block identifies the branch.
+- Z ladder: sticky content `z-10`, drawer `z-20`, overlays (dialog scrim, menus,
+  dropdown panels, tooltip) `z-40`, dev tag `z-50` — keep overlays at or below
+  `z-40` so the tag is never covered by a tooltip or modal scrim.
 - Server-side events log through `src/lib/server/logging` following `references/logging.md`: every state-changing action emits a structured `ip=<ip> action=<action> ...` line carrying key identifying info, and async operations also log `_start`/`_end` with `elapsed_ms`; never log secrets, tokens, or document contents.
 - Server validates required prod env at startup via `assertProdEnv` (`src/lib/server/env.ts`, called from `hooks.server.ts`): missing prod credentials log `env_invalid` and throw fail-fast; see `docs/spec.md` for the gate semantics.
 - User accounts self-register at `/login` with HMAC-signed `httpOnly` `sameSite=strict` sessions; normalize usernames/emails, hash with scrypt, reject the admin username, and share the admin IP-keyed brute-force bucket — see `docs/spec.md` §Auth model.
@@ -85,27 +100,32 @@ Project-specific development conventions for the TTS web app.
   raw controls use `onpointerdown={e => e.preventDefault()}` for the same effect.
 - Settings dialog keeps the same outer size across all tabs, anchored to the
   Voices tab (largest content); Speed and Synthesis tabs must not shrink the
-  dialog — use `BaseDialog` `height="fixed"` (`h-[min(78vh,640px)] min-h-[480px] sm:min-h-[520px]`) and scroll the Voices list internally.
+  dialog — use the `BaseDialog` `height="fixed"` preset and scroll the Voices
+  list internally (see `docs/spec.md` §Settings model).
 - Keyboard focus in text/number inputs should use a single custom `focus-visible` treatment (no double ring or orange native outline); when Tab focuses a number input, place the caret at the end instead of selecting the whole value.
-- BaseDialog spans full screen (sheet) only on phone-class viewports: the fixed
-  scrim carries `@container` (its width equals the viewport) and the padded
-  centering row plus panel use `@max-md:*` — the default Tailwind *container*
-  token `md` (28rem/448px), not the viewport `md` breakpoint (48rem/768px);
-  don't confuse the two. The scrim padding (`px-3 py-4`) lives on the centering
-  row, not the scrim, because a container cannot query itself. Dialog sizing is
-  preset via `maxWidth` (`md`/`lg`/`xl`/`2xl`/`3xl`/`4xl`/`5xl`/`6xl`/`7xl`/`fit`/`wide`) and
-  `height` (`auto`/`fixed`/`tall`); callers pick a preset instead of hardcoding
-  `w-`/`h-` in `className`.
+- BaseDialog spans full screen (sheet) only on phone-class viewports: the
+  sheet threshold is the Tailwind *container* token `md` (28rem/448px), not
+  the viewport `md` breakpoint (48rem/768px) — don't confuse the two. Dialog
+  sizing is preset via `maxWidth` and `height`; callers pick a preset instead
+  of hardcoding `w-`/`h-` in `className` (implementation detail in
+  `docs/spec.md` §Settings model).
 - Settings Voices tab follows the aligned label + control-group row pattern (see `references/responsive-design.md`): voice model group = spoken-language selector (if any) + voice-model selector; support four states a) `label | spoken | voice`, b) `label | voice` (no spoken), c) `label` / `spoken + voice`, d) `label` / `spoken` / `voice` with voice-group left aligned across languages and stacked `flex-col` below `sm` so shrinking forces label and voice-group into separate rows.
-- Documents drawer docks at `lg` (`lg:static lg:w-72` expanded, `lg:w-0` collapsed; `absolute w-64 z-20` overlay below `lg`); keep `DOCKED_QUERY` in `+page.svelte` synced with `DocumentsDrawer` and gate overlay-only dismissals with `isDocked`; collapsed docked drawer is `inert` + `aria-hidden`. Overlay drawer closes by swipe/drag left via `dragCloseLeft` gated by `!isDocked` — see `docs/spec.md` §Documents model.
-- Playback toolbar is a container-query ladder (`@container`, 9 bands `tiny→full` in `toolbar-ladder.ts`) with paired `TOOLBAR_BANDS`/`INLINE_AT_BAND`/`REVEAL_CLASS` literals; thresholds are calibrated at `--text-sm` worst-Latin (`--container-tts-*` in `src/styles.css`: `4→352`, `5→432`, `6→508`) and all three tables must change together.
+- Documents drawer docks at `lg` and gates overlay-only dismissals (backdrop,
+  Escape, swipe) with `isDocked`; keep `DOCKED_QUERY` in `+page.svelte` synced
+  with `DocumentsDrawer`; collapsed docked drawer is `inert` + `aria-hidden`.
+  Overlay drawer closes by swipe/drag left via `dragCloseLeft` gated by
+  `!isDocked` — see `docs/spec.md` §Documents model.
+- Playback toolbar is a container-query ladder (`@container`, 9 bands
+  `tiny→full` in `toolbar-ladder.ts`) with paired `TOOLBAR_BANDS`/
+  `INLINE_AT_BAND`/`REVEAL_CLASS` literals; recalibrate all three tables
+  together when thresholds change (calibration basis in `docs/spec.md`
+  §Playback model).
 - Icon-only `Button` uses uniform padding (`p-1.5` for `sm`, `p-2.5` for `md`) so vertical/horizontal match; text buttons keep `px`/`py` distinction.
 - Dropdown/menu option panels show at most one highlighted row at a time, shared by mouse hover and keyboard (`ArrowUp/Down`, `Home/End`). The highlight follows `useListSelection` index via `onmouseenter` and `selection.move`; the committed value is `aria-selected`/`aria-checked` only, not a second background or checkmark — the shared highlight already marks it on hover/focus.
 - Header language/theme menus keep the shared custom `Menu` component across devices; on phone-class viewports (same `<28rem` threshold as `BaseDialog` sheet mode) they present as bottom sheets with the same radio-menu semantics and focus-return behavior, not native pickers. Bottom sheets are top-level only and never stack inside a dialog: in-dialog dropdowns keep their anchored popover on all viewports (phone tap targets via CSS `min-h`, focus stays on the in-dialog trigger so the dialog focus trap holds).
 - Option panels hide only when their trigger is clipped or out of viewport after scroll (via `useDropdown` `isHostHidden` check), not on any ancestor scroll; scrolling the panel's own list never dismisses.
-- Synthesis cache dialog's table spans the dialog width (`w-full`), uses `DataTable` `fillHeight` (`min-h-0 overflow-auto`) inside the `BaseDialog` `maxWidth="wide" height="tall"` (`w-[min(96vw,96rem)] h-[min(88vh,860px)] flex-col`) shell so the dialog itself never vertically scrolls; pagination handles overflow. The table is the shared `DataTable` (`tableClass`
-  `w-full`, `resizable` via `use-column-resize`, `storageKey` `synthesis-cache`).
-- Dialogs containing `DataTable` keep a fixed outer height via `BaseDialog` `height` preset (`fixed`/`tall`) and let the table `fillHeight` fill the remaining vertical space with pagination pinned at the bottom; do not size the dialog to the table height.
+- Synthesis cache dialog keeps a fixed outer `BaseDialog` shell (`maxWidth="wide" height="tall"`) whose table `fillHeight` fills the remaining vertical space with pagination pinned at the bottom; the dialog itself never vertically scrolls. Use the shared `DataTable` (`tableClass` `w-full`, `resizable` via `use-column-resize`, `storageKey` `synthesis-cache`).
+- Dialogs containing `DataTable` keep a fixed outer height via the `BaseDialog` `height` preset (`fixed`/`tall`) and let the table `fillHeight` fill the remaining vertical space; do not size the dialog to the table height.
 
 ## Theming
 
@@ -152,7 +172,7 @@ Project-specific development conventions for the TTS web app.
   before finishing changes.
 - Follow `references/git.md` for commit message conventions and worktree
   isolation.
-- Follow `references/sql.md` for SQL schema and query conventions.
+
 ## Keeping references in sync
 
 - When a code change establishes or revises a project-specific convention, update

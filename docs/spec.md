@@ -106,6 +106,17 @@ speeds, text segmentation, and sequential segment playback behavior.
   threshold) gated by the docked state, and returns focus to the trigger on
   close.
 - History: the page lives at `src/routes/[[docId]]/+page.svelte` (optional single segment) so `/{docId}` deep-links render the same shell and avoid a 404. Navigation is reflected as `{base}/{docId}` (base path for a fresh buffer) via `src/lib/document-history.ts`; Open, New, Save, Clone, and Delete-current push a new entry (`pushDocHistory`), pure content edits do not, `popstate` and initial load replay through the single guarded path `editor.handleHistoryNavigation` (which reverts with `replaceDocHistory` when the discard/playback gates trip).
+- Playback toolbar: container-query ladder (`@container`, 9 bands `tiny→full`
+  in `toolbar-ladder.ts`) with paired `TOOLBAR_BANDS`/`INLINE_AT_BAND`/
+  `REVEAL_CLASS` literals; thresholds are calibrated at `--text-sm`
+  worst-Latin via `--container-tts-*` in `src/styles.css` (`4→352`, `5→432`,
+  `6→508`).
+- The Synthesis cache View dialog is a `BaseDialog` `maxWidth="wide"
+  height="tall"` shell (`w-[min(96vw,96rem)] h-[min(88vh,860px)] flex-col`)
+  whose selectable `DataTable` (`w-full`, `resizable` via `use-column-resize`,
+  `storageKey` `synthesis-cache`) fills the dialog with `fillHeight`
+  (`min-h-0 overflow-auto`); pagination handles overflow and the dialog itself
+  never vertically scrolls.
 
 ## Upload model
 
@@ -175,7 +186,14 @@ speeds, text segmentation, and sequential segment playback behavior.
   dropdown plus a voice-model dropdown scoped to that spoken language.
 - The Voices tab has a search box filtering by language name or voice name.
 - The settings dialog keeps the same outer size across all tabs, sized to the
-  Voices tab (largest); other tabs do not shrink it.
+  Voices tab (largest); other tabs do not shrink it. The shell is `BaseDialog`
+  `height="fixed"`: `h-[min(78vh,640px)] min-h-[480px] sm:min-h-[520px]`, with
+  the Voices list scrolled internally. `BaseDialog` presets: `maxWidth`
+  (`md`/`lg`/`xl`/`2xl`/`3xl`/`4xl`/`5xl`/`6xl`/`7xl`/`fit`/`wide`) and `height`
+  (`auto`/`fixed`/`tall`); sheet mode (full-screen on phone-class viewports)
+  puts `@container` on the fixed scrim, `@max-md:*` on the padded centering row
+  plus panel, and the scrim padding (`px-3 py-4`) on the centering row because
+  a container cannot query itself.
 - The Speed tab shows the default speed as a NumberInput (`0.25–3`, step `0.25`,
   default `1`); the Synthesis tab shows the Synthesis concurrency NumberInput
   (`1–8`, step `1`) and a Cache summary (`segments · bytes`) with `Clear all`

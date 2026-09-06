@@ -91,8 +91,7 @@ tts/
 8. **`src/lib/server/users.ts` + `user-auth.ts`** — user accounts and HMAC
   user-session tokens; `hooks.server.ts` resolves `event.locals.user`.
 9. **`src/lib/server/documents.ts`** — per-user document rows (`user_documents`)
-  in the configured SQLite/Neon backend behind `GET`/`PUT`/`DELETE
-  /api/documents`; the client merges them with the browser store by doc id.
+   in the configured SQLite/Neon backend behind `GET`/`PUT`/`DELETE /api/documents`.
 
 The development backend is SQLite and applies `sql/schema.sql` on boot. The
 production backend is Neon selected through `DATABASE_URL`; production schema
