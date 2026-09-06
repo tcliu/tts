@@ -175,6 +175,8 @@ export const en: UiText = {
   adminPropCacheMaxBytesDesc: 'Oldest entries are evicted past this total size.',
   adminPropEdgeTtsTimeoutLabel: 'Edge TTS timeout (ms)',
   adminPropEdgeTtsTimeoutDesc: 'How long to wait for the Edge speech service before failing a synthesis request.',
+  adminPropPasswordMinLengthLabel: 'Minimum password length',
+  adminPropPasswordMinLengthDesc: 'Minimum characters required for a new account password.',
   adminErrorGeneric: 'Something went wrong.',
   adminErrorBadRequest: 'Invalid request.',
   adminErrorRateLimited: 'Too many attempts. Try again later.',
@@ -201,6 +203,7 @@ export const en: UiText = {
   authSignInFailed: 'Failed to sign in.',
   authUsernameTaken: 'Username or email is already taken.',
   authUsernameReserved: 'This username is reserved. Choose another.',
+  authPasswordTooShort: 'Password must be at least {min} characters.',
   authCreateAccountFailed: 'Failed to create account.',
   authSignOutFailed: 'Failed to sign out.',
 }

@@ -4,6 +4,7 @@ import { getAdminUsername, isLoginRateLimited, recordLoginAttempt } from '$lib/s
 import { logEvent } from '$lib/server/logging'
 import { USER_SESSION_COOKIE, USER_SESSION_MAX_AGE, createUserSessionToken, isProdRuntime } from '$lib/server/user-auth'
 import { createUser } from '$lib/server/users'
+import { getPasswordMinLength } from '$lib/server/admin-properties'
 
 function isBodyRecord(body: unknown): body is Record<string, unknown> {
   return typeof body === 'object' && body !== null
@@ -34,6 +35,11 @@ export const POST: RequestHandler = async ({ request, getClientAddress, cookies 
     const message = error instanceof Error ? error.message : 'failed_to_create_user'
     await recordLoginAttempt(ip)
     logEvent({ ip, action: 'user_register_failed', details: { username: username.trim().toLowerCase(), error: message } })
+    // Short passwords are input validation, safe to surface; duplicates stay
+    // generic so account existence cannot be enumerated.
+    if (message === 'password_too_short') {
+      return json({ error: 'password_too_short', min_length: getPasswordMinLength() }, { status: 400 })
+    }
     return json({ error: 'registration_failed' }, { status: 400 })
   }
 

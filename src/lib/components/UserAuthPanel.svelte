@@ -1,12 +1,12 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { goto } from '$app/navigation'
+  import { goto, invalidateAll } from '$app/navigation'
   import Button from '$lib/components/Button.svelte'
   import Checkbox from '$lib/components/Checkbox.svelte'
   import PasswordInput from '$lib/components/PasswordInput.svelte'
   import { UI_TEXT } from '$lib/ui-text'
   import { useSettings } from '$lib/use-settings.svelte'
-  import { login, register } from '$lib/user-auth'
+  import { login, register, UserAuthError } from '$lib/user-auth'
   import { lastDocUrl } from '$lib/document-history'
 
   type Mode = 'signin' | 'register'
@@ -52,7 +52,11 @@
     const code = err instanceof Error ? err.message : ''
     if (code === 'rate_limited') return text.adminErrorRateLimited
     if (code === 'username is reserved') return text.authUsernameReserved
-    if (code === 'password_too_short') return text.authCreateAccountFailed
+    if (code === 'password_too_short') {
+      const min = err instanceof UserAuthError ? err.minLength : null
+      if (typeof min === 'number') return text.authPasswordTooShort.replace('{min}', String(min))
+      return text.authCreateAccountFailed
+    }
     return text.authCreateAccountFailed
   }
 
@@ -61,11 +65,13 @@
       error = text.authFillBoth
       return
     }
-    pending = true
-    error = ''
     try {
       const result = await login(identifier.trim(), password, rememberMe)
-      void goto(result.kind === 'admin' ? '/admin/properties' : lastDocUrl())
+      await goto(result.kind === 'admin' ? '/admin/properties' : lastDocUrl())
+      // The session cookie is fresh from the login response; re-run loads so
+      // `data.user` (and the header profile button) reflects the new session
+      // even when the navigation reused cached load data.
+      await invalidateAll()
     } catch (err) {
       error = mapSignInError(err)
     } finally {
@@ -82,7 +88,9 @@
     error = ''
     try {
       await register(username.trim(), email.trim(), password)
-      void goto(lastDocUrl())
+      await goto(lastDocUrl())
+      // Same as sign-in: force fresh loads so the header shows the profile.
+      await invalidateAll()
     } catch (err) {
       error = mapRegisterError(err)
     } finally {

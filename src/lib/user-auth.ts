@@ -1,3 +1,12 @@
+export class UserAuthError extends Error {
+  readonly minLength: number | null
+  constructor(code: string, minLength?: number | null) {
+    super(code)
+    this.name = 'UserAuthError'
+    this.minLength = minLength ?? null
+  }
+}
+
 export interface User {
   id: number
   username: string
@@ -49,7 +58,15 @@ export async function register(username: string, email: string, password: string
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username, email, password }),
   })
-  const body = await parseResponse<{ user: User }>(response, 'Failed to create account')
+  const body = (await response.json().catch(() => ({}))) as { user?: User; error?: unknown; min_length?: unknown }
+  if (!response.ok) {
+    const code = typeof body.error === 'string' ? body.error : 'Failed to create account'
+    const minLength = typeof body.min_length === 'number' ? body.min_length : null
+    throw new UserAuthError(code, minLength)
+  }
+  if (!body.user) {
+    throw new UserAuthError('Unexpected register response')
+  }
   return body.user
 }
 
