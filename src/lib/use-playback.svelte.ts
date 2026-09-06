@@ -197,6 +197,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     return buildReusableScopedSegmentsImpl(scoped, content, {
       peekCachedSynthesis,
       resolveEffectiveVoice,
+      fullSegments: fullSegmentsFor(content),
       sessionSegments: session.segments,
       segmentMetaMap,
     })
@@ -451,14 +452,32 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     return range
   }
 
+  // Full-document segmentation is O(n) (~17ms at 226KB) and selection events
+  // fire per pointer move during a drag, so memoize the most recent splits by
+  // content string. splitTtsSegments is pure, so keying on the exact text is
+  // safe; a small FIFO cache covers content plus the scoped selection text.
+  const fullSplitCache = new Map<string, TtsSegment[]>()
+  const FULL_SPLIT_CACHE_LIMIT = 4
+  function fullSegmentsFor(content: string): TtsSegment[] {
+    let segments = fullSplitCache.get(content)
+    if (!segments) {
+      segments = splitTtsSegments(content)
+      if (fullSplitCache.size >= FULL_SPLIT_CACHE_LIMIT) {
+        const oldest = fullSplitCache.keys().next()
+        if (!oldest.done) fullSplitCache.delete(oldest.value)
+      }
+      fullSplitCache.set(content, segments)
+    }
+    return segments
+  }
   function ensureSegments(content: string): ReturnType<typeof splitTtsSegments> {
     const contentChanged = session.sourceContent !== content
     if (session.segments.length > 0 && !contentChanged) return session.segments
-    return splitTtsSegments(content)
+    return fullSegmentsFor(content)
   }
 
   function resolveScopedPlaybackLang(scopedText: string, content: string): string {
-    return splitTtsSegments(scopedText)[0]?.lang ?? splitTtsSegments(content)[0]?.lang ?? 'en'
+    return splitTtsSegments(scopedText)[0]?.lang ?? fullSegmentsFor(content)[0]?.lang ?? 'en'
   }
 
   function applyScopedSession(input: {
@@ -980,6 +999,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       getSession: () => session,
       getSegmentMetaMap: () => segmentMetaMap,
       ensureSegments,
+      fullSegmentsFor,
       primeSession,
       refreshSessionFromCache,
       clearSegments,

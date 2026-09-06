@@ -1,5 +1,4 @@
-import { splitTtsSegments } from '../tts-reference'
-import type { TtsBoundary } from '../tts-reference'
+import type { splitTtsSegments, TtsBoundary, TtsSegment } from '../tts-reference'
 import { trimWhitespaceRange } from './boundaries'
 
 export function hasNonEmptySelection(range: { from: number; to: number } | null | undefined): boolean {
@@ -96,11 +95,11 @@ export function buildReusableScopedSegments(
     peekCachedSynthesis: (text: string, voiceEdge: string) => { boundaries: TtsBoundary[]; wordBoundaries?: TtsBoundary[]; spokenEnd?: number } | null
     resolveEffectiveVoice: (lang: string) => { edge: string } | undefined
     sessionSegments: ReturnType<typeof splitTtsSegments>
+    fullSegments: TtsSegment[]
     segmentMetaMap: Record<number, { wordBoundaries?: TtsBoundary[] }>
   },
 ): ReusableScopedSegment[] | null {
-  const { peekCachedSynthesis, resolveEffectiveVoice, sessionSegments, segmentMetaMap } = deps
-  const fullSegments = splitTtsSegments(content)
+  const { peekCachedSynthesis, resolveEffectiveVoice, sessionSegments, segmentMetaMap, fullSegments } = deps
   const covering = getCoveringSegments(scoped, fullSegments)
   if (covering.length === 0) return null
   if (isPartialWordSelection(scoped, content, covering, sessionSegments, segmentMetaMap)) return null

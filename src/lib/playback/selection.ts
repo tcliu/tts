@@ -1,5 +1,5 @@
 import { hasNonEmptySelection, trimmedContentRange } from './selection-scope'
-import { splitTtsSegments, type TtsSegment } from '../tts/segment'
+import type { TtsSegment } from '../tts/segment'
 import {
   highlightBoundaries,
   locateBoundaryStartWithinOrBefore,
@@ -11,6 +11,7 @@ export interface SessionDeps {
   getSession: () => { segments: TtsSegment[]; sourceContent: string; selectionScoped: boolean }
   getSegmentMetaMap: () => Record<number, SegmentMeta>
   ensureSegments: (content: string) => TtsSegment[]
+  fullSegmentsFor: (content: string) => TtsSegment[]
   primeSession: (segments: TtsSegment[], offset: number, range: { from: number; to: number } | null) => void
   refreshSessionFromCache: () => void
   clearSegments: () => void
@@ -156,7 +157,7 @@ export function createSelectionSync(deps: SelectionSyncDeps) {
       }
       deps.editor.getEditor()?.clearPlaybackHighlight?.()
       if (session.selectionScoped) {
-        const fullSegments = splitTtsSegments(contentStr)
+        const fullSegments = deps.session.fullSegmentsFor(contentStr)
         deps.session.primeSession(fullSegments, 0, resumeRange)
         deps.session.refreshSessionFromCache()
         return
