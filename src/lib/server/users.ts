@@ -1,6 +1,7 @@
 import { getDb } from './db'
 import { isUniqueViolation } from './db-errors'
 import { hashPassword, verifyPassword } from './admin-auth'
+import { getPasswordMinLength } from './admin-properties'
 
 export const MAX_USERNAME_LENGTH = 32
 export const MAX_EMAIL_LENGTH = 254
@@ -66,7 +67,8 @@ export async function createUser(input: { username: string; email: string; passw
   if (username === adminUsername) {
     throw new Error('username is reserved')
   }
-  if (input.password.length < 12) {
+  const minPasswordLength = getPasswordMinLength()
+  if (input.password.length < minPasswordLength) {
     throw new Error('password_too_short')
   }
   if (input.password.length > MAX_PASSWORD_LENGTH) {

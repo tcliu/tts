@@ -174,6 +174,8 @@ export const zhTW: UiText = {
   adminPropCacheMaxBytesDesc: '超過此總大小時會淘汰最舊的項目。',
   adminPropEdgeTtsTimeoutLabel: 'Edge TTS 逾時（毫秒）',
   adminPropEdgeTtsTimeoutDesc: '等待 Edge 語音服務回應的最長時間，逾時則合成請求失敗。',
+  adminPropPasswordMinLengthLabel: '密碼長度下限',
+  adminPropPasswordMinLengthDesc: '建立新帳號密碼所需的最少字元數。',
   adminErrorGeneric: '發生錯誤。',
   adminErrorBadRequest: '請求無效。',
   adminErrorRateLimited: '嘗試次數過多，請稍後再試。',
@@ -200,6 +202,7 @@ export const zhTW: UiText = {
   authSignInFailed: '登入失敗。',
   authUsernameTaken: '使用者名稱或電子郵件已被使用。',
   authUsernameReserved: '此使用者名稱為保留名稱，請選擇其他名稱。',
+  authPasswordTooShort: '密碼至少需要 {min} 個字元。',
   authCreateAccountFailed: '建立帳號失敗。',
   authSignOutFailed: '登出失敗。',
 }

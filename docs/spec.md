@@ -204,7 +204,8 @@ speeds, text segmentation, and sequential segment playback behavior.
   `tts_cache_ttl_ms` → `TTS_CACHE_TTL_MS` → `604800000`,
   `tts_cache_max_entries` → `TTS_CACHE_MAX_ENTRIES` → `500`,
   `tts_cache_max_bytes` → `TTS_CACHE_MAX_BYTES` → `209715200`,
-  `edge_tts_timeout_ms` → `EDGE_TTS_TIMEOUT_MS` → `30000`.
+  `edge_tts_timeout_ms` → `EDGE_TTS_TIMEOUT_MS` → `30000`,
+  `auth_password_min_length` → `AUTH_PASSWORD_MIN_LENGTH` → `8`.
 - Synthesis consumers read effective values: per-IP rate limit window,
   request text cap, cache TTL/caps, Edge WebSocket timeout. Cache hits and
   `304` responses stay exempt from the rate limit.
@@ -230,11 +231,13 @@ speeds, text segmentation, and sequential segment playback behavior.
   + password; admins can also sign in through the same form (identifier
   matches `ADMIN_USERNAME`). Usernames and emails are normalized, the configured
   admin username is rejected case-insensitively by the user model, and passwords
-  must be 12–256 characters. New users are created via `POST /api/auth/register`.
+  must meet the configured `auth_password_min_length` (default 8) up to 256
+  characters. New users are created via `POST /api/auth/register`.
   Login and registration attempts share a database-backed per-IP bucket (5 per
   15 min; `rate_limited` at 429). Successful login does not clear the bucket.
   Registration failures use generic stable codes and never disclose whether a
-  username or email is already registered.
+  username or email is already registered; short passwords surface
+  `password_too_short` with the configured `min_length` so the form can name it.
 - Sessions are HMAC-signed `httpOnly` `sameSite=strict` cookies:
   `tts-user-session` for users, `tts-admin-session` for admins (24h TTL,
   30d with remember-me). The `hooks.server.ts` handle resolves

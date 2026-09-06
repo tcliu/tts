@@ -168,6 +168,7 @@ export interface UiText {
   authSignInFailed: string
   authUsernameTaken: string
   authUsernameReserved: string
+  authPasswordTooShort: string
   authCreateAccountFailed: string
   authSignOutFailed: string
   adminPropertiesActions: string
@@ -197,6 +198,8 @@ export interface UiText {
   adminPropCacheMaxBytesDesc: string
   adminPropEdgeTtsTimeoutLabel: string
   adminPropEdgeTtsTimeoutDesc: string
+  adminPropPasswordMinLengthLabel: string
+  adminPropPasswordMinLengthDesc: string
   adminErrorGeneric: string
   adminErrorBadRequest: string
   adminErrorRateLimited: string

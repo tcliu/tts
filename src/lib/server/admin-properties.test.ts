@@ -10,6 +10,7 @@ import {
   getCacheTtlMs,
   getEdgeTtsTimeoutMs,
   getMaxTextLength,
+  getPasswordMinLength,
   getRateLimitMax,
   listProperties,
   resetPropertiesCache,
@@ -28,6 +29,7 @@ const ENV_KEYS = [
   'TTS_CACHE_MAX_ENTRIES',
   'TTS_CACHE_MAX_BYTES',
   'EDGE_TTS_TIMEOUT_MS',
+  'AUTH_PASSWORD_MIN_LENGTH',
 ]
 
 beforeEach(async () => {
@@ -56,7 +58,7 @@ afterEach(async () => {
 describe('admin-properties', () => {
   it('lists compiled defaults when nothing is set', () => {
     const properties = listProperties()
-    expect(properties).toHaveLength(6)
+    expect(properties).toHaveLength(7)
     expect(properties.find(p => p.key === 'tts_rate_limit_max')).toMatchObject({ value: 60, source: 'default' })
     expect(getRateLimitMax()).toBe(60)
     expect(getMaxTextLength()).toBe(2000)
@@ -64,6 +66,7 @@ describe('admin-properties', () => {
     expect(getCacheMaxEntries()).toBe(500)
     expect(getCacheMaxBytes()).toBe(200 * 1024 * 1024)
     expect(getEdgeTtsTimeoutMs()).toBe(30_000)
+    expect(getPasswordMinLength()).toBe(8)
   })
 
   it('prefers environment over defaults and file over environment', async () => {

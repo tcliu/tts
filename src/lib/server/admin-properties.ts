@@ -74,6 +74,15 @@ export const PROPERTY_DEFINITIONS: PropertyDefinition[] = [
     min: 1000,
     max: 120_000,
   },
+  {
+    key: 'auth_password_min_length',
+    labelKey: 'adminPropPasswordMinLengthLabel',
+    descriptionKey: 'adminPropPasswordMinLengthDesc',
+    envKey: 'AUTH_PASSWORD_MIN_LENGTH',
+    defaultValue: 8,
+    min: 4,
+    max: 128,
+  },
 ]
 
 function getDefinition(key: string): PropertyDefinition | undefined {
@@ -227,6 +236,10 @@ export function getCacheMaxBytes(): number {
 
 export function getEdgeTtsTimeoutMs(): number {
   return getValue('edge_tts_timeout_ms')
+}
+
+export function getPasswordMinLength(): number {
+  return getValue('auth_password_min_length')
 }
 
 export function ensureDataDirSync(): void {
