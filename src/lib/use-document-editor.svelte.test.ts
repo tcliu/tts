@@ -239,3 +239,54 @@ describe('useDocumentEditor save flow', () => {
     expect(editor.currentDocId).toBe(existing.id)
   })
 })
+
+describe('useDocumentEditor server push', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/')
+  })
+
+  afterEach(() => {
+    window.history.replaceState(null, '', '/')
+  })
+
+  function openCleanDocument(options: { synced: boolean; syncEnabled: boolean }) {
+    const stored = { id: 'local-1', name: 'Local', content: 'body', updatedAt: 1 }
+    const documents = {
+      documents: [stored],
+      isSyncEnabled: options.syncEnabled,
+      isSynced: vi.fn(() => options.synced),
+      findByName: vi.fn(() => stored),
+      findById: vi.fn((id: string) => (id === stored.id ? stored : undefined)),
+      save: vi.fn((name: string, content: string) => ({ ...stored, name, content })),
+    } as unknown as DocumentsHandle
+    const { editor, settings } = createEditor({ documents })
+    settings.content = 'body'
+    editor.loadDocument('local-1')
+    return { editor, documents }
+  }
+
+  it('enables Save for a clean browser-only doc while sync is on', () => {
+    const { editor } = openCleanDocument({ synced: false, syncEnabled: true })
+    expect(editor.isDirty).toBe(false)
+    expect(editor.saveDisabled).toBe(false)
+  })
+
+  it('keeps Save disabled for a clean doc already on the server', () => {
+    const { editor } = openCleanDocument({ synced: true, syncEnabled: true })
+    expect(editor.isDirty).toBe(false)
+    expect(editor.saveDisabled).toBe(true)
+  })
+
+  it('keeps Save disabled for a clean local doc while logged out', () => {
+    const { editor } = openCleanDocument({ synced: false, syncEnabled: false })
+    expect(editor.isDirty).toBe(false)
+    expect(editor.saveDisabled).toBe(true)
+  })
+
+  it('pushes the unchanged doc to the server on Save', () => {
+    const { editor, documents } = openCleanDocument({ synced: false, syncEnabled: true })
+    editor.saveDocument()
+    expect(documents.save).toHaveBeenCalledWith('Local', 'body')
+    expect(editor.overwriteConfirmOpen).toBe(false)
+  })
+})

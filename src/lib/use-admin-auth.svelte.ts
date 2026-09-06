@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation'
 import { AdminAuthError, adminErrorCode, adminLogout, fetchAdminSession } from '$lib/admin-client'
+import { lastDocUrl } from './document-history'
 
 export type AdminAuthState = 'checking' | 'unauthenticated' | 'authenticated' | 'error'
 
@@ -11,8 +12,15 @@ export function useAdminAuth(params: { onSignedOut: () => void; initialAuthentic
   let unconfigured = $state(false)
 
   function redirectToLogin() {
-    if (window.location.pathname !== '/admin') {
-      void goto('/admin')
+    if (window.location.pathname !== '/login') {
+      void goto('/login')
+    }
+  }
+
+  function redirectToEditor() {
+    const target = lastDocUrl()
+    if (window.location.pathname !== target) {
+      void goto(target)
     }
   }
 
@@ -22,14 +30,16 @@ export function useAdminAuth(params: { onSignedOut: () => void; initialAuthentic
     unconfigured = false
     redirectToLogin()
   }
-
   async function handleLogout() {
     try {
       await adminLogout()
     } catch {
       // Session cookie may already be gone; still sign out locally.
     }
-    handleSignedOut()
+    onSignedOut()
+    state = 'unauthenticated'
+    unconfigured = false
+    redirectToEditor()
   }
 
   async function checkSession() {

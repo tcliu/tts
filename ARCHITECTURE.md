@@ -21,18 +21,20 @@ tts/
 │   ├── styles.css                # Tailwind entry, theme palette overrides
 │   ├── routes/
 │   │   ├── +layout.svelte        # Root layout (renders children + dev tag)
-│   │   ├── +layout.server.ts     # Passes DEV_TAG env to layout
+│   │   ├── +layout.server.ts     # Passes DEV_TAG env and current user to layout
 │   │   ├── [[docId]]/
 │   │   │   └── +page.svelte      # Single page — thin orchestration layer
 │   │   ├── admin/
-│   │   │   ├── +layout.svelte    # Admin shell: header, tabs, login gate (thin orchestration)
-│   │   │   ├── +layout.server.ts # Session boolean for first paint
+│   │   │   ├── +layout.svelte    # Admin shell: header, tabs (thin orchestration)
+│   │   │   ├── +layout.server.ts # Redirects to /login without an admin session
 │   │   │   ├── +page.server.ts   # Redirects bare /admin to /admin/properties
 │   │   │   ├── +page.svelte      # Route placeholder (content via layout tabs)
 │   │   │   ├── properties/+page.svelte
 │   │   │   └── synthesis-cache/+page.svelte
 │   │   └── api/
 │   │       ├── admin/            # Session, login, logout, properties, synthesis-cache
+│   │       ├── auth/             # Register, login, session, logout (users + admin)
+│   │       ├── documents/        # GET/PUT/DELETE per-user documents
 │   │       └── tts/synthesize/
 │   │           └── +server.ts    # POST endpoint — validation, caching, TTS
 │   └── lib/
@@ -47,9 +49,9 @@ tts/
 │       ├── data-table/           # Column resize helpers
 │       ├── actions/              # Reusable DOM actions (dropdown, drag-close, list selection)
 │       ├── locales/              # Per-locale UI strings (en, zh-TW, zh-CN)
-│       └── page/                 # Page-level helpers (chips, toolbar, theme menu, page composables)
+│       ├── page/                 # Page-level helpers (chips, toolbar, theme menu, page composables)
+│       └── reference-languages.json  # Written/spoken language + voice data
 ├── tts.mjs                       # Reference script (voices, speeds, segmentation)
-├── reference-languages.json      # Written/spoken language + voice data
 └── docs/
     ├── design.md                 # User-facing behavior
     └── spec.md                   # Behavioral contracts, API specs, constraints
@@ -83,13 +85,19 @@ tts/
 5. **`src/lib/server/edge-tts.ts`** — server-side WebSocket TTS client.
 
 6. **`src/lib/server/admin-auth.ts`** — admin credentials, HMAC session
-   tokens, login rate limit.
-
+  tokens, and the database-backed per-IP login-attempt window.
 7. **`src/lib/server/admin-properties.ts`** — file-backed application
-   properties with env override precedence.
+  properties with env override precedence.
+8. **`src/lib/server/users.ts` + `user-auth.ts`** — user accounts and HMAC
+  user-session tokens; `hooks.server.ts` resolves `event.locals.user`.
+9. **`src/lib/server/documents.ts`** — per-user document rows (`user_documents`)
+  in the configured SQLite/Neon backend behind `GET`/`PUT`/`DELETE
+  /api/documents`; the client merges them with the browser store by doc id.
 
-8. **`src/lib/tts-reference.ts`** + `reference-languages.json` — voice and
-   language data model.
+The development backend is SQLite and applies `sql/schema.sql` on boot. The
+production backend is Neon selected through `DATABASE_URL`; production schema
+changes are applied explicitly with `npm run schema:apply` and never during
+request startup. SQLite foreign-key enforcement is enabled to match Neon.
 
 ## Layering
 
@@ -132,6 +140,6 @@ Server endpoints (+server.ts) ──► edge-tts.ts, server/tts-cache.ts
 - **Theme system** — themes are CSS variable overrides in `src/styles.css`
   under `[data-theme='…']`. A pre-paint inline script in `app.html` applies
   the stored theme before first paint.
-- **Reference data** — `tts.mjs` and `reference-languages.json` are the
+- **Reference data** — `tts.mjs` and `src/lib/reference-languages.json` are the
   source of truth for voices, speeds, and segmentation rules. The app
   mirrors their behavior.

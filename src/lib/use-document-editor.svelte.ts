@@ -10,7 +10,7 @@ import {
   type UploadNotice,
   type DiscardKind,
 } from './document-editor/helpers'
-import { parseDocId, pushDocHistory, replaceDocHistory } from './document-history'
+import { parseDocId, pushDocHistory, readLastDocId, rememberDocId, replaceDocHistory } from './document-history'
 
 export type { DiscardKind, UploadNotice, PendingAction } from './document-editor/helpers'
 
@@ -54,8 +54,16 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
 
   const isDirty = $derived(baselineContent !== null && settings.content !== baselineContent)
   // Nothing to persist: the editor is empty, or a document is loaded in its
-  // saved state. Draft buffers stay saveable through their inline title.
-  const saveDisabled = $derived(!settings.canPlay || (currentDocId !== null && !isDirty))
+  // saved state. Two exceptions keep Save enabled: draft buffers through
+  // their inline title, and a clean doc not yet on the server while sync is
+  // on (Save pushes the browser-only copy to the DB).
+  const needsServerPush = $derived(
+    currentDocId !== null &&
+      !isDirty &&
+      documents.isSyncEnabled === true &&
+      !documents.isSynced(currentDocId),
+  )
+  const saveDisabled = $derived(!settings.canPlay || (currentDocId !== null && !isDirty && !needsServerPush))
   const currentDocName = $derived(currentDocId ? (documents.findById(currentDocId)?.name ?? '') : draftName.trim() || nextAvailableDraftName())
   const deleteTargetName = $derived(deleteTargetId ? (documents.findById(deleteTargetId)?.name ?? '') : '')
 
@@ -136,7 +144,6 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     }
     applyDocState(id)
     deps.closeDrawer()
-    deps.focusEditor()
   }
 
   // Syncs the editor to the document referenced by the current URL: used on
@@ -150,6 +157,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     }
     const targetId = parseDocId()
     if (targetId === currentDocId) {
+      rememberDocId(targetId)
       return
     }
     const kind: DiscardKind = targetId ? 'open' : 'new'
@@ -161,10 +169,12 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
       const target = documents.findById(targetId)
       if (target) {
         applyDocState(targetId)
+        rememberDocId(targetId)
         return
       }
     }
     applyDocState(null)
+    rememberDocId(null)
   }
 
   function handleRenameDocument(name: string): boolean {
@@ -211,7 +221,15 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
     if (!id) {
       return
     }
-    if (documents.remove(id) && id === currentDocId) {
+    if (!documents.remove(id)) {
+      return
+    }
+    // Clearing a stored return target that no longer exists keeps
+    // login/admin round-trips from reopening a deleted document.
+    if (id === readLastDocId()) {
+      rememberDocId(null)
+    }
+    if (id === currentDocId) {
       currentDocId = null
       draftName = ''
       resetDraftCacheId()

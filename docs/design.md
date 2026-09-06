@@ -8,8 +8,9 @@
 ## Top row
 
 - The left side shows a Documents button and the `TTS` title.
-- The right side shows a toolbar with a language button, a theme button, and a
-  settings button.
+- The right side shows a toolbar with a language button, a theme button, a
+  settings button, and a profile button (sign-in when logged out, account or
+  admin entry when logged in).
 - Activating the Documents button toggles the documents drawer.
 - Activating the language button opens a language panel; on phone-class
   viewports it opens as a bottom sheet instead of an anchored popover.
@@ -109,9 +110,16 @@
   Documents button can collapse it to free editor space and re-open it.
 - On mobile the drawer overlays the content and also closes by dragging/swiping
   it left.
-- Activating a row opens that document.
-- Documents persist in the browser's `localStorage`; they are not sent to a
-  server.
+- Activating a row opens that document without forcing editor focus; focus remains governed by the drawer interaction. Creating a new document closes the drawer and restores editor focus after the visibility change.
+- Documents persist both in the browser's `localStorage` and, when signed
+  in, in the per-user server store; the drawer lists the merged union
+  deduplicated by doc id. Saving while logged out keeps the browser copy
+  only until the next sign-in merges it upward. Opening a clean browser-only
+  document while signed in keeps Save enabled so it can be pushed to the
+  server; Save disables again once the server holds the copy.
+- Clicking the profile button while signed in as a user opens an Account
+  dialog showing the username with a sign-out action; admins go to
+  `/admin/properties` instead and signed-out visitors go to `/login`.
 - Opening a different document, starting a new document, cloning, uploading, or
   resetting with unsaved edits shows a discard confirmation first; cancelling
   keeps the current content.
@@ -176,29 +184,41 @@
   `Size`, `Saved`) that is sortable by header, paginated, and searchable;
   the table fills the remaining vertical space of a fixed tall dialog shell
   with pagination pinned at the bottom, so the dialog itself never vertically
-  scrolls. Each cached segment is keyed by `text + voice` and may be shared
-  across documents, so no `Document` column is shown. Playback at any speed
-  reuses the same `1×` cached audio via `playbackRate`.
+  scrolls. A button panel offers Play (selected entries, sequential), Clear
+  (selected entries), and Clear-all. Each cached segment is keyed by
+  `text + voice` and may be shared across documents, so no `Document` column
+  is shown. Playback at any speed reuses the same `1×` cached audio via
+  `playbackRate`.
 - The dialog keeps the same outer size across all tabs, anchored to the Voices
   tab (largest content); switching to Speed or Synthesis does not shrink the
   dialog.
 - The Voices tab has a search box filtering languages and voices by language
   name or voice name.
 
+## Login page
+
+- `/login` shows a sign-in / create-account card. A toggle switches between
+  the two modes: sign-in takes username-or-email + password + remember-me;
+  create-account takes username + email + password.
+- On success, admins go to `/admin/properties` and users go back to the
+  last-opened document (the active slug persisted in `localStorage`; `/`
+  for a fresh buffer). Already-authenticated visitors are bounced away from
+  `/login` to that same document.
+
 ## Admin page
 
-- `/admin` shows a sign-in card (username, password with show/hide,
-  remember-me) when unauthenticated and `Properties` / `Synthesis cache`
-  tabs when authenticated; the header carries language/theme menus plus
-  back-to-editor and sign-out actions.
+- `/admin` requires an admin session; visitors without one are redirected to
+  `/login`. The header carries language/theme menus plus back-to-editor and
+  sign-out actions, and the body shows `Properties` / `Synthesis cache` tabs.
 - The Properties tab lists each managed property with its label, description,
   key and env key, source badge (`File`/`Environment`/`Default`), a number
   input, per-row revert-to-default, and Apply/Reload/Reset buttons.
 - The Synthesis cache tab shows server cache stats (`entries · bytes`), a
-  Clear-all action, and a selectable, sortable, paginated, searchable table
-  (`Text`/`Voice`/`Size`/`Saved`) with clear-selected. New entries record
-  text/voice metadata; legacy entries show the hash key with `—` for
-  text/voice until re-synthesized.
+  selectable, sortable, paginated, searchable table (`Text`/`Voice`/`Size`/`Saved`),
+  and Play / Clear-selected / Clear-all controls (Play runs the selected
+  entries sequentially and toggles to Stop). New entries record text/voice
+  metadata; legacy entries show the hash key with `—` for text/voice until
+  re-synthesized.
 
 ## Responsive behavior
 

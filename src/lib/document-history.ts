@@ -37,6 +37,34 @@ export function parseDocId(): string | null {
   }
 }
 
+// Last-opened document id so auth/admin round-trips can return to the same
+// doc: push/replace persist every slug update (cleared for a fresh buffer),
+// and login/admin read it back from localStorage.
+const LAST_DOC_KEY = 'tts:last-doc-id'
+
+export function readLastDocId(): string | null {
+  if (typeof localStorage === 'undefined') {
+    return null
+  }
+  const raw = localStorage.getItem(LAST_DOC_KEY)
+  return raw && raw.length > 0 ? raw : null
+}
+
+export function rememberDocId(docId: string | null): void {
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+  if (docId) {
+    localStorage.setItem(LAST_DOC_KEY, docId)
+  } else {
+    localStorage.removeItem(LAST_DOC_KEY)
+  }
+}
+
+export function lastDocUrl(): string {
+  return buildDocUrl(readLastDocId())
+}
+
 function hasHistoryApi(): boolean {
   return (
     browser &&
@@ -52,6 +80,7 @@ function urlShowsDocId(docId: string | null): boolean {
 }
 
 export function pushDocHistory(docId: string | null): void {
+  rememberDocId(docId)
   if (!hasHistoryApi() || urlShowsDocId(docId)) {
     return
   }
@@ -61,6 +90,7 @@ export function pushDocHistory(docId: string | null): void {
 }
 
 export function replaceDocHistory(docId: string | null): void {
+  rememberDocId(docId)
   if (!hasHistoryApi() || urlShowsDocId(docId)) {
     return
   }

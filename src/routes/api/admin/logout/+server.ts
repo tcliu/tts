@@ -2,10 +2,7 @@ import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { ADMIN_SESSION_COOKIE } from '$lib/server/admin-auth'
 import { logEvent } from '$lib/server/logging'
-
-function isProd(): boolean {
-  return process.env.VERCEL === '1'
-}
+import { isProdRuntime } from '$lib/server/user-auth'
 
 export const POST: RequestHandler = async ({ cookies, getClientAddress }) => {
   let ip = 'unknown'
@@ -14,7 +11,7 @@ export const POST: RequestHandler = async ({ cookies, getClientAddress }) => {
   } catch {
     ip = 'unknown'
   }
-  cookies.delete(ADMIN_SESSION_COOKIE, { path: '/', sameSite: 'strict', secure: isProd() })
+  cookies.delete(ADMIN_SESSION_COOKIE, { path: '/', sameSite: 'strict', secure: isProdRuntime() })
   logEvent({ ip, action: 'admin_logout' })
   return json({ ok: true })
 }

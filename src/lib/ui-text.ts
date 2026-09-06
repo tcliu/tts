@@ -53,6 +53,8 @@ export interface UiText {
   documentSearch: string
   noSavedDocuments: string
   noMatchingDocuments: string
+  documentsSyncFailed: string
+  documentsSessionExpired: string
   save: string
   saveDialogTitle: string
   documentNameLabel: string
@@ -144,19 +146,30 @@ export interface UiText {
   tableSortDesc: string
   tableResize: string
   adminTitle: string
-  adminLoginDescription: string
-  adminNotConfigured: string
-  adminUsername: string
-  adminPassword: string
-  adminPasswordShow: string
-  adminPasswordHide: string
-  adminRememberMe: string
-  adminSignIn: string
   adminSignOut: string
   adminBackToEditor: string
-  adminLoginFillBoth: string
-  adminLoginFailed: string
   adminSections: string
+  adminPasswordShow: string
+  adminPasswordHide: string
+  authLogin: string
+  authCreateAccount: string
+  authAccountOptions: string
+  authAccount: string
+  authSignOut: string
+  authUsernameOrEmail: string
+  authUsername: string
+  authEmail: string
+  authPassword: string
+  authRememberMe: string
+  authContinue: string
+  authGoToEditor: string
+  authFillBoth: string
+  authFillAll: string
+  authSignInFailed: string
+  authUsernameTaken: string
+  authUsernameReserved: string
+  authCreateAccountFailed: string
+  authSignOutFailed: string
   adminPropertiesActions: string
   adminTabProperties: string
   adminTabSynthesisCache: string

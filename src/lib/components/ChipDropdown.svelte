@@ -5,7 +5,6 @@
   import { useListSelection, revealInScrollport } from '$lib/actions/use-list-selection.svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
   import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
-  import CheckIcon from '$lib/icons/CheckIcon.svelte'
   import type { DropdownPanelProps } from '$lib/dropdown-chrome'
   import { CHIP_PANEL_BASE, DEFAULT_CHIP_PANEL_CLASS } from '$lib/dropdown-chrome'
 
@@ -280,9 +279,6 @@
       onmouseenter={() => selection.set(index)}
       class={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-xs outline-none transition-none ${index === selection.index ? 'bg-slate-800 text-slate-100' : 'text-slate-300'}`}>
       <span class="min-w-0 truncate">{option.label}</span>
-      {#if option.value === activeValue}
-        <CheckIcon className="h-3 w-3 shrink-0 opacity-70" />
-      {/if}
     </button>
   {:else}
     <div role="presentation" class="px-3 py-6 text-center text-xs text-slate-500">{emptyText}</div>
@@ -318,7 +314,7 @@
         bind:this={panelRef}
         use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, align, autoPlace })}
         class={resolvedPanelClass}>
-        <div class="shrink-0 border-b border-slate-800 bg-slate-900/95 p-1">
+        <div class="shrink-0 bg-slate-900/95 p-1">
           <input
             bind:this={inputRef}
             type="text"

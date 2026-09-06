@@ -3,6 +3,7 @@ import {
   adminErrorCode,
   clearAdminServerCache,
   fetchAdminServerCache,
+  fetchAdminServerCacheAudio,
   type AdminServerCacheEntry,
   type AdminServerCacheStats,
 } from '$lib/admin-client'
@@ -52,6 +53,24 @@ export function useAdminSynthesisCache(onSignedOut: () => void) {
     }
   }
 
+  async function clearSelected(keys: string[]): Promise<boolean> {
+    if (keys.length === 0) return true
+    pending = true
+    try {
+      const result = await clearAdminServerCache(keys)
+      stats = result.stats
+      entries = result.entries
+      loadError = ''
+      return true
+    } catch (error) {
+      if (!handleAuthError(error)) {
+        loadError = adminErrorCode(error)
+      }
+      return false
+    } finally {
+      pending = false
+    }
+  }
   async function clearAll(): Promise<boolean> {
     pending = true
     try {
@@ -70,22 +89,14 @@ export function useAdminSynthesisCache(onSignedOut: () => void) {
     }
   }
 
-  async function clearSelected(keys: string[]): Promise<boolean> {
-    if (keys.length === 0) return true
-    pending = true
+  async function fetchAudio(key: string): Promise<{ audio: string; etag: string } | null> {
     try {
-      const result = await clearAdminServerCache(keys)
-      stats = result.stats
-      entries = result.entries
-      loadError = ''
-      return true
+      return await fetchAdminServerCacheAudio(key)
     } catch (error) {
       if (!handleAuthError(error)) {
-        loadError = adminErrorCode(error)
+        throw error
       }
-      return false
-    } finally {
-      pending = false
+      return null
     }
   }
 
@@ -118,8 +129,9 @@ export function useAdminSynthesisCache(onSignedOut: () => void) {
       return loaded
     },
     load,
-    clearAll,
     clearSelected,
+    clearAll,
+    fetchAudio,
     reset,
   }
 }

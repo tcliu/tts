@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import type { RequestEvent } from '@sveltejs/kit'
+import { getDb } from './db'
 
 export const ADMIN_SESSION_COOKIE = 'tts-admin-session'
 export const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000
@@ -13,11 +14,8 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000
 function scryptAsync(password: string, salt: Buffer, keylen: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     scrypt(password, salt, keylen, (error, derivedKey) => {
-      if (error) {
-        reject(error)
-      } else {
-        resolve(derivedKey)
-      }
+      if (error) reject(error)
+      else resolve(derivedKey)
     })
   })
 }
@@ -30,26 +28,18 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   const parts = hash.split('$')
-  if (parts.length !== 3 || parts[0] !== 'scrypt') {
-    return false
-  }
+  if (parts.length !== 3 || parts[0] !== 'scrypt') return false
   const salt = Buffer.from(parts[1], 'base64')
   const expected = Buffer.from(parts[2], 'base64')
-  if (salt.length !== 16 || expected.length !== 32) {
-    return false
-  }
+  if (salt.length !== 16 || expected.length !== 32) return false
   const actual = await scryptAsync(password, salt, expected.length)
   return timingSafeEqual(actual, expected)
 }
 
 function sessionSecret(): string {
   const explicit = (process.env.SESSION_SECRET || '').trim()
-  if (explicit) {
-    return explicit
-  }
-  if (process.env.VERCEL === '1') {
-    throw new Error('SESSION_SECRET must be set in production')
-  }
+  if (explicit) return explicit
+  if (process.env.VERCEL === '1') throw new Error('SESSION_SECRET must be set in production')
   return 'dev-session-secret'
 }
 
@@ -61,9 +51,7 @@ let plainPasswordHash: Promise<string> | null = null
 
 async function readAdminPassword(): Promise<{ hash: string | null; configured: boolean }> {
   const hash = (process.env.ADMIN_PASSWORD_HASH || '').trim()
-  if (hash) {
-    return { hash, configured: true }
-  }
+  if (hash) return { hash, configured: true }
   const plain = (process.env.ADMIN_PASSWORD || '').trim()
   if (plain) {
     plainPasswordHash ??= hashPassword(plain)
@@ -78,15 +66,10 @@ export async function isAdminConfigured(): Promise<boolean> {
 
 export async function verifyAdminCredentials(username: string, password: string): Promise<boolean> {
   const { hash } = await readAdminPassword()
-  if (!hash) {
-    return false
-  }
+  if (!hash) return false
   return username === getAdminUsername() && (await verifyPassword(password, hash))
 }
 
-// Fingerprint of the configured credential material. Sessions bind to it so
-// rotating ADMIN_USERNAME / ADMIN_PASSWORD / ADMIN_PASSWORD_HASH invalidates
-// previously issued cookies. Hashed in memory; never logged.
 export function credentialFingerprint(): string {
   const material = [
     (process.env.ADMIN_USERNAME || '').trim(),
@@ -104,30 +87,16 @@ export function createSessionToken(ttlMs = ADMIN_SESSION_TTL_MS): string {
 }
 
 export function verifySessionToken(token: string | null | undefined): boolean {
-  if (!token) {
-    return false
-  }
+  if (!token) return false
   const parts = token.split('.')
-  if (parts.length !== 2) {
-    return false
-  }
+  if (parts.length !== 2) return false
   const [body, signature] = parts
-  if (!body || !signature) {
-    return false
-  }
+  if (!body || !signature) return false
   const expected = createHmac('sha256', sessionSecret()).update(body).digest('base64url')
-  if (signature.length !== expected.length) {
-    return false
-  }
-  if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-    return false
-  }
+  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return false
   try {
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as { exp?: unknown; cred?: unknown }
-    if (typeof payload.exp !== 'number' || payload.exp <= Date.now()) {
-      return false
-    }
-    return payload.cred === credentialFingerprint()
+    return typeof payload.exp === 'number' && payload.exp > Date.now() && payload.cred === credentialFingerprint()
   } catch {
     return false
   }
@@ -137,32 +106,36 @@ export function isAdminSession(event: Pick<RequestEvent, 'cookies'>): boolean {
   return verifySessionToken(event.cookies.get(ADMIN_SESSION_COOKIE))
 }
 
-interface LoginBucket {
-  count: number
-  resetAt: number
+export async function isLoginRateLimited(ip: string): Promise<boolean> {
+  const result = await (await getDb()).query<{ count: number; reset_at: number }>(
+    'select count, reset_at from login_attempts where ip = $1',
+    [ip],
+  )
+  const bucket = result.rows[0]
+  return !!bucket && Date.now() < Number(bucket.reset_at) && Number(bucket.count) >= LOGIN_MAX_ATTEMPTS
 }
 
-const loginBuckets = new Map<string, LoginBucket>()
-
-export function isLoginRateLimited(ip: string): boolean {
+export async function recordLoginAttempt(ip: string): Promise<void> {
   const now = Date.now()
-  for (const [key, bucket] of loginBuckets) {
-    if (now >= bucket.resetAt) loginBuckets.delete(key)
-  }
-  const bucket = loginBuckets.get(ip)
-  return !!bucket && now < bucket.resetAt && bucket.count >= LOGIN_MAX_ATTEMPTS
+  const db = await getDb()
+  await db.transaction(async query => {
+    const current = await query<{ count: number; reset_at: number }>(
+      'select count, reset_at from login_attempts where ip = $1',
+      [ip],
+    )
+    const row = current.rows[0]
+    if (!row || now >= Number(row.reset_at)) {
+      if (!row) {
+        await query('insert into login_attempts (ip, count, reset_at) values ($1, 1, $2)', [ip, now + LOGIN_WINDOW_MS])
+      } else {
+        await query('update login_attempts set count = 1, reset_at = $2 where ip = $1', [ip, now + LOGIN_WINDOW_MS])
+      }
+      return
+    }
+    await query('update login_attempts set count = count + 1 where ip = $1', [ip])
+  })
 }
 
-export function recordLoginAttempt(ip: string): void {
-  const now = Date.now()
-  const bucket = loginBuckets.get(ip)
-  if (!bucket || now >= bucket.resetAt) {
-    loginBuckets.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS })
-    return
-  }
-  bucket.count += 1
-}
-
-export function resetLoginAttempts(ip: string): void {
-  loginBuckets.delete(ip)
+export async function resetLoginAttempts(ip: string): Promise<void> {
+  await (await getDb()).query('delete from login_attempts where ip = $1', [ip])
 }

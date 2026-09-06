@@ -18,7 +18,6 @@
     containerClass?: string
     editorClass?: string
     editorAriaLabel?: string
-    autoFocus?: boolean
     onReady?: () => void
     onContentChange?: (content: string) => void
     onSelectionChange?: (range: { from: number; to: number } | null) => void
@@ -32,7 +31,6 @@
     containerClass = '',
     editorClass = '',
     editorAriaLabel = 'Content',
-    autoFocus = false,
     onReady,
     onContentChange,
     onSelectionChange,
@@ -246,9 +244,6 @@
       parent: editorContainerRef,
     })
 
-    if (autoFocus) {
-      editorView.focus()
-    }
     onReady?.()
   }
 

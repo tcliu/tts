@@ -1,6 +1,10 @@
+import { redirect } from '@sveltejs/kit'
 import type { LayoutServerLoad } from './$types'
 import { isAdminSession } from '$lib/server/admin-auth'
 
 export const load: LayoutServerLoad = ({ cookies }) => {
-  return { adminAuthenticated: isAdminSession({ cookies }) }
+  if (!isAdminSession({ cookies })) {
+    throw redirect(307, '/login')
+  }
+  return { adminAuthenticated: true }
 }

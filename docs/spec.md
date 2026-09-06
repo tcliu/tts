@@ -44,7 +44,7 @@ speeds, text segmentation, and sequential segment playback behavior.
 - Stopping or finishing playback clears only the playback-highlight overlay.
 - A metadata pipeline records per-sentence boundaries for the session. When a
   voice under-splits CJK text (e.g. spaces or commas separating sentences),
-  `src/lib/bracket-merge.ts` `shouldUseRangeRows` falls back to highlight ranges
+  `src/lib/metadata/rows.ts` `shouldUseRangeRows` falls back to highlight ranges
   with interpolated timing (`syntheticRangeAt`) so each sentence still surfaces as
   its own row. Editing the content invalidates the pipeline and re-synthesizes
   segments in a bounded, cancellable background pass to refresh boundaries. Info
@@ -70,11 +70,24 @@ speeds, text segmentation, and sequential segment playback behavior.
 
 ## Documents model
 
-- Documents are a browser-only, `localStorage`-backed store keyed by an id with
-  a name, content, and `updatedAt` timestamp; server-side persistence and
-  resumable-upload libraries do not apply — there is no document endpoint.
-- `use-documents` validates each stored record on read and writes the full list
-  on every mutation; it sorts the visible list by `updatedAt` descending.
+- Documents live in two stores merged by doc id: the browser `localStorage`
+  store (`tts:web-documents`, each record an id, name, content, and `updatedAt`) and, for signed-in users, the per-user `user_documents` table
+  behind `GET`/`PUT`/`DELETE /api/documents` (cookie-guarded, `snake_case`
+  wire, `camelCase` at the boundary). The drawer lists the union,
+  deduplicated by id with newest `updatedAt` winning each conflict.
+- `use-documents` validates each stored record on read and writes the full
+  local list on every mutation; when logged in it also pushes each mutation
+  to the server fire-and-forget (failures surface as `syncError`) and pulls
+  + merges the server copy on sign-in, then pushes never-synced local-only
+  docs upward so logged-out drafts actually reach the server. Sign-out drops
+  server-only rows fetched during the session (pre-existing local docs,
+  session-created docs, and unsynced local-only docs stay) so a shared device
+  does not leak the previous user's listing. It sorts the visible list by
+  `updatedAt` descending. Sign-out invalidates the active sync generation, so
+  a delayed server response cannot reinsert server-only rows. The server
+  enforces `MAX_DOCUMENTS_PER_USER` on writes: updates to existing ids remain
+  allowed at the limit, while new ids return `document_quota_exceeded`. SQLite
+  enables foreign-key enforcement so local cascades match Neon.
 - `use-document-editor` tracks the open document id and a baseline snapshot of
   the editor content; `isDirty` is the comparison between the baseline and the
   live content. Save, rename, clone, delete, upload, and reset all route through
@@ -98,8 +111,8 @@ speeds, text segmentation, and sequential segment playback behavior.
 
 - Upload imports a local text file into the editor; it is a client-side read
   (`Blob.text()`), not a network upload, so resumable-upload libraries (tus,
-  Uppy) do not apply — they require a server-side endpoint, and documents live
-  only in the browser.
+  Uppy) do not apply — they require a server-side endpoint. Uploaded text is
+  persisted only once it is saved as a document.
 - The page hosts a hidden `input type="file"`; the document editor composable
   owns validation (UTF-8 byte cap plus an all-readable-text scan: disallowed C0
   controls, DEL, and the replacement character that invalid byte sequences
@@ -168,15 +181,11 @@ speeds, text segmentation, and sequential segment playback behavior.
   (`1–8`, step `1`) and a Cache summary (`segments · bytes`) with `Clear all`
   and `View` (the `View` dialog is a second `BaseDialog` with a selectable
   `Lang`/`Voice`/`Text`/`Size`/`Saved` table, sticky header, `SearchInput`,
-  `contain-layout`, and a `Play` control that stops main playback first).
+  `contain-layout`, and Play / Clear-selected / Clear-all controls; Play stops
+  main playback first).
 - Default speed options must match the speed list in `tts.mjs`.
 
-## Admin model
-
-- `/admin` hosts sign-in plus `Properties` and `Synthesis cache` tabs; bare
-  `/admin` renders the Properties tab. `+layout.server.ts` returns only
-  the session boolean so first paint picks the right state; all admin data
-  loads client-side through cookie-guarded APIs.
+- `/admin` hosts `Properties` and `Synthesis cache` tabs; bare `/admin` renders the Properties tab. `+layout.server.ts` redirects visitors without an admin session to `/login`; authenticated loads expose `adminAuthenticated` so first paint picks the right state. All admin data loads client-side through cookie-guarded APIs.
 - Sign-in requires `ADMIN_PASSWORD_HASH` (or `ADMIN_PASSWORD`, hashed in
   memory) plus `SESSION_SECRET`; sessions are `httpOnly` `sameSite=strict`
   cookies (`tts-admin-session`) bound to a fingerprint of the credential
@@ -202,15 +211,50 @@ speeds, text segmentation, and sequential segment playback behavior.
 - Admin APIs (`snake_case` wire, `camelCase` at the boundary):
   `GET /api/admin/session`, `POST /api/admin/login`,
   `POST /api/admin/logout`, `GET`/`PUT /api/admin/properties`,
-  `GET`/`DELETE /api/admin/synthesis-cache` (clear all or selected keys).
+  `GET /api/admin/synthesis-cache`,
+  `GET /api/admin/synthesis-cache/audio`,
+  `DELETE /api/admin/synthesis-cache` (clear all or selected keys).
   Error bodies carry stable codes the client maps to localized `UI_TEXT`
   strings.
 - The Synthesis cache tab lists unexpired server entries (`key`, `text`,
-  `voice`, `saved_at`, `bytes`) with search/sort/pagination and selective
-  or total clear; stats cover every cache file including expired ones.
+  `voice`, `saved_at`, `bytes`) with search/sort/pagination, selection-scoped
+  Play, and selective or total clear; stats cover every cache file including
+  expired ones.
 - State-changing admin actions log `admin_*_start`/`admin_*_end` with
   `elapsed_ms` per `references/logging.md`; secrets and document contents
   are never logged.
+
+## Auth model
+
+- Public self-registration at `/login`. Users sign in with username-or-email
+  + password; admins can also sign in through the same form (identifier
+  matches `ADMIN_USERNAME`). Usernames and emails are normalized, the configured
+  admin username is rejected case-insensitively by the user model, and passwords
+  must be 12–256 characters. New users are created via `POST /api/auth/register`.
+  Login and registration attempts share a database-backed per-IP bucket (5 per
+  15 min; `rate_limited` at 429). Successful login does not clear the bucket.
+  Registration failures use generic stable codes and never disclose whether a
+  username or email is already registered.
+- Sessions are HMAC-signed `httpOnly` `sameSite=strict` cookies:
+  `tts-user-session` for users, `tts-admin-session` for admins (24h TTL,
+  30d with remember-me). The `hooks.server.ts` handle resolves
+  `event.locals.user` on every request.
+- Auth APIs (`snake_case` wire, `camelCase` at the boundary):
+  `POST /api/auth/register`, `POST /api/auth/login`,
+  `GET /api/auth/session`, `POST /api/auth/logout`. The login endpoint
+  returns `{ user }` for user logins or `{ admin: true }` when the identifier
+  matches the configured admin username.
+- Signed-in users persist documents server-side via `GET`/`PUT`/`DELETE
+  /api/documents` (per-user rows, `updated_at` in ms); every save/rename logs
+  `user_document_save` and every delete logs `user_document_delete`
+  (identifiers and sizes only, never contents).
+- Already-authenticated visitors to `/login` never see the form: admins are
+  redirected server-side to `/admin/properties`, while users are bounced
+  client-side to the last-opened document (active slug persisted in
+  `localStorage` by every editor navigation; `/` for a fresh buffer), so
+  opening a doc, visiting login, and returning reopens the same doc instead
+  of a fresh buffer. No `returnTo` query is threaded — the server cannot read
+  `localStorage`.
 
 ## Theming
 

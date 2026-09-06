@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte'
   import Button from './Button.svelte'
   import DataTable, { type DataTableColumn } from './DataTable.svelte'
   import DeleteIcon from '$lib/icons/DeleteIcon.svelte'
+  import SpeakerIcon from '$lib/icons/SpeakerIcon.svelte'
+  import StopIcon from '$lib/icons/StopIcon.svelte'
   import { adminErrorMessage } from '$lib/admin-client'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
   import { formatBytes } from '$lib/format-bytes'
@@ -23,6 +26,11 @@
   let pageSize = $state(10)
   let sortKey = $state<string | null>(null)
   let sortDir = $state<'asc' | 'desc'>('asc')
+  let playing = $state(false)
+  let playError = $state('')
+  let currentAudio = $state<HTMLAudioElement | null>(null)
+  let currentAudioUrl = $state('')
+  let playGeneration = 0
 
   const query = $derived(search.trim().toLowerCase())
 
@@ -89,7 +97,7 @@
     {
       key: 'text',
       header: text.tableText,
-      width: '36%',
+      width: '52%',
       minWidth: 200,
       sortable: true,
       searchable: true,
@@ -98,8 +106,8 @@
     {
       key: 'voice',
       header: text.tableVoice,
-      width: '24%',
-      minWidth: 160,
+      width: '20%',
+      minWidth: 120,
       sortable: true,
       searchable: true,
       cell: voiceCell,
@@ -107,17 +115,19 @@
     {
       key: 'size',
       header: text.tableSize,
-      width: '12%',
-      minWidth: 90,
+      width: '10%',
+      minWidth: 76,
       sortable: true,
+      cellClass: 'whitespace-nowrap',
       cell: sizeCell,
     },
     {
       key: 'saved',
       header: text.tableSaved,
       width: '18%',
-      minWidth: 140,
+      minWidth: 132,
       sortable: true,
+      cellClass: 'whitespace-nowrap',
       cell: savedCell,
     },
   ])
@@ -194,16 +204,110 @@
   async function clearSelected() {
     const keys = [...selectedKeys]
     if (keys.length === 0) return
+    stopPlayback()
     if (await cacheState.clearSelected(keys)) {
       selectedKeys = new Set()
     }
   }
+
+  function cleanupAudio() {
+    currentAudio?.pause()
+    currentAudio = null
+    if (currentAudioUrl) {
+      URL.revokeObjectURL(currentAudioUrl)
+      currentAudioUrl = ''
+    }
+  }
+
+  function stopPlayback() {
+    playGeneration += 1
+    playing = false
+    cleanupAudio()
+  }
+
+  function decodeBase64Audio(base64: string): Blob {
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return new Blob([bytes], { type: 'audio/mpeg' })
+  }
+
+  function playBlob(blob: Blob, generation: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const audio = new Audio()
+      const url = URL.createObjectURL(blob)
+      currentAudio = audio
+      currentAudioUrl = url
+      audio.src = url
+      audio.onended = () => {
+        if (playGeneration === generation) {
+          cleanupAudio()
+        }
+        resolve()
+      }
+      audio.onerror = () => {
+        if (playGeneration === generation) {
+          cleanupAudio()
+        }
+        reject(new Error(UI_TEXT[locale].playbackFailed))
+      }
+      audio.play().catch(error => {
+        if (playGeneration === generation) {
+          cleanupAudio()
+        }
+        reject(error)
+      })
+    })
+  }
+
+  async function playSelected() {
+    if (playing) {
+      stopPlayback()
+      return
+    }
+    const keys = [...selectedKeys]
+    if (keys.length === 0) return
+    stopPlayback()
+    playError = ''
+    const generation = playGeneration
+    playing = true
+    try {
+      for (const key of keys) {
+        if (playGeneration !== generation) return
+        const result = await cacheState.fetchAudio(key)
+        // Expired admin session: the hook already signed out and reset the
+        // listing, so stop without a misleading playback error.
+        if (result === null || playGeneration !== generation) return
+        await playBlob(decodeBase64Audio(result.audio), generation)
+      }
+    } catch {
+      if (playGeneration === generation) {
+        playError = UI_TEXT[locale].playbackFailed
+      }
+    } finally {
+      if (playGeneration === generation) {
+        playing = false
+        cleanupAudio()
+      }
+    }
+  }
+
+  onDestroy(() => {
+    stopPlayback()
+  })
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col gap-1.5">
   {#if cacheState.loadError}
     <p class="rounded-lg border border-rose-700 bg-rose-950/50 px-3 py-2 text-sm text-rose-200" role="alert">
       {adminErrorMessage(cacheState.loadError, text)}
+    </p>
+  {/if}
+  {#if playError}
+    <p class="rounded-lg border border-rose-700 bg-rose-950/50 px-3 py-2 text-sm text-rose-200" role="alert">
+      {playError}
     </p>
   {/if}
   <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
@@ -220,6 +324,23 @@
     </div>
     <div class="flex flex-wrap items-center gap-1.5">
       <Button
+        variant="outline"
+        accent="cyan"
+        size="sm"
+        ariaPressed={playing}
+        disabled={(!hasSelection && !playing) || cacheState.pending}
+        ariaLabel={playing ? text.stopSelectedCachePlayback : text.playSelectedCacheEntries}
+        onClick={() => void playSelected()}>
+        {#snippet icon()}
+          {#if playing}
+            <StopIcon className="h-4 w-4" />
+          {:else}
+            <SpeakerIcon className="h-4 w-4" />
+          {/if}
+        {/snippet}
+        {playing ? text.stop : text.playback}
+      </Button>
+      <Button
         variant="secondary"
         size="sm"
         disabled={!hasSelection || cacheState.pending}
@@ -234,7 +355,7 @@
       <Button
         variant="secondary"
         size="sm"
-        disabled={cacheState.pending || (cacheState.stats?.entries ?? 0) === 0}
+        disabled={cacheState.entries.length === 0 || cacheState.pending}
         pending={cacheState.pending}
         ariaLabel={text.adminClearAllServerCache}
         onClick={() => void cacheState.clearAll()}>

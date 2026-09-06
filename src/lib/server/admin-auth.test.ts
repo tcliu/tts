@@ -13,7 +13,7 @@ import {
 
 let savedEnv: Record<string, string | undefined>
 
-beforeEach(() => {
+beforeEach(async () => {
   savedEnv = {
     ADMIN_USERNAME: process.env.ADMIN_USERNAME,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
@@ -23,8 +23,8 @@ beforeEach(() => {
   delete process.env.ADMIN_PASSWORD
   delete process.env.ADMIN_PASSWORD_HASH
   process.env.SESSION_SECRET = 'test-secret'
-  resetLoginAttempts('127.0.0.1')
-  resetLoginAttempts('10.0.0.1')
+  await resetLoginAttempts('127.0.0.1')
+  await resetLoginAttempts('10.0.0.1')
 })
 
 afterEach(() => {
@@ -91,14 +91,14 @@ describe('admin-auth sessions', () => {
 })
 
 describe('admin-auth login rate limit', () => {
-  it('limits after 5 attempts within the window', () => {
+  it('limits after 5 attempts within the window', async () => {
     const ip = '10.0.0.1'
-    expect(isLoginRateLimited(ip)).toBe(false)
+    expect(await isLoginRateLimited(ip)).toBe(false)
     for (let i = 0; i < 5; i += 1) {
-      recordLoginAttempt(ip)
+      await recordLoginAttempt(ip)
     }
-    expect(isLoginRateLimited(ip)).toBe(true)
-    resetLoginAttempts(ip)
-    expect(isLoginRateLimited(ip)).toBe(false)
+    expect(await isLoginRateLimited(ip)).toBe(true)
+    await resetLoginAttempts(ip)
+    expect(await isLoginRateLimited(ip)).toBe(false)
   })
 })

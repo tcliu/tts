@@ -5,6 +5,8 @@
   import SelectDropdown from '$lib/components/SelectDropdown.svelte'
   import NumberInput from '$lib/components/NumberInput.svelte'
   import Tabs from '$lib/components/Tabs.svelte'
+  import DeleteIcon from '$lib/icons/DeleteIcon.svelte'
+  import EyeIcon from '$lib/icons/EyeIcon.svelte'
   import { UI_TEXT, type UiLocale } from '$lib/ui-text'
   import { REFERENCE_LANGUAGES, SPEEDS, SPEED_STEP, getVoiceGroups, getVoiceOptions } from '$lib/tts-reference'
   import { formatBytes } from '$lib/format-bytes'
@@ -199,17 +201,23 @@
             variant="secondary"
             size="sm"
             disabled={cacheStats === null || cacheStats.segments === 0}
-            ariaLabel={text.clearAllCacheEntries}
-            onClick={onClearCache}>
-            {text.clearAll}
+            ariaLabel={text.viewSynthesisCache}
+            onClick={onViewCache}>
+            {#snippet icon()}
+              <EyeIcon className="h-4 w-4" />
+            {/snippet}
+            {text.view}
           </Button>
           <Button
             variant="secondary"
             size="sm"
             disabled={cacheStats === null || cacheStats.segments === 0}
-            ariaLabel={text.viewSynthesisCache}
-            onClick={onViewCache}>
-            {text.view}
+            ariaLabel={text.clearAllCacheEntries}
+            onClick={onClearCache}>
+            {#snippet icon()}
+              <DeleteIcon className="h-4 w-4" />
+            {/snippet}
+            {text.clearAll}
           </Button>
         </div>
       </div>

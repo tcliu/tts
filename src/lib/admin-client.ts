@@ -24,8 +24,6 @@ export function adminErrorCode(error: unknown): string {
 
 export function adminErrorMessage(code: string, text: UiText): string {
   switch (code) {
-    case 'invalid_credentials':
-      return text.adminLoginFailed
     case 'rate_limited':
       return text.adminErrorRateLimited
     case 'invalid_request':
@@ -193,6 +191,10 @@ export async function resetAdminProperty(key: string): Promise<AdminProperty[]> 
 export async function fetchAdminServerCache(): Promise<{ stats: AdminServerCacheStats; entries: AdminServerCacheEntry[] }> {
   const body = await get<{ stats: AdminServerCacheStats; entries: WireCacheEntry[] }>(`/synthesis-cache`)
   return { stats: body.stats, entries: body.entries.map(mapCacheEntry) }
+}
+
+export async function fetchAdminServerCacheAudio(key: string): Promise<{ audio: string; etag: string }> {
+  return get<{ audio: string; etag: string }>(`/synthesis-cache/audio?key=${encodeURIComponent(key)}`)
 }
 
 export async function clearAdminServerCache(keys?: string[]): Promise<{

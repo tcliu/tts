@@ -3,11 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('$app/environment', () => ({ browser: true }))
 vi.mock('$app/paths', () => ({ base: '' }))
 
-import { buildDocUrl, parseDocId, pushDocHistory, replaceDocHistory } from './document-history'
+import { buildDocUrl, lastDocUrl, parseDocId, pushDocHistory, readLastDocId, rememberDocId, replaceDocHistory } from './document-history'
 
 describe('document-history', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    localStorage.clear()
     window.history.replaceState(null, '', '/')
   })
 
@@ -64,5 +65,39 @@ describe('document-history', () => {
   it('returns the raw id when decodeURIComponent would throw', () => {
     window.history.replaceState(null, '', '/%ZZ')
     expect(parseDocId()).toBe('%ZZ')
+  })
+
+  it('remembers the active doc id on push', () => {
+    window.history.replaceState(null, '', '/')
+    pushDocHistory('doc-1')
+    expect(readLastDocId()).toBe('doc-1')
+  })
+
+  it('clears the remembered doc id for a fresh buffer', () => {
+    rememberDocId('doc-1')
+    window.history.replaceState(null, '', '/doc-1')
+    pushDocHistory(null)
+    expect(readLastDocId()).toBeNull()
+  })
+
+  it('remembers the active doc id on replace', () => {
+    window.history.replaceState(null, '', '/')
+    replaceDocHistory('doc-2')
+    expect(readLastDocId()).toBe('doc-2')
+  })
+
+  it('persists even when the url already shows the doc', () => {
+    window.history.replaceState(null, '', '/doc-9')
+    pushDocHistory('doc-9')
+    expect(readLastDocId()).toBe('doc-9')
+  })
+
+  it('falls back to the editor root without a remembered doc', () => {
+    expect(lastDocUrl()).toBe('/')
+  })
+
+  it('builds the remembered doc url', () => {
+    rememberDocId('doc-7')
+    expect(lastDocUrl()).toBe('/doc-7')
   })
 })

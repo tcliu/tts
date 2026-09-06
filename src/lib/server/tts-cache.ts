@@ -337,7 +337,7 @@ export async function loadServerCacheOverview(): Promise<ServerCacheOverview> {
   }
 }
 
-function isSafeCacheKey(key: string): boolean {
+export function isSafeCacheKey(key: string): boolean {
   return /^[A-Za-z0-9_-]{1,128}$/.test(key)
 }
 

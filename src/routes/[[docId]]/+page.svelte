@@ -47,9 +47,10 @@
   import { createWarmCacheController } from '$lib/page/warm-cache'
   import { useKeyboardShortcuts } from '$lib/page/use-keyboard-shortcuts.svelte'
   import { useBeforeUnloadGuard } from '$lib/page/use-beforeunload-guard.svelte'
-  import { goto } from '$app/navigation'
+  import { goto, invalidateAll } from '$app/navigation'
   import { useAdminPresence } from '$lib/use-admin-presence.svelte'
   import ProfileIcon from '$lib/icons/ProfileIcon.svelte'
+  import { logout as logoutUser } from '$lib/user-auth'
   import { usePlaybackSlider } from '$lib/page/use-playback-slider.svelte'
   import { usePlayback, type CodeEditorHandle } from '$lib/use-playback.svelte'
   import { useMetadata, RESYNC_DEBOUNCE_MS } from '$lib/use-metadata.svelte'
@@ -60,7 +61,7 @@
   import { useDocuments } from '$lib/use-documents.svelte'
   import { useDocumentEditor } from '$lib/use-document-editor.svelte'
   import { useDocumentsDrawer } from '$lib/use-documents-drawer.svelte'
-
+  let { data }: { data: { user: { id: number; username: string; email: string } | null } } = $props()
   const settings = useSettings()
   const adminPresence = useAdminPresence()
   const documents = useDocuments()
@@ -288,7 +289,14 @@
   }
 
   function dialogsOpen() {
-    return settingsOpen || editor.overwriteConfirmOpen || editor.discardDialogOpen || editor.deleteDialogOpen || editor.playbackConfirmOpen
+    return (
+      settingsOpen ||
+      accountOpen ||
+      editor.overwriteConfirmOpen ||
+      editor.discardDialogOpen ||
+      editor.deleteDialogOpen ||
+      editor.playbackConfirmOpen
+    )
   }
 
   function selectLanguage(value: UiLocale) {
@@ -299,7 +307,47 @@
   function selectTheme(value: UiTheme) {
     settings.setTheme(value)
   }
+  function handleLoginClick() {
+    // The active slug is already persisted to localStorage on every
+    // navigation, so the login page reads it back directly.
+    void goto('/login')
+  }
 
+  let accountOpen = $state(false)
+  let accountPending = $state(false)
+  let accountError = $state('')
+
+  function handleProfileClick() {
+    if (adminPresence.isAdmin) {
+      void goto('/admin')
+      return
+    }
+    if (!data?.user) {
+      handleLoginClick()
+      return
+    }
+    accountError = ''
+    accountOpen = true
+  }
+
+  async function handleAccountLogout() {
+    if (accountPending) {
+      return
+    }
+    accountPending = true
+    accountError = ''
+    try {
+      await logoutUser()
+      accountOpen = false
+      // Re-runs the layout load so `data.user` clears and the documents
+      // sync toggle stops pushing mutations.
+      await invalidateAll()
+    } catch (error) {
+      accountError = error instanceof Error ? error.message : text.authSignOutFailed
+    } finally {
+      accountPending = false
+    }
+  }
   onMount(() => {
     const disposeSettings = settings.hydrate()
     void adminPresence.refresh()
@@ -313,6 +361,13 @@
       disposeSettings()
       playback.stopPlayback()
     }
+  })
+
+  // Account state arrives via layout data: sync the server copy into the
+  // merged listing on sign-in, and stop pushing mutations on sign-out. Runs
+  // on mount too, so no separate call above.
+  $effect(() => {
+    documents.setSyncEnabled(data.user !== null)
   })
 
   // Browser Back/Forward moves between documents; respect unsaved-changes
@@ -501,13 +556,11 @@
           <SettingsIcon className="h-4 w-4" />
         {/snippet}
       </Button>
-      {#if adminPresence.isAdmin}
-        <Button variant="secondary" size="sm" ariaLabel={text.adminTitle} tooltip={text.adminTitle} onClick={() => goto('/admin')}>
-          {#snippet icon()}
-            <ProfileIcon className="h-4 w-4" />
-          {/snippet}
-        </Button>
-      {/if}
+      <Button variant="secondary" size="sm" ariaLabel={adminPresence.isAdmin ? text.adminTitle : (data?.user ? data.user.username : text.authLogin)} tooltip={adminPresence.isAdmin ? text.adminTitle : (data?.user ? data.user.username : text.authLogin)} onClick={handleProfileClick}>
+        {#snippet icon()}
+          <ProfileIcon className="h-4 w-4" />
+        {/snippet}
+      </Button>
     </div>
   </header>
 
@@ -521,9 +574,11 @@
       bind:inputRef={drawerSearchRef}
       isOpen={drawerVisible}
       isDocked={isDocked}
+      syncError={documents.syncError}
       onNew={editor.requestNewDocument}
       onOpen={editor.requestOpenDocument}
-      onClose={dismissDrawerAndFocusTrigger} />
+      onClose={dismissDrawerAndFocusTrigger}
+      onLogin={handleLoginClick} />
 
     <main class="flex min-w-0 flex-1 flex-col gap-2 px-3 py-2 sm:px-4 sm:py-2">
       <div class="flex flex-none min-w-0 items-center">
@@ -764,7 +819,6 @@
               editable={!playback.isPlaying}
               selectionEnabled={!playback.isPlaying}
               theme={settings.theme}
-              autoFocus={true}
               editorAriaLabel={text.editorLabel}
               containerClass="min-h-0 flex-1"
               editorClass="h-full" />
@@ -831,6 +885,7 @@
         loading={synthesisCache.dialogLoading}
         onCancel={synthesisCache.closeDialog}
         onClearSelected={synthesisCache.clearSelected}
+        onClearAll={synthesisCache.clearAll}
         onBeforePlay={() => playback.stopPlayback()} />
     {:catch}
       <!-- Chunk load failed; drop the dialog instead of leaving an unhandled rejection. -->
@@ -880,6 +935,20 @@
         <p class="text-sm leading-6 text-slate-400">{text.stopPlaybackMessage}</p>
         <div class="flex flex-wrap items-center justify-end gap-3">
           <Button variant="primary" accent="rose" onClick={editor.confirmPlayback}>{text.stopPlaybackConfirm}</Button>
+        </div>
+      </div>
+    </BaseDialog>
+  {/if}
+
+  {#if accountOpen && data?.user}
+    <BaseDialog title={text.authAccount} maxWidth="md" closeLabel={text.close} onCancel={() => (accountOpen = false)}>
+      <div class="flex flex-col gap-4">
+        <p class="truncate text-sm font-medium text-slate-100">{data.user.username}</p>
+        {#if accountError}
+          <p class="text-sm text-rose-400">{accountError}</p>
+        {/if}
+        <div class="flex flex-wrap items-center justify-end gap-3">
+          <Button variant="primary" accent="rose" pending={accountPending} onClick={() => void handleAccountLogout()}>{text.authSignOut}</Button>
         </div>
       </div>
     </BaseDialog>

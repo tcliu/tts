@@ -5,7 +5,6 @@
   import { useListSelection, revealInScrollport } from '$lib/actions/use-list-selection.svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
   import { TEXT_SIZE, type TextSize } from '$lib/text-size'
-  import CheckIcon from '$lib/icons/CheckIcon.svelte'
   import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
   import type { DropdownPanelProps } from '$lib/dropdown-chrome'
 
@@ -141,7 +140,8 @@
 
   function openPanel() {
     lastFilteredOptions = filteredOptions
-    selection.reset()
+    // Highlight the committed value on open; hover/arrows move from there.
+    selection.syncToActive(filteredOptions, option => option.value === activeValue)
     open = true
   }
 
@@ -313,9 +313,6 @@
           onmouseenter={() => selection.set(index)}
           class={`${optionRowClass} ${index === selection.index ? 'bg-slate-800 text-cyan-200' : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200'}`}>
           <span class="min-w-0 truncate">{option.label}</span>
-          {#if option.value === activeValue}
-            <CheckIcon className="h-4 w-4 shrink-0 text-cyan-200" />
-          {/if}
         </button>
       {/each}
     </div>

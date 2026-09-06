@@ -16,9 +16,11 @@
     inputRef?: HTMLInputElement | null
     isOpen?: boolean
     isDocked?: boolean
+    syncError?: string | null
     onNew: () => void
     onOpen: (id: string) => void
     onClose?: () => void
+    onLogin?: () => void
   }
 
   let {
@@ -30,12 +32,18 @@
     inputRef = $bindable(null),
     isOpen = false,
     isDocked = false,
+    syncError = null,
     onNew,
     onOpen,
     onClose,
+    onLogin,
   }: Props = $props()
 
   const text = $derived(UI_TEXT[locale])
+
+  const syncErrorText = $derived(
+    syncError === 'session_expired' ? text.documentsSessionExpired : syncError ? text.documentsSyncFailed : '',
+  )
 
   let dragOffset = $state(0)
   let dragging = $state(false)
@@ -98,6 +106,18 @@
     <SearchInput bind:value={search} bind:inputRef={inputRef} ariaLabel={text.documentSearch} placeholder={text.documentSearch} />
   </div>
   <div tabindex="-1" class="min-h-0 flex-1 overflow-y-auto px-3 outline-none">
+    {#if syncErrorText}
+      {#if syncError === 'session_expired' && onLogin}
+        <button
+          type="button"
+          onclick={onLogin}
+          class="mb-2 w-full rounded-md border border-amber-700 bg-amber-950/50 px-2 py-1.5 text-left text-xs text-amber-200 outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+          {syncErrorText}
+        </button>
+      {:else}
+        <p class="mb-2 text-xs text-amber-200/90" role="status">{syncErrorText}</p>
+      {/if}
+    {/if}
     {#if documents.length === 0}
       <p class="text-xs text-slate-500">{search.trim() ? text.noMatchingDocuments : text.noSavedDocuments}</p>
     {:else}

@@ -2,6 +2,7 @@
   import { onMount, type Snippet } from 'svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
+  import { lastDocUrl } from '$lib/document-history'
   import Button from '$lib/components/Button.svelte'
   import Menu from '$lib/components/Menu.svelte'
   import DocumentIcon from '$lib/icons/DocumentIcon.svelte'
@@ -11,7 +12,6 @@
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
   import PaletteIcon from '$lib/icons/PaletteIcon.svelte'
   import Tabs, { type Tab } from '$lib/components/Tabs.svelte'
-  import AdminLoginView from '$lib/components/AdminLoginView.svelte'
   import { adminErrorMessage } from '$lib/admin-client'
   import AdminPropertiesView from '$lib/components/AdminPropertiesView.svelte'
   import AdminSynthesisCacheView from '$lib/components/AdminSynthesisCacheView.svelte'
@@ -75,13 +75,6 @@
     },
   })
 
-  function handleAuthenticated() {
-    authState.markAuthenticated()
-    // Stay at /admin: the tabs below render the Properties content for the
-    // bare path, and the effects above load properties (and the cache on
-    // its tab). No navigation so the URL never leaves /admin on login.
-  }
-
   $effect(() => {
     if (authState.state === 'authenticated' && !propertiesState.pending && propertiesState.properties.length === 0) {
       void propertiesState.load()
@@ -97,9 +90,6 @@
 
   onMount(() => {
     const disposeSettings = settings.hydrate()
-    if (!data.adminAuthenticated) {
-      void authState.checkSession()
-    }
     return () => {
       disposeSettings()
     }
@@ -107,13 +97,13 @@
 </script>
 
 <svelte:head>
-  <title>{text.adminTitle}</title>
+  <title>{text.appTitle}</title>
 </svelte:head>
 
 <div class="flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-200">
   <header class="flex flex-none items-center justify-between border-b border-slate-800 px-3 py-3 sm:px-4">
     <h1 class="text-base font-semibold tracking-tight text-slate-200 sm:text-lg">
-      {text.adminTitle}
+      {text.appShortTitle}
     </h1>
     <div class="flex items-center gap-2">
       <Menu
@@ -180,18 +170,16 @@
           <span>{option.label}</span>
         {/snippet}
       </Menu>
-      <Button size="sm" ariaLabel={text.adminBackToEditor} tooltip={text.adminBackToEditor} onClick={() => goto('/')}>
+      <Button size="sm" ariaLabel={text.adminBackToEditor} tooltip={text.adminBackToEditor} onClick={() => goto(lastDocUrl())}>
         {#snippet icon()}
           <DocumentIcon />
         {/snippet}
       </Button>
-      {#if authState.state === 'authenticated'}
-        <Button size="sm" ariaLabel={text.adminSignOut} tooltip={text.adminSignOut} onClick={() => void authState.handleLogout()}>
-          {#snippet icon()}
-            <SignOutIcon />
-          {/snippet}
-        </Button>
-      {/if}
+      <Button size="sm" ariaLabel={text.adminSignOut} tooltip={text.adminSignOut} onClick={() => void authState.handleLogout()}>
+        {#snippet icon()}
+          <SignOutIcon />
+        {/snippet}
+      </Button>
     </div>
   </header>
   <main class="min-h-0 flex-1">
@@ -213,7 +201,7 @@
           {/snippet}
         </Button>
       </div>
-    {:else if authState.state === 'authenticated'}
+    {:else}
       {#snippet propertiesContent(state: AdminState)}
         <AdminPropertiesView locale={locale} propertiesState={state.propertiesState} />
       {/snippet}
@@ -239,9 +227,6 @@
           pathname={page.url.pathname === '/admin' ? PROPERTIES_PATH : page.url.pathname}
           ariaLabel={text.adminSections} />
       </div>
-      {@render children()}
-    {:else}
-      <AdminLoginView locale={locale} unconfigured={authState.unconfigured} onAuthenticated={handleAuthenticated} />
       {@render children()}
     {/if}
   </main>

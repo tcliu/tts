@@ -1,6 +1,14 @@
 # AGENTS — tts
-
 Project-specific development conventions for the TTS web app.
+
+## Agent progress
+
+- Apply the `agent-progress` skill for bounded, observable progress and repeated-approach control.
+
+## Skill routing
+
+- Use the `skill-routing` skill for non-trivial, composite, or ambiguous requests to select and sequence the appropriate skills.
+- Honor the selected skills' approval, verification, and scope constraints.
 
 ## Read first
 
@@ -27,18 +35,20 @@ Project-specific development conventions for the TTS web app.
   `.worktrees/` per the shared `references/git.md` worktree practice, unless the
   user opts to apply them on top of the current worktree. Create worktrees with
   `node scripts/create-worktree.mjs <branch>` from the default worktree; it
-  copies the gitignored local dev files (`.env`, `.env.local`, `.env.dev`) and
-  sets `DEV_TAG=<branch>` in the new worktree's `.env.dev` so the bottom-left
+  copies the gitignored local dev files (`.env`, `.env.local`) and
+  sets `DEV_TAG=<branch>` in the new worktree's `.env.local` so the bottom-left
   worktree-tag block identifies the branch. Z ladder: sticky content `z-10`,
   drawer `z-20`, overlays (dialog scrim, menus, dropdown panels, tooltip)
   `z-40`, dev tag `z-50` — keep overlays at or below `z-40` so the tag is never
   covered by a tooltip or modal scrim.
-- Server-side events log through `src/lib/server/logging` following
-  `references/logging.md`: every state-changing action emits a structured
-  `ip=<ip> action=<action> ...` line carrying key identifying info, and async
-  operations also log `_start`/`_end` with `elapsed_ms`; never log secrets,
-  tokens, or document contents.
-- JSON payloads and exported metadata files use `snake_case` field names per `references/api-client.md`; map to `camelCase` only at the app boundary.
+- Server-side events log through `src/lib/server/logging` following `references/logging.md`: every state-changing action emits a structured `ip=<ip> action=<action> ...` line carrying key identifying info, and async operations also log `_start`/`_end` with `elapsed_ms`; never log secrets, tokens, or document contents.
+- Server validates required prod env at startup via `assertProdEnv` (`src/lib/server/env.ts`, called from `hooks.server.ts`): missing prod credentials log `env_invalid` and throw fail-fast; see `docs/spec.md` for the gate semantics.
+- User accounts self-register at `/login` with HMAC-signed `httpOnly` `sameSite=strict` sessions; normalize usernames/emails, hash with scrypt, reject the admin username, and share the admin IP-keyed brute-force bucket — see `docs/spec.md` §Auth model.
+- Throwaway e2e accounts use `e2e_<purpose>_<timestamp>` usernames (`load_<purpose>_<timestamp>` for stress runs, which never target prod); machine rows are identifiable via `LIKE 'e2e\_%'` and must be deleted after the run.
+- Database is dual-backend (dev SQLite, prod Neon via `DATABASE_URL`); follow `references/sql.md` with Postgres-first `sql/schema.sql` and apply prod schema via `npm run schema:apply` — see `ARCHITECTURE.md` for backend topology.
+- Persist shared authentication throttles in the configured database, not process-local memory, so limits hold across serverless instances. Do not clear a shared IP failure bucket after an unrelated successful login; let the configured window expire.
+- Enforce authentication invariants in the domain model as well as HTTP routes: reject reserved identities and short passwords at `createUser`, and expose stable generic registration error codes so account existence cannot be enumerated.
+- Enforce per-user document quotas on writes inside a transaction; enable SQLite foreign keys so development matches production ownership and cascade behavior.
 - Written language is the top-level `code` in `reference-languages.json`; spoken variants are `aliases` there (e.g. `yue`→`zh`) resolved via `toWrittenLang` in `tts-reference.ts` with fixed groups in `SPOKEN_GROUP` (e.g. `yue`→`Cantonese`); voice variants are the per-voice `group` (e.g. Mandarin/Cantonese/Taiwanese under `zh`).
 - Temporary scratch files (plans, proposals, scratch notes) go in `.tmp/`,
   never in source directories.
@@ -68,9 +78,7 @@ Project-specific development conventions for the TTS web app.
   add `min-h-screen`, clip the shell with `overflow-hidden`, or chase mobile
   keyboard gaps with viewport-unit workarounds — those differences are owned by
   the browser (see `references/cross-browser.md`).
-- Defer editor focus with `tick()` whenever drawer or dialog state changes
-  visibility (`focusEditor` in `+page.svelte`); synchronous focus into a
-  just-hidden or not-yet-shown subtree is silently dropped.
+- Defer editor focus with `tick()` whenever creating a new document changes drawer or dialog visibility (`focusEditor` in `+page.svelte`); synchronous focus into a just-hidden or not-yet-shown subtree is silently dropped. Opening an existing document keeps focus behavior owned by the drawer interaction.
 - Controls that would move focus away from the editor (preview toggles, drawer
   buttons, list-collapse buttons) pass the `Button` `preventFocusSteal` prop so
   the button never takes focus on `pointerdown` while its `click` still fires;
@@ -92,7 +100,7 @@ Project-specific development conventions for the TTS web app.
 - Documents drawer docks at `lg` (`lg:static lg:w-72` expanded, `lg:w-0` collapsed; `absolute w-64 z-20` overlay below `lg`); keep `DOCKED_QUERY` in `+page.svelte` synced with `DocumentsDrawer` and gate overlay-only dismissals with `isDocked`; collapsed docked drawer is `inert` + `aria-hidden`. Overlay drawer closes by swipe/drag left via `dragCloseLeft` gated by `!isDocked` — see `docs/spec.md` §Documents model.
 - Playback toolbar is a container-query ladder (`@container`, 9 bands `tiny→full` in `toolbar-ladder.ts`) with paired `TOOLBAR_BANDS`/`INLINE_AT_BAND`/`REVEAL_CLASS` literals; thresholds are calibrated at `--text-sm` worst-Latin (`--container-tts-*` in `src/styles.css`: `4→352`, `5→432`, `6→508`) and all three tables must change together.
 - Icon-only `Button` uses uniform padding (`p-1.5` for `sm`, `p-2.5` for `md`) so vertical/horizontal match; text buttons keep `px`/`py` distinction.
-- Dropdown/menu option panels show at most one highlighted row at a time, shared by mouse hover and keyboard (`ArrowUp/Down`, `Home/End`). The highlight follows `useListSelection` index via `onmouseenter` and `selection.move`; the selected value is `aria-selected`/`aria-checked` + checkmark only, not a second background.
+- Dropdown/menu option panels show at most one highlighted row at a time, shared by mouse hover and keyboard (`ArrowUp/Down`, `Home/End`). The highlight follows `useListSelection` index via `onmouseenter` and `selection.move`; the committed value is `aria-selected`/`aria-checked` only, not a second background or checkmark — the shared highlight already marks it on hover/focus.
 - Header language/theme menus keep the shared custom `Menu` component across devices; on phone-class viewports (same `<28rem` threshold as `BaseDialog` sheet mode) they present as bottom sheets with the same radio-menu semantics and focus-return behavior, not native pickers. Bottom sheets are top-level only and never stack inside a dialog: in-dialog dropdowns keep their anchored popover on all viewports (phone tap targets via CSS `min-h`, focus stays on the in-dialog trigger so the dialog focus trap holds).
 - Option panels hide only when their trigger is clipped or out of viewport after scroll (via `useDropdown` `isHostHidden` check), not on any ancestor scroll; scrolling the panel's own list never dismisses.
 - Synthesis cache dialog's table spans the dialog width (`w-full`), uses `DataTable` `fillHeight` (`min-h-0 overflow-auto`) inside the `BaseDialog` `maxWidth="wide" height="tall"` (`w-[min(96vw,96rem)] h-[min(88vh,860px)] flex-col`) shell so the dialog itself never vertically scrolls; pagination handles overflow. The table is the shared `DataTable` (`tableClass`
@@ -144,7 +152,7 @@ Project-specific development conventions for the TTS web app.
   before finishing changes.
 - Follow `references/git.md` for commit message conventions and worktree
   isolation.
-
+- Follow `references/sql.md` for SQL schema and query conventions.
 ## Keeping references in sync
 
 - When a code change establishes or revises a project-specific convention, update
@@ -155,6 +163,7 @@ Project-specific development conventions for the TTS web app.
 - Shared reference files under `$AI_CONFIG_DIR/references/` must stay generic and
   implementation-agnostic: no project-specific paths, component names, routes, or
   internal identifiers. Put project-level details in this `AGENTS.md` instead.
+- When recording a convention borrowed from a sibling project, describe only the rule and its content; never name the source project.
 - This `AGENTS.md` holds project-specific *development conventions* — rules to
   follow when writing code — not feature descriptions or implementation
   narratives. Keep each bullet to the rule plus the briefest rationale;

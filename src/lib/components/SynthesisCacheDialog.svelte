@@ -17,6 +17,7 @@
     loading?: boolean
     onCancel: () => void
     onClearSelected: (keys: string[]) => void | Promise<void>
+    onClearAll?: () => void | Promise<void>
     onBeforePlay?: () => void
   }
 
@@ -26,9 +27,9 @@
     loading = false,
     onCancel,
     onClearSelected,
+    onClearAll,
     onBeforePlay,
   }: Props = $props()
-
   const text = $derived(UI_TEXT[locale])
 
   let search = $state('')
@@ -331,12 +332,6 @@
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
-        <Button variant="secondary" size="sm" disabled={!hasSelection} ariaLabel={text.clearSelectedCacheEntries} onClick={() => void clearSelected()}>
-          {#snippet icon()}
-            <DeleteIcon className="h-4 w-4" />
-          {/snippet}
-          {text.clear}
-        </Button>
         <Button variant="outline" accent="cyan" size="sm" ariaPressed={playing} disabled={!hasSelection} ariaLabel={playing ? text.stopSelectedCachePlayback : text.playSelectedCacheEntries} onClick={() => void playSelected()}>
           {#snippet icon()}
             {#if playing}
@@ -346,6 +341,18 @@
             {/if}
           {/snippet}
           {playing ? text.stop : text.playback}
+        </Button>
+        <Button variant="secondary" size="sm" disabled={!hasSelection} ariaLabel={text.clearSelectedCacheEntries} onClick={() => void clearSelected()}>
+          {#snippet icon()}
+            <DeleteIcon className="h-4 w-4" />
+          {/snippet}
+          {text.clear}
+        </Button>
+        <Button variant="secondary" size="sm" disabled={entries.length === 0} ariaLabel={text.clearAllCacheEntries} onClick={() => void onClearAll?.()}>
+          {#snippet icon()}
+            <DeleteIcon className="h-4 w-4" />
+          {/snippet}
+          {text.clearAll}
         </Button>
       </div>
     </div>
