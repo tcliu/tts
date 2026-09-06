@@ -8,6 +8,7 @@
   import PanelMenu from '$lib/components/PanelMenu.svelte'
   import { REVEAL_CLASS, TOOLBAR_BANDS, menuFor, type PanelAction, type ToolbarMode } from '$lib/toolbar-ladder'
   import DocumentsDrawer from '$lib/components/DocumentsDrawer.svelte'
+  import Toast from '$lib/components/Toast.svelte'
   import Menu from '$lib/components/Menu.svelte'
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
   import SettingsIcon from '$lib/icons/SettingsIcon.svelte'
@@ -313,6 +314,12 @@
     void goto('/login')
   }
 
+  let sessionToastDismissed = $state(false)
+  $effect(() => {
+    if (documents.syncError !== 'session_expired') sessionToastDismissed = false
+  })
+  const showSessionToast = $derived(documents.syncError === 'session_expired' && !sessionToastDismissed)
+
   let accountOpen = $state(false)
   let accountPending = $state(false)
   let accountError = $state('')
@@ -577,8 +584,7 @@
       syncError={documents.syncError}
       onNew={editor.requestNewDocument}
       onOpen={editor.requestOpenDocument}
-      onClose={dismissDrawerAndFocusTrigger}
-      onLogin={handleLoginClick} />
+      onClose={dismissDrawerAndFocusTrigger} />
 
     <main class="flex min-w-0 flex-1 flex-col gap-2 px-3 py-2 sm:px-4 sm:py-2">
       <div class="flex flex-none min-w-0 items-center">
@@ -952,5 +958,14 @@
         </div>
       </div>
     </BaseDialog>
+  {/if}
+
+  {#if showSessionToast}
+    <Toast
+      message={text.documentsSessionExpired}
+      closeLabel={text.close}
+      position="top-center"
+      type="warning"
+      onClose={() => (sessionToastDismissed = true)} />
   {/if}
 </div>
