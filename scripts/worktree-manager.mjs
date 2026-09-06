@@ -55,8 +55,11 @@ const PRESET_COMMANDS = [
 
 const HELP_TEXT =
   "Arrows: move · Space: select · a: all · Tab: menu · c: cmd · s: shell · " +
-  "d: del focused · D: del checked · r: refresh · PgUp/PgDn: cmd output · " +
+  "Del: delete (batch when >1 checked) · r: refresh · PgUp/PgDn: cmd output · " +
   "q: quit · Ctrl-C: stop cmd/quit";
+
+const DEFAULT_STATUS =
+  `${c.green}Ready.${c.reset} Tab: menu · Space: select · Del: delete (batch when >1 checked) · c: cmd · s: shell · r: refresh · q: quit.`;
 
 const MODES = ["Actions", "Command"];
 
@@ -1035,6 +1038,25 @@ function onData(chunk) {
         i += 4;
         continue;
       }
+      if (seq4 === "\x1b[3~") {
+        if (state.mode === "list") {
+          if (state.checked.size > 1) {
+            confirmDeleteFlow(
+              state.rows.filter((rr) => state.checked.has(rr.path) && !rr.main),
+            );
+          } else {
+            const r = state.rows[state.cursor];
+            if (!r || r.main) {
+              state.status = `${c.yellow}Cannot delete the main root.${c.reset}`;
+              redraw();
+            } else {
+              confirmDeleteFlow([r]);
+            }
+          }
+        }
+        i += 4;
+        continue;
+      }
       handleEscape();
       i += 1;
       continue;
@@ -1090,21 +1112,6 @@ function onData(chunk) {
       if (ch === "q") {
         quit();
         return;
-      } else if (ch === "d") {
-        const r = state.rows[state.cursor];
-        if (!r || r.main) {
-          state.status = `${c.yellow}Cannot delete the main root.${c.reset}`;
-          redraw();
-        } else {
-          confirmDeleteFlow([r]);
-        }
-      } else if (ch === "D") {
-        if (state.checked.size === 0) {
-          state.status = `${c.yellow}No worktrees selected.${c.reset}`;
-          redraw();
-        } else {
-          confirmDeleteFlow(state.rows.filter((r) => state.checked.has(r.path) && !r.main));
-        }
       } else if (ch === " ") {
         toggleCheckbox();
       } else if (ch === "a") {
@@ -1255,13 +1262,20 @@ function handleBackspace() {
 function handleEscape() {
   if (state.mode === "run") {
     // Running: Esc stops the command and closes the pane. Finished: just close.
+    state.status = DEFAULT_STATUS;
     paneClose();
   } else if (state.mode === "confirm") {
     state.mode = "list";
     state.confirm = null;
+    state.status = DEFAULT_STATUS;
     redraw();
   } else if (state.mode === "menu") {
+    state.status = DEFAULT_STATUS;
     closeMenu();
+  } else if (state.mode === "list") {
+    // Esc clears any transient result message back to the default hint line.
+    state.status = DEFAULT_STATUS;
+    redraw();
   }
 }
 
@@ -1282,7 +1296,7 @@ const state = {
   cmdHistory: [],
   cmdHistIndex: -1,
   suspended: false,
-  status: `${c.green}Ready.${c.reset} Tab: menu · Space: select · d: delete · D: batch · c: cmd · s: shell · r: refresh · q: quit.`,
+  status: DEFAULT_STATUS,
   lastLines: null,
   fullClear: true,
 };
