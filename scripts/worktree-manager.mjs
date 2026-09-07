@@ -11,13 +11,14 @@
 // branch name comes from a foreign .git and may collide with a real main-repo
 // branch.
 //
-// Command mode splits a persistent sub-pane off the worktrees frame and works
-// like an embedded shell session: the status line acts as the prompt, each
-// entered command spawns as a child in the pane's worktree, and its
-// (ANSI-stripped) output streams into the pane, which stays open for the next
-// command. Ctrl-C stops the running command, Ctrl-D (empty prompt) or Esc
-// closes the pane, PgUp/PgDn scrolls. The interactive shell keeps the
-// fullscreen suspend/resume flow because it needs a real TTY.
+// Command mode attaches a sub-pane to the focused row and works like an
+// embedded shell session: the status line acts as the prompt, each entered
+// command spawns as a child in the pane's worktree, and its (ANSI-stripped)
+// output streams into the pane. Detached processes keep running with a row
+// badge (green ▶); Esc detaches, Ctrl-D drops a finished proc, x kills the
+// focused row's proc, Ctrl-C stops the attached command, PgUp/PgDn scrolls,
+// quit stops everything. The interactive shell keeps the fullscreen
+// suspend/resume flow because it needs a real TTY.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { stdin, stdout } from "node:process";
@@ -34,17 +35,16 @@ import {
   resolveBaseBranch,
 } from "./_worktrees.mjs";
 
-const c = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  red: "\x1b[31m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  cyan: "\x1b[36m",
-  gray: "\x1b[90m",
-  reverse: "\x1b[7m",
-};
+import {
+  c,
+  createScreenRenderer,
+  createTerminalManager,
+  displayWidth,
+  padRight,
+  parseSgrMouse,
+  truncate,
+  wrapText,
+} from "./_tui.mjs";
 
 const PRESET_COMMANDS = [
   { label: "npm install", value: "npm install" },
@@ -58,7 +58,7 @@ const PRESET_COMMANDS = [
 
 const HELP_TEXT =
   "Arrows: move · Space: select · a: all · Tab: menu · c: cmd · s: shell · " +
-  "Del: delete · r: refresh · PgUp/PgDn: cmd output · " +
+  "Del: delete · x: stop bg · r: refresh · PgUp/PgDn: cmd output · " +
   "q: quit · Ctrl-C: stop cmd/quit";
 
 const DEFAULT_STATUS =
@@ -68,6 +68,7 @@ const MODES = ["Actions", "Command"];
 
 const OUTPUT_MAX_LINES = 2000;
 const KILL_ESCALATE_MS = 2000;
+const MAX_BACKGROUND = 8; // oldest finished proc evicted past this
 
 // Row offsets shared by the renderers and the mouse hit test so the two can
 // never drift apart.
@@ -76,100 +77,13 @@ const CONFIRM_NO_ROW = 4; // border, message, detail, separator precede "No"
 const CONFIRM_YES_ROW = 5;
 const LIST_TOP_ROW = 3; // header, subheader, box top border precede rows
 
-// ---- width helpers (CJK-aware, ported from tts.mjs) ----
+// ---- screen (diff-based redraw owned by shared _tui.mjs) ----
 
-function cjkWidth(ch) {
-  return /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/.test(
-    ch,
-  )
-    ? 2
-    : 1;
-}
-
-function displayWidth(s) {
-  let w = 0;
-  let inEsc = false;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (inEsc) {
-      if (ch === "m") inEsc = false;
-      continue;
-    }
-    if (ch === "\x1b") {
-      inEsc = true;
-      continue;
-    }
-    w += cjkWidth(ch);
-  }
-  return w;
-}
-
-function padRight(s, width) {
-  return s + " ".repeat(Math.max(0, width - displayWidth(s)));
-}
-
-function truncateAnsi(s, maxWidth) {
-  let w = 0;
-  let out = "";
-  let esc = false;
-  for (const ch of s) {
-    if (esc) {
-      out += ch;
-      if (ch === "m") esc = false;
-      continue;
-    }
-    if (ch === "\x1b") {
-      out += ch;
-      esc = true;
-      continue;
-    }
-    const cw = cjkWidth(ch);
-    if (w + cw > maxWidth) break;
-    w += cw;
-    out += ch;
-  }
-  return out;
-}
-
-function wrapText(text, width) {
-  const words = text.split(" ");
-  const lines = [];
-  let cur = "";
-  for (const w of words) {
-    const trial = cur ? cur + " " + w : w;
-    if (displayWidth(trial) > width && cur) {
-      lines.push(cur);
-      cur = w;
-    } else {
-      cur = trial;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
-// ---- diff-based redraw (ported from tts.mjs) ----
+const screen = createScreenRenderer();
+const term = createTerminalManager();
 
 function writeLines(lines) {
-  const prev = state.lastLines;
-  const full = state.fullClear || prev === null;
-  let out = "\x1b[?25l";
-  if (full) out += "\x1b[2J\x1b[H";
-  const max = Math.max(prev ? prev.length : 0, lines.length);
-  for (let k = 0; k < max; k++) {
-    const cur = lines[k];
-    const old = prev ? prev[k] : undefined;
-    if (!full && cur === old) {
-      continue;
-    }
-    if (cur === undefined) {
-      out += `\x1b[${k + 1};1H\x1b[K`;
-    } else {
-      out += `\x1b[${k + 1};1H\x1b[K${cur}`;
-    }
-  }
-  process.stdout.write(out);
-  state.lastLines = lines;
+  screen.render(lines, { fullClear: state.fullClear });
   state.fullClear = false;
 }
 // ---- domain ----
@@ -199,9 +113,20 @@ function refreshList() {
     .sort((a, b) => (b.commitTime ?? -1) - (a.commitTime ?? -1));
   for (const r of ordered) rows.push(r);
   state.rows = rows;
+  // Re-key background procs to fresh rows; kill procs whose worktree vanished.
+  const byPath = new Map(rows.map((r) => [r.path, r]));
+  for (const [key, proc] of state.procs) {
+    const row = byPath.get(key);
+    if (!row) {
+      paneKillChild(proc);
+      clearTimeout(proc.escalate);
+      state.procs.delete(key);
+    } else {
+      proc.row = row;
+    }
+  }
   // Keep surviving selections across refreshes; only vanished paths drop.
-  const paths = new Set(rows.map((r) => r.path));
-  state.checked = new Set([...state.checked].filter((p) => paths.has(p)));
+  state.checked = new Set([...state.checked].filter((p) => byPath.has(p)));
   if (state.cursor >= state.rows.length) {
     state.cursor = Math.max(0, state.rows.length - 1);
   }
@@ -274,6 +199,10 @@ function renderListRows() {
     const mainTag = r.main ? ` ${c.yellow}[main]${c.reset}` : "";
     const ab = r.aheadBehind;
     const parts = [];
+    const proc = state.procs.get(r.path);
+    if (proc?.running) parts.push(`${c.green}▶ ${proc.cmd || "running"}${c.reset}`);
+    else if (proc?.cmd && !proc.running && proc.exit !== 0)
+      parts.push(`${c.dim}exit ${proc.exit ?? "signal"}${c.reset}`);
     if (ab?.ahead > 0) parts.push(`${c.green}+${ab.ahead}${c.reset}`);
     if (ab?.behind > 0) parts.push(`${c.yellow}-${ab.behind}${c.reset}`);
     const age = formatRelativeTime(r.commitTime);
@@ -285,7 +214,7 @@ function renderListRows() {
     let cells = `${marker} ${box} ${r.name} ${branch}${unregistered}${mainTag}${meta}`;
     if (!cursor) cells = c.dim + cells + c.reset;
     // Last two content columns are reserved for the scroll edge marker.
-    let row = padRight(truncateAnsi(cells, contentW - 2), contentW - 2);
+    let row = padRight(truncate(cells, contentW - 2), contentW - 2);
     if (i === first && first > 0) row += ` ${c.dim}▲${c.reset}`;
     else if (i === last && last < state.rows.length - 1) row += ` ${c.dim}▼${c.reset}`;
     else row += "  ";
@@ -309,6 +238,7 @@ function currentOptions() {
       "Interactive shell",
       `Delete checked (${state.checked.size})`,
       "Delete focused",
+      "Stop background process",
       "Select all",
       "Clear selection",
       "Refresh",
@@ -335,7 +265,7 @@ function buildDialog() {
   const side = (t) => `${c.cyan}│${c.reset} ${t}${c.cyan} │${c.reset}`;
   const out = [
     border(`┌ MENU ${"─".repeat(Math.max(1, inner - 6))}┐`),
-    side(padRight(truncateAnsi(tabLine(), content), content)),
+    side(padRight(truncate(tabLine(), content), content)),
     side("─".repeat(content)),
   ];
   const opts = currentOptions();
@@ -356,7 +286,7 @@ function buildDialog() {
     } else {
       line = "";
     }
-    out.push(side(padRight(truncateAnsi(line, content), content)));
+    out.push(side(padRight(truncate(line, content), content)));
   }
   out.push(border(`└${"─".repeat(inner)}┘`));
   return { lines: out, start, total: opts.length };
@@ -370,8 +300,8 @@ function buildConfirm() {
   const side = (t) => `${c.red}│${c.reset} ${t}${c.red} │${c.reset}`;
   const out = [
     border(`┌ DELETE ${"─".repeat(Math.max(1, inner - 8))}┐`),
-    side(padRight(truncateAnsi(state.confirm.message, content), content)),
-    side(padRight(truncateAnsi(state.confirm.detail, content), content)),
+    side(padRight(truncate(state.confirm.message, content), content)),
+    side(padRight(truncate(state.confirm.detail, content), content)),
     side("─".repeat(content)),
   ];
   const opts = ["No", "Yes"];
@@ -380,7 +310,7 @@ function buildConfirm() {
     const marker = `${c.cyan}${isSel ? "▸" : " "}${c.reset}`;
     let row = `${marker} ${c.bold}${opts[i]}${c.reset}`;
     if (isSel) row = `${c.bold}${c.reverse}${row}${c.reset}`;
-    out.push(side(padRight(truncateAnsi(row, content), content)));
+    out.push(side(padRight(truncate(row, content), content)));
   }
   out.push(border(`└${"─".repeat(inner)}┘`));
   return { lines: out };
@@ -390,29 +320,32 @@ function buildConfirm() {
 
 const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[@-Z\\-_]/g;
 
-function panePushOutput(chunk, decoder) {
-  const pane = state.pane;
-  pane.pending += decoder.write(chunk);
-  const parts = pane.pending.split(/[\r\n]/);
-  pane.pending = parts.pop() ?? "";
+function procPushOutput(proc, chunk, decoder) {
+  proc.pending += decoder.write(chunk);
+  const parts = proc.pending.split(/[\r\n]/);
+  proc.pending = parts.pop() ?? "";
   for (const raw of parts) {
-    pane.lines.push(raw.replace(ANSI_RE, ""));
+    proc.lines.push(raw.replace(ANSI_RE, ""));
   }
-  if (pane.lines.length > OUTPUT_MAX_LINES) {
-    pane.lines.splice(0, pane.lines.length - OUTPUT_MAX_LINES);
+  if (proc.lines.length > OUTPUT_MAX_LINES) {
+    proc.lines.splice(0, proc.lines.length - OUTPUT_MAX_LINES);
   }
-  pane.dirty = true;
+  proc.dirty = true;
 }
 
-function paneFlush() {
-  const pane = state.pane;
-  if (!pane || !pane.dirty) return;
-  pane.dirty = false;
-  draw();
+// One shared flush tick for every background proc; draws once if any arrived.
+function flushProcs() {
+  let dirty = false;
+  for (const proc of state.procs.values()) {
+    if (proc.dirty) {
+      proc.dirty = false;
+      dirty = true;
+    }
+  }
+  if (dirty) draw();
 }
 
-function paneKillChild() {
-  const pane = state.pane;
+function paneKillChild(pane = state.pane) {
   if (!pane || !pane.running) return;
   try {
     process.kill(-pane.child.pid, "SIGTERM");
@@ -426,15 +359,53 @@ function paneKillChild() {
   }, KILL_ESCALATE_MS);
 }
 
-function paneClose() {
-  const pane = state.pane;
-  if (!pane) return;
-  if (pane.running) paneKillChild();
-  if (pane.timer) clearInterval(pane.timer);
-  if (pane.escalate) clearTimeout(pane.escalate);
+// Detach the pane, leaving its process running in the background. Reattach
+// by focusing the row and pressing c.
+function paneDetach() {
+  if (!state.pane) return;
   state.pane = null;
   state.mode = "list";
   state.fullClear = true;
+  redraw();
+}
+
+// Drop the attached pane's proc entirely. A running proc detaches instead.
+function dropPane() {
+  const pane = state.pane;
+  if (!pane) return;
+  if (pane.running) {
+    paneDetach();
+    return;
+  }
+  clearTimeout(pane.escalate);
+  state.procs.delete(pane.row.path);
+  state.pane = null;
+  state.mode = "list";
+  state.fullClear = true;
+  redraw();
+}
+
+function killFocusedProc() {
+  const r = state.rows[state.cursor];
+  const proc = r && state.procs.get(r.path);
+  if (!proc || !proc.cmd) {
+    state.status = `${c.yellow}No background process on this row.${c.reset}`;
+    redraw();
+    return;
+  }
+  if (proc.running) {
+    paneKillChild(proc);
+    state.status = `${c.yellow}Stopping ${proc.cmd} in ${r.name}…${c.reset}`;
+  } else {
+    clearTimeout(proc.escalate);
+    state.procs.delete(r.path);
+    if (state.pane === proc) {
+      state.pane = null;
+      state.mode = "list";
+      state.fullClear = true;
+    }
+    state.status = DEFAULT_STATUS;
+  }
   redraw();
 }
 
@@ -455,25 +426,39 @@ function paneStatusText() {
         : `${c.red}exit ${pane.exit ?? "signal"}${c.reset} · `;
   return (
     `${exitTag}${c.gray}${pane.row.name}${c.reset}` +
-    `${c.dim} · Enter runs · ↑ history · Ctrl-C clears · Esc closes${c.reset}`
+    `${c.dim} · Enter runs · ↑ history · Ctrl-C kills · Esc detaches${c.reset}`
   );
 }
 
 function openPane(row) {
   state.mode = "run";
-  state.pane = {
-    row,
-    cmd: "",
-    child: null,
-    lines: [],
-    pending: "",
-    scroll: 0,
-    running: false,
-    exit: null,
-    dirty: true,
-    timer: setInterval(paneFlush, 120),
-    escalate: null,
-  };
+  let proc = state.procs.get(row.path);
+  if (!proc) {
+    // Evict the oldest finished proc past the background cap; running procs
+    // are never evicted.
+    if (state.procs.size >= MAX_BACKGROUND) {
+      for (const [key, p] of state.procs) {
+        if (!p.running) {
+          state.procs.delete(key);
+          break;
+        }
+      }
+    }
+    proc = {
+      row,
+      cmd: "",
+      child: null,
+      lines: [],
+      pending: "",
+      scroll: 0,
+      running: false,
+      exit: null,
+      dirty: true,
+      escalate: null,
+    };
+    state.procs.set(row.path, proc);
+  }
+  state.pane = proc;
   state.cmdInput = [];
   state.cmdCaret = 0;
   state.cmdHistIndex = -1;
@@ -486,7 +471,7 @@ function runInWorktree(cmd, row) {
     redraw();
     return;
   }
-  if (!state.pane) openPane(row);
+  if (state.pane?.row.path !== row.path) openPane(row);
   const pane = state.pane;
   if (pane.running) return;
   if (pane.lines.length) pane.lines.push("");
@@ -508,8 +493,8 @@ function runInWorktree(cmd, row) {
   pane.child = child;
   pane.running = true;
   pane.dirty = true;
-  child.stdout.on("data", (chunk) => panePushOutput(chunk, decoder));
-  child.stderr.on("data", (chunk) => panePushOutput(chunk, decoder));
+  child.stdout.on("data", (chunk) => procPushOutput(pane, chunk, decoder));
+  child.stderr.on("data", (chunk) => procPushOutput(pane, chunk, decoder));
   child.on("error", (err) => {
     if (state.pane?.child === child) {
       state.pane.lines.push(`${err.message}`);
@@ -570,7 +555,7 @@ function draw() {
     for (let i = 0; i < outH; i++) {
       const idx = start + i;
       const out = idx >= 0 && idx < total ? pane.lines[idx] : "";
-      lines.push(side(padRight(truncateAnsi(out, boxW - 4), boxW - 4)));
+      lines.push(side(padRight(truncate(out, boxW - 4), boxW - 4)));
     }
     if (prompt) {
       const before = state.cmdInput.slice(0, state.cmdCaret).join("");
@@ -578,16 +563,16 @@ function draw() {
       const line =
         `${c.gray}${pane.row.name}${c.reset}${c.cyan}$ ${c.reset}` +
         `${before}${c.reverse} ${c.reset}${after}`;
-      lines.push(side(padRight(truncateAnsi(line, boxW - 4), boxW - 4)));
+      lines.push(side(padRight(truncate(line, boxW - 4), boxW - 4)));
     }
   }
   lines.push(border(`└${"─".repeat(boxW - 2)}┘`));
 
   let status;
   if (state.mode === "run" && state.pane) {
-    status = truncateAnsi(paneStatusText(), cols);
+    status = truncate(paneStatusText(), cols);
   } else {
-    status = truncateAnsi(state.status, cols);
+    status = truncate(state.status, cols);
   }
   lines.push(status);
   lines.push("");
@@ -756,18 +741,22 @@ function activateMenuItem() {
         return;
       }
       case 4:
-        selectAll();
+        killFocusedProc();
         closeMenu();
         return;
       case 5:
-        clearSelection();
+        selectAll();
         closeMenu();
         return;
       case 6:
-        refreshList();
+        clearSelection();
         closeMenu();
         return;
       case 7:
+        refreshList();
+        closeMenu();
+        return;
+      case 8:
         quit();
         return;
       default:
@@ -848,34 +837,6 @@ async function suspendForCommand({ run, row, label }) {
 
 // ---- input ----
 
-function parseMouse(s, i) {
-  let j = i + 3;
-  const nums = [];
-  let cur = "";
-  let endChar = "";
-  while (j < s.length) {
-    const ch = s[j];
-    if (ch === ";") {
-      nums.push(cur === "" ? 0 : parseInt(cur, 10));
-      cur = "";
-      j++;
-      continue;
-    }
-    if (ch === "M" || ch === "m") {
-      endChar = ch;
-      nums.push(cur === "" ? 0 : parseInt(cur, 10));
-      j++;
-      break;
-    }
-    if (ch < "0" || ch > "9") return null;
-    cur += ch;
-    j++;
-  }
-  if (endChar === "") return null;
-  if (nums.length < 3) return null;
-  return { button: nums[0], x: nums[1], y: nums[2], release: endChar === "m", len: j - i };
-}
-
 function handleMouse({ button, x, y, release }) {
   if (release || button !== 0) return;
   const { cols, rows: rr } = layout();
@@ -939,19 +900,19 @@ function handleMouse({ button, x, y, release }) {
 }
 
 function quit() {
-  if (state.pane) {
-    paneKillChild();
-    if (state.pane.timer) clearInterval(state.pane.timer);
-    if (state.pane.escalate) clearTimeout(state.pane.escalate);
+  for (const proc of state.procs.values()) {
+    paneKillChild(proc);
+    clearTimeout(proc.escalate);
   }
-  process.stdout.write("\x1b[?25h\x1b[?1006l\x1b[?1002l\x1b[?1049l");
-  stdin.setRawMode(false);
-  stdin.pause();
+  state.procs.clear();
+  clearInterval(flushTimer);
+  term.exit();
   console.log(`\nBye. ${state.rows.length} worktree(s) on disk.`);
   process.exit(0);
 }
 
 let pending = "";
+let flushTimer = null;
 
 function scrollOutput(delta) {
   const pane = state.pane;
@@ -983,7 +944,7 @@ function onData(chunk) {
           state.cmdHistIndex = -1;
           redraw();
         } else if (ch === "\x04") {
-          paneClose();
+          dropPane();
         } else {
           quit();
         }
@@ -995,7 +956,7 @@ function onData(chunk) {
 
     if (ch === "\x1b") {
       if (s[i + 1] === "[" && s[i + 2] === "<") {
-        const m = parseMouse(s, i);
+        const m = parseSgrMouse(s, i);
         if (!m) {
           pending = s.slice(i);
           break;
@@ -1162,6 +1123,8 @@ function onData(chunk) {
         launchShell(state.rows[state.cursor]);
       } else if (ch === "c") {
         startCommandInput();
+      } else if (ch === "x") {
+        killFocusedProc();
       }
       i += 1;
       continue;
@@ -1299,9 +1262,9 @@ function handleBackspace() {
 
 function handleEscape() {
   if (state.mode === "run") {
-    // Running: Esc stops the command and closes the pane. Finished: just close.
-    state.status = DEFAULT_STATUS;
-    paneClose();
+    // Esc detaches: the child keeps running in the background. Ctrl-C kills.
+    state.status = `${c.dim}Detached; command keeps running. Focus row + c to reattach.${c.reset}`;
+    paneDetach();
   } else if (state.mode === "confirm") {
     state.mode = "list";
     state.confirm = null;
@@ -1329,13 +1292,13 @@ const state = {
   mode: "list",
   confirm: null,
   pane: null,
+  procs: new Map(),
   cmdInput: [],
   cmdCaret: 0,
   cmdHistory: [],
   cmdHistIndex: -1,
   suspended: false,
   status: DEFAULT_STATUS,
-  lastLines: null,
   fullClear: true,
 };
 
@@ -1352,17 +1315,15 @@ async function main() {
   const startDir = path.resolve(process.argv[2] ?? ".");
   state.mainRoot = getMainRoot(startDir);
   refreshList();
-  stdin.setRawMode(true);
-  stdin.resume();
-  stdin.setEncoding("utf-8");
-  stdout.on("resize", () => {
+  term.onResize(() => {
     if (state.suspended) return;
     state.fullClear = true;
     redraw();
   });
-  process.stdout.write("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h");
+  term.enter();
+  flushTimer = setInterval(flushProcs, 120);
   draw();
-  stdin.on("data", onData);
+  term.onData(onData);
 }
 
 main().catch((e) => {
