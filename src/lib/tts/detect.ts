@@ -114,22 +114,30 @@ const FOREIGN_WORDS: Record<string, string[]> = {
 function isProbablyEnglish(text: string): boolean {
   return ENGLISH_DISTINCTIVE_RE.test(text)
 }
-function foreignWordScore(text: string, lang: string, minTokenLength = 3): number {
-  const words = FOREIGN_WORDS[lang]
+function foreignWordScore(tokens: Set<string>, lang: string, minTokenLength = 3): number {
+  const words = LOWER_FOREIGN_WORDS[lang]
   if (!words) return 0
-  const tokens = new Set(text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean))
   let score = 0
   for (const w of words) {
-    if (w.length >= minTokenLength && tokens.has(w.toLowerCase())) score += 1
+    if (w.length >= minTokenLength && tokens.has(w)) score += 1
   }
   return score
 }
 
+// Lowercased once at module load so scoring a paragraph never re-lowercases
+// the word lists; matching semantics are unchanged (tokens are lowercased).
+const LOWER_FOREIGN_WORDS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(FOREIGN_WORDS).map(([lang, words]) => [lang, words.map(word => word.toLowerCase())]),
+)
+
 function bestForeignLanguage(text: string, minTokenLength = 3): { lang: string | null; score: number } {
+  // Tokenize once: the previous per-language split re-ran toLowerCase plus a
+  // unicode split for every language (~100x redundant work per paragraph).
+  const tokens = new Set(text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean))
   let bestLang: string | null = null
   let bestScore = 0
   for (const lang of Object.keys(FOREIGN_WORDS)) {
-    const score = foreignWordScore(text, lang, minTokenLength)
+    const score = foreignWordScore(tokens, lang, minTokenLength)
     if (score > bestScore) {
       bestScore = score
       bestLang = lang
