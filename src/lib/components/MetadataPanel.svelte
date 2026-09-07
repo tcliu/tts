@@ -100,24 +100,24 @@
 </script>
 
 <section
-  aria-label={text.info}
+  aria-label={text.info.label}
   class="flex min-h-0 min-w-0 {!isDocked || expanded ? 'flex-1' : 'w-[32%] min-w-[18rem]'} flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
   <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
     <div class="flex flex-none items-center gap-2">
       <label class="relative block flex-1">
-        <span class="sr-only">{text.metadataSearch}</span>
+        <span class="sr-only">{text.metadata.search}</span>
         <input
           type="search"
           bind:value={() => metadata.search, v => metadata.setSearch(v)}
-          placeholder={text.metadataSearch}
-          aria-label={text.metadataSearch}
+          placeholder={text.metadata.search}
+          aria-label={text.metadata.search}
           class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition motion-reduce:transition-none focus-visible:border-cyan-500" />
       </label>
       <Button
         variant="ghost"
         size="sm"
-        ariaLabel={text.resetPlaybackCache}
-        tooltip={text.resetPlaybackCache}
+        ariaLabel={text.cache.reset}
+        tooltip={text.cache.reset}
         onClick={onResetCache}
         className="border border-slate-700 text-slate-400 hover:text-slate-200">
         {#snippet icon()}
@@ -128,8 +128,8 @@
         variant="ghost"
         size="sm"
         ariaPressed={metadata.followSentence}
-        ariaLabel={text.followSentence}
-        tooltip={text.followSentence}
+        ariaLabel={text.playback.followSentence}
+        tooltip={text.playback.followSentence}
         onClick={() => (metadata.followSentence = !metadata.followSentence)}
         className={metadata.followSentence ? 'border border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border border-slate-700 text-slate-400 hover:text-slate-200'}>
         {#snippet icon()}
@@ -140,8 +140,8 @@
         variant="ghost"
         size="sm"
         ariaExpanded={!expanded}
-        ariaLabel={expanded ? text.metadataRestore : text.metadataExpand}
-        tooltip={expanded ? text.metadataRestore : text.metadataExpand}
+        ariaLabel={expanded ? text.metadata.restore : text.metadata.expand}
+        tooltip={expanded ? text.metadata.restore : text.metadata.expand}
         onClick={onToggleExpand}
         className={`border ${expanded ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border-slate-700 text-slate-400 hover:text-slate-200'}`}>
         {#snippet icon()}
@@ -155,8 +155,8 @@
       <Button
         variant="ghost"
         size="sm"
-        ariaLabel={text.infoCollapse}
-        tooltip={text.infoCollapse}
+        ariaLabel={text.info.collapse}
+        tooltip={text.info.collapse}
         onClick={onCollapse}
         className="border border-slate-700 text-slate-400 hover:text-slate-200 lg:hidden">
         {#snippet icon()}
@@ -166,13 +166,13 @@
     </div>
     <div class="flex flex-none flex-wrap items-center gap-2 text-xs text-slate-400">
       {#if metadata.stale}
-        <span>{text.metadataStale}</span>
+        <span>{text.metadata.stale}</span>
       {:else}
-        <span>{text.segmentHint}</span>
+        <span>{text.metadata.segmentHint}</span>
       {/if}
     </div>
     {#if metadata.rows.length === 0}
-      <p class="text-xs text-slate-500">{metadata.search.trim() ? text.metadataNoResults : text.noMetadata}</p>
+      <p class="text-xs text-slate-500">{metadata.search.trim() ? text.metadata.noResults : text.metadata.noMetadata}</p>
     {:else}
       <div bind:this={tableBodyRef} tabindex="-1" class="min-h-0 flex-1 overflow-auto outline-none">
         <table class="w-full table-fixed border-collapse text-sm">
@@ -188,9 +188,9 @@
                   <Button
                     variant="ghost"
                     size="sm"
-                    ariaLabel={allVisibleExpanded ? text.collapseAll : text.expandAll}
+                    ariaLabel={allVisibleExpanded ? text.sentences.collapseAll : text.sentences.expandAll}
                     ariaExpanded={allVisibleExpanded}
-                    tooltip={allVisibleExpanded ? text.collapseAll : text.expandAll}
+                    tooltip={allVisibleExpanded ? text.sentences.collapseAll : text.sentences.expandAll}
                     preventFocusSteal
                     onClick={toggleExpandAll}
                     className="text-slate-400 hover:text-slate-200">
@@ -200,11 +200,11 @@
                   </Button>
                 {/if}
               </th>
-              <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
-              <th scope="col" class="px-2 py-1 font-medium" aria-label={text.tableSentence}>{text.tableNumber}</th>
-              <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
-              <th scope="col" class="px-2 py-1 font-medium">{text.tableLang}</th>
-              <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
+              <th scope="col" class="w-6 px-1 py-1 font-medium" aria-label={text.table.play}></th>
+              <th scope="col" class="px-2 py-1 font-medium" aria-label={text.table.sentence}>{text.table.number}</th>
+              <th scope="col" class="px-2 py-1 font-medium">{text.table.offset}</th>
+              <th scope="col" class="px-2 py-1 font-medium">{text.table.lang}</th>
+              <th scope="col" class="px-2 py-1 font-medium">{text.table.text}</th>
             </tr>
           </thead>
           <tbody>
@@ -214,7 +214,7 @@
                 aria-current={row.active ? 'true' : undefined}
                 role="button"
                 tabindex="0"
-                aria-label={`${text.playSegment} ${row.sentenceIndex + 1}`}
+                aria-label={`${text.metadata.playSegment} ${row.sentenceIndex + 1}`}
                 onclick={() => playback.playFromSegment(row.segmentIndex, row.offset)}
                 onkeydown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
@@ -227,7 +227,7 @@
                   {#if row.hasWords}
                     <button
                       type="button"
-                      aria-label={isExpanded(row) ? text.collapseSentence : text.expandSentence}
+                      aria-label={isExpanded(row) ? text.sentences.collapse : text.sentences.expand}
                       aria-expanded={isExpanded(row)}
                       onclick={(event) => {
                         event.stopPropagation()
@@ -242,7 +242,7 @@
                 <td class="px-1 py-1">
                   <button
                     type="button"
-                    aria-label={`${text.playSegment} ${row.sentenceIndex + 1}`}
+                    aria-label={`${text.metadata.playSegment} ${row.sentenceIndex + 1}`}
                     onclick={(event) => {
                       event.stopPropagation()
                       playback.playSentence(row.segmentIndex, row.offset)
@@ -261,7 +261,7 @@
                 <tr class="border-t border-slate-800 bg-slate-900/40">
                   <td colspan="6" class="p-0">
                     {#if row.words.length === 0}
-                      <p class="px-3 py-2 text-xs text-slate-500">{text.noWords}</p>
+                      <p class="px-3 py-2 text-xs text-slate-500">{text.sentences.noWords}</p>
                     {:else}
                       <div class="border-b border-slate-800 bg-slate-900">
                         <table class="w-full table-fixed border-collapse text-xs">
@@ -272,10 +272,10 @@
                           </colgroup>
                           <thead class="bg-slate-900">
                             <tr class="text-left text-slate-400">
-                              <th scope="col" class="px-1 py-1 font-medium" aria-label={text.tablePlay}></th>
-                              <th scope="col" class="px-2 py-1 font-medium">{text.tableWord}</th>
-                              <th scope="col" class="px-2 py-1 font-medium">{text.tableOffset}</th>
-                              <th scope="col" class="px-2 py-1 font-medium">{text.tableText}</th>
+                              <th scope="col" class="px-1 py-1 font-medium" aria-label={text.table.play}></th>
+                              <th scope="col" class="px-2 py-1 font-medium">{text.table.word}</th>
+                              <th scope="col" class="px-2 py-1 font-medium">{text.table.offset}</th>
+                              <th scope="col" class="px-2 py-1 font-medium">{text.table.text}</th>
                             </tr>
                           </thead>
                         </table>
@@ -293,7 +293,7 @@
                                 role="button"
                                 tabindex="0"
                                 data-active={word.active}
-                                aria-label={`${text.playWord} ${word.text}`}
+                                aria-label={`${text.sentences.playWord} ${word.text}`}
                                 onclick={() => playback.playFromSegment(word.segmentIndex, word.offset)}
                                 onkeydown={(event) => {
                                   if (event.key === 'Enter' || event.key === ' ') {
@@ -305,7 +305,7 @@
                                 <td class="px-1 py-1">
                                   <button
                                     type="button"
-                                    aria-label={`${text.playWord} ${word.text}`}
+                                    aria-label={`${text.sentences.playWord} ${word.text}`}
                                     onclick={(event) => {
                                       event.stopPropagation()
                                       playback.playWord(word.segmentIndex, word.offset)

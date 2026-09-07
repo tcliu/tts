@@ -79,23 +79,23 @@
   const MAX_SPEED = SPEEDS[SPEEDS.length - 1]
 </script>
 
-<BaseDialog title={text.settingsTitle} maxWidth="2xl" height="fixed" closeLabel={text.close} onCancel={onCancel}>
+<BaseDialog title={text.app.settingsTitle} maxWidth="2xl" height="fixed" closeLabel={text.close} onCancel={onCancel}>
   <Tabs
-    ariaLabel={text.settingsTitle}
+    ariaLabel={text.app.settingsTitle}
     state={{}}
     tabs={[
-      { label: text.voicesTab, path: 'voices', content: voicesContent },
-      { label: text.speedTab, path: 'speed', content: speedContent },
-      { label: text.synthesisTab, path: 'synthesis', content: synthesisContent },
+      { label: text.voices.tab, path: 'voices', content: voicesContent },
+      { label: text.settings.speedTab, path: 'speed', content: speedContent },
+      { label: text.cache.tab, path: 'synthesis', content: synthesisContent },
     ]} />
 </BaseDialog>
 
 {#snippet voicesContent()}
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <SearchInput bind:value={voiceSearch} ariaLabel={text.voiceSearch} placeholder={text.voiceSearch} wrapperClass="shrink-0" />
+    <SearchInput bind:value={voiceSearch} ariaLabel={text.voices.search} placeholder={text.voices.search} wrapperClass="shrink-0" />
     <div tabindex="-1" class="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 outline-none">
       {#if filteredLanguages.length === 0}
-        <p class="p-3 text-sm text-slate-500">{text.noMatchingVoices}</p>
+        <p class="p-3 text-sm text-slate-500">{text.voices.noMatching}</p>
       {:else}
         {#each filteredLanguages as language, i}
           {@const validGroups = voiceGroups(language.code)}
@@ -106,7 +106,7 @@
             <div class="flex w-full min-w-0 flex-1 flex-wrap items-center gap-2.5 text-sm text-slate-300 sm:w-auto">
               {#if validGroups.length > 1}
                 <SelectDropdown
-                  ariaLabel={`${language.name} ${text.spokenLanguage}`}
+                  ariaLabel={`${language.name} ${text.voices.spokenLanguage}`}
                   buttonLabel={group}
                   activeValue={group}
                   options={validGroups.map(group => ({ value: group, label: group }))}
@@ -115,7 +115,7 @@
                   onSelect={group => onSelectGroup(language.code, group)} />
               {/if}
               <SelectDropdown
-                ariaLabel={`${language.name} ${text.voiceModel}`}
+                ariaLabel={`${language.name} ${text.voices.model}`}
                 buttonLabel={voiceLabel(voicesFor(language.code, group).find(voice => voice.edge === voiceSelections[language.code]) ?? voicesFor(language.code, group)[0])}
                 activeValue={voiceSelections[language.code]}
                 options={voicesFor(language.code, group).map(voice => ({ value: voice.edge, label: voiceLabel(voice) }))}
@@ -133,14 +133,14 @@
   {#snippet speedContent()}
     <div class="rounded-xl border border-slate-800 bg-slate-950/50">
       <div class="grid items-center gap-2 p-3 @min-md:grid-cols-[minmax(0,1fr)_11rem]">
-        <label for="default-speed" class="text-sm font-medium text-slate-100">{text.defaultSpeed}</label>
+        <label for="default-speed" class="text-sm font-medium text-slate-100">{text.settings.defaultSpeed}</label>
         <NumberInput
           id="default-speed"
           value={String(speed)}
           min={MIN_SPEED}
           max={MAX_SPEED}
           step={SPEED_STEP}
-          ariaLabel={text.defaultSpeed}
+          ariaLabel={text.settings.defaultSpeed}
           incrementLabel={text.increment}
           decrementLabel={text.decrement}
           oninput={event => {
@@ -161,14 +161,14 @@
   {#snippet synthesisContent()}
     <div class="rounded-xl border border-slate-800 bg-slate-950/50">
       <div class="grid items-center gap-2 p-3 @min-md:grid-cols-[minmax(0,1fr)_11rem]">
-        <label for="concurrent-synthesis" class="text-sm font-medium text-slate-100">{text.synthesisConcurrency}</label>
+        <label for="concurrent-synthesis" class="text-sm font-medium text-slate-100">{text.settings.concurrency}</label>
         <NumberInput
           id="concurrent-synthesis"
           value={String(synthesisConcurrency)}
           min={1}
           max={8}
           step={1}
-          ariaLabel={text.synthesisConcurrency}
+          ariaLabel={text.settings.concurrency}
           incrementLabel={text.increment}
           decrementLabel={text.decrement}
           oninput={event => {
@@ -185,14 +185,14 @@
       </div>
       <div class="grid items-center gap-2 border-t border-slate-800 p-3 @min-md:grid-cols-[minmax(0,1fr)_auto]">
         <div class="text-sm">
-          <span class="font-medium text-slate-100">{text.synthesisCache}</span>
+          <span class="font-medium text-slate-100">{text.cache.label}</span>
           <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
             {#if cacheStats === null}
               —
             {:else if cacheStats.segments === 0}
-              {text.cachedSegmentsNone}
+              {text.cache.none}
             {:else}
-              {cacheStats.segments} {text.segmentsUnit} · {formatBytes(cacheStats.bytes)}
+              {cacheStats.segments} {text.cache.units} · {formatBytes(cacheStats.bytes)}
             {/if}
           </p>
         </div>
@@ -201,23 +201,23 @@
             variant="secondary"
             size="sm"
             disabled={cacheStats === null || cacheStats.segments === 0}
-            ariaLabel={text.viewSynthesisCache}
+            ariaLabel={text.cache.viewTitle}
             onClick={onViewCache}>
             {#snippet icon()}
               <EyeIcon className="h-4 w-4" />
             {/snippet}
-            {text.view}
+            {text.cache.view}
           </Button>
           <Button
             variant="secondary"
             size="sm"
             disabled={cacheStats === null || cacheStats.segments === 0}
-            ariaLabel={text.clearAllCacheEntries}
+            ariaLabel={text.cache.clearAllEntries}
             onClick={onClearCache}>
             {#snippet icon()}
               <DeleteIcon className="h-4 w-4" />
             {/snippet}
-            {text.clearAll}
+            {text.cache.clearAll}
           </Button>
         </div>
       </div>

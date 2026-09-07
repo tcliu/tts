@@ -96,7 +96,7 @@
   const columns = $derived.by<DataTableColumn<AdminServerCacheEntry>[]>(() => [
     {
       key: 'text',
-      header: text.tableText,
+      header: text.table.text,
       width: '52%',
       minWidth: 200,
       sortable: true,
@@ -105,7 +105,7 @@
     },
     {
       key: 'voice',
-      header: text.tableVoice,
+      header: text.table.voice,
       width: '20%',
       minWidth: 120,
       sortable: true,
@@ -114,7 +114,7 @@
     },
     {
       key: 'size',
-      header: text.tableSize,
+      header: text.table.size,
       width: '10%',
       minWidth: 76,
       sortable: true,
@@ -123,7 +123,7 @@
     },
     {
       key: 'saved',
-      header: text.tableSaved,
+      header: text.table.saved,
       width: '18%',
       minWidth: 132,
       sortable: true,
@@ -251,7 +251,7 @@
         if (playGeneration === generation) {
           cleanupAudio()
         }
-        reject(new Error(UI_TEXT[locale].playbackFailed))
+        reject(new Error(UI_TEXT[locale].playback.failed))
       }
       audio.play().catch(error => {
         if (playGeneration === generation) {
@@ -284,7 +284,7 @@
       }
     } catch {
       if (playGeneration === generation) {
-        playError = UI_TEXT[locale].playbackFailed
+        playError = UI_TEXT[locale].playback.failed
       }
     } finally {
       if (playGeneration === generation) {
@@ -315,10 +315,10 @@
       <p class="text-sm font-medium text-slate-100">{text.adminServerCache}</p>
       <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
         {#if selectedKeys.size === 0}
-          {cacheState.stats?.entries ?? 0} {text.segmentsUnit} · {formatBytes(cacheState.stats?.bytes ?? 0)}
+          {cacheState.stats?.entries ?? 0} {text.cache.units} · {formatBytes(cacheState.stats?.bytes ?? 0)}
         {:else}
-          {selectedKeys.size} {text.cacheEntriesSelected} ·
-          {cacheState.stats?.entries ?? 0} {text.segmentsUnit} · {formatBytes(cacheState.stats?.bytes ?? 0)}
+          {selectedKeys.size} {text.cache.selected} ·
+          {cacheState.stats?.entries ?? 0} {text.cache.units} · {formatBytes(cacheState.stats?.bytes ?? 0)}
         {/if}
       </p>
     </div>
@@ -329,7 +329,7 @@
         size="sm"
         ariaPressed={playing}
         disabled={(!hasSelection && !playing) || cacheState.pending}
-        ariaLabel={playing ? text.stopSelectedCachePlayback : text.playSelectedCacheEntries}
+        ariaLabel={playing ? text.cache.stopPlayback : text.cache.playSelected}
         onClick={() => void playSelected()}>
         {#snippet icon()}
           {#if playing}
@@ -338,19 +338,19 @@
             <SpeakerIcon className="h-4 w-4" />
           {/if}
         {/snippet}
-        {playing ? text.stop : text.playback}
+        {playing ? text.stop : text.playback.label}
       </Button>
       <Button
         variant="secondary"
         size="sm"
         disabled={!hasSelection || cacheState.pending}
         pending={cacheState.pending}
-        ariaLabel={text.clearSelectedCacheEntries}
+        ariaLabel={text.cache.clearSelected}
         onClick={() => void clearSelected()}>
         {#snippet icon()}
           <DeleteIcon className="h-4 w-4" />
         {/snippet}
-        {text.clear}
+        {text.cache.clear}
       </Button>
       <Button
         variant="secondary"
@@ -362,7 +362,7 @@
         {#snippet icon()}
           <DeleteIcon className="h-4 w-4" />
         {/snippet}
-        {text.clearAll}
+        {text.cache.clearAll}
       </Button>
     </div>
   </div>
@@ -372,18 +372,18 @@
     rowId={entry => entry.key}
     {columns}
     loading={cacheState.loading}
-    emptyMessage={search.trim() ? text.noMatchingCacheEntries : text.adminServerCacheEmpty}
+    emptyMessage={search.trim() ? text.cache.noMatching : text.adminServerCacheEmpty}
     bind:searchValue={search}
-    searchAriaLabel={text.cacheSearch}
-    searchPlaceholder={text.cacheSearch}
+    searchAriaLabel={text.cache.search}
+    searchPlaceholder={text.cache.search}
     selectable
     selectedIds={selectedKeys}
     onToggleSelection={toggleSelection}
     onToggleAll={toggleAllVisible}
     allSelected={allVisibleSelected}
     someSelected={someVisibleSelected}
-    selectAllAriaLabel={text.selectAllCacheEntries}
-    rowSelectAriaLabel={() => text.selectCacheEntry}
+    selectAllAriaLabel={text.cache.selectAll}
+    rowSelectAriaLabel={() => text.cache.select}
     total={total}
     pageSize={pageSize}
     currentPage={page}
@@ -392,13 +392,13 @@
     bind:sortKey={sortKey}
     bind:sortDirection={sortDir}
     onSort={handleSort}
-    sortAriaLabel={(col, dir) => (dir === 'asc' ? text.tableSortAsc : text.tableSortDesc).replace('{name}', col.header)}
-    resizeAriaLabel={col => text.tableResize.replace('{name}', col.header)}
-    paginationPreviousLabel={text.paginationPrevious}
-    paginationNextLabel={text.paginationNext}
-    paginationPageSizeLabel={text.paginationPageSize}
-    paginationCurrentLabel={text.paginationPage}
-    paginationLabel={text.paginationPage}
+    sortAriaLabel={(col, dir) => (dir === 'asc' ? text.table.sortAsc : text.table.sortDesc).replace('{name}', col.header)}
+    resizeAriaLabel={col => text.table.resize.replace('{name}', col.header)}
+    paginationPreviousLabel={text.pagination.previous}
+    paginationNextLabel={text.pagination.next}
+    paginationPageSizeLabel={text.pagination.pageSize}
+    paginationCurrentLabel={text.pagination.page}
+    paginationLabel={text.pagination.page}
     fillHeight
     tableClass="w-full"
     resizable

@@ -19,7 +19,7 @@ export function createDraftCacheId(): string {
 }
 
 export function nextAvailableDraftName(documents: DocumentsHandle, locale: string): string {
-  const baseName = UI_TEXT[locale as keyof typeof UI_TEXT]?.documentNamePlaceholder ?? 'Untitled'
+  const baseName = UI_TEXT[locale as keyof typeof UI_TEXT]?.documents.namePlaceholder ?? 'Untitled'
   const existingNames = new Set(documents.documents.map(document => document.name))
   let fallbackName = baseName
   if (existingNames.has(fallbackName)) {

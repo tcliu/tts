@@ -149,7 +149,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let measuredTotal = $state(0)
   let playbackElapsed = $state(0)
   let playbackDuration = $state(0)
-  let statusMessage = $state(UI_TEXT[deps.settings.locale].ready)
+  let statusMessage = $state(UI_TEXT[deps.settings.locale].playback.ready)
 
   let lastStatusReason = $state<'ready' | 'stopped' | 'switching' | 'finished' | 'error'>('ready')
   let playbackEnded = $state(false)
@@ -296,11 +296,11 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
 
   function statusForReason(reason: typeof lastStatusReason, locale: UiLocale): string {
     const strings = UI_TEXT[locale]
-    if (reason === 'stopped') return strings.playbackStopped
-    if (reason === 'switching') return strings.voiceSwitching
-    if (reason === 'finished') return strings.playbackFinished
-    if (reason === 'error') return strings.playbackFailed
-    return strings.ready
+    if (reason === 'stopped') return strings.playback.stopped
+    if (reason === 'switching') return strings.playback.switching
+    if (reason === 'finished') return strings.playback.finished
+    if (reason === 'error') return strings.playback.failed
+    return strings.playback.ready
   }
 
   $effect(() => {
@@ -377,14 +377,14 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       session.resumeTime = 0
       activeInfoOffset = -1
       activeInfoKind = null
-      statusMessage = UI_TEXT[deps.settings.locale].playbackFinished
+      statusMessage = UI_TEXT[deps.settings.locale].playback.finished
       return
     }
     lastStatusReason = 'stopped'
     playbackEnded = false
     activeInfoOffset = -1
     activeInfoKind = null
-    statusMessage = UI_TEXT[deps.settings.locale].playbackStopped
+    statusMessage = UI_TEXT[deps.settings.locale].playback.stopped
   }
 
   function segmentDurationAt(index: number): number {
@@ -516,7 +516,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     playedDuration = measuredTotal
     playbackElapsed = 0
     deps.getEditor()?.clearPlaybackHighlight?.()
-    statusMessage = UI_TEXT[deps.settings.locale].playbackFinished
+    statusMessage = UI_TEXT[deps.settings.locale].playback.finished
   }
 
   function failPlaybackRun(error: unknown, options?: { clearActiveInfo?: boolean; clearHighlight?: boolean }) {
@@ -532,7 +532,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       deps.getEditor()?.clearPlaybackHighlight?.()
     }
     console.error(error)
-    statusMessage = error instanceof LocalizedPlaybackError ? error.message : UI_TEXT[deps.settings.locale].playbackFailed
+    statusMessage = error instanceof LocalizedPlaybackError ? error.message : UI_TEXT[deps.settings.locale].playback.failed
   }
 
   function recordSegmentMeta(index: number, meta: SegmentMeta) {
@@ -1078,13 +1078,13 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
 
   function initStatus() {
     lastStatusReason = 'ready'
-    statusMessage = UI_TEXT[deps.settings.locale].ready
+    statusMessage = UI_TEXT[deps.settings.locale].playback.ready
   }
 
   function onLocaleChanged(next: UiLocale) {
     if (lastStatusReason === 'ready') {
       lastStatusReason = 'ready'
-      statusMessage = UI_TEXT[next].ready
+      statusMessage = UI_TEXT[next].playback.ready
       return
     }
     statusMessage = statusForReason(lastStatusReason, next)

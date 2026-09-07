@@ -3,154 +3,6 @@ import { REFERENCE_LANGUAGES } from './tts-reference'
 export type UiLocale = 'en' | 'zh-TW' | 'zh-CN'
 
 export interface UiText {
-  language: string
-  settings: string
-  playback: string
-  seek: string
-  editorLabel: string
-  appTitle: string
-  appShortTitle: string
-  playbackControls: string
-  stop: string
-  close: string
-  info: string
-  infoCollapse: string
-  synthesisConcurrency: string
-  synthesized: string
-  noMetadata: string
-  playSegment: string
-  segmentHint: string
-  metadataSearch: string
-  metadataStale: string
-  metadataNoResults: string
-  followSentence: string
-  metadataExpand: string
-  metadataRestore: string
-  increment: string
-  decrement: string
-  playbackSpeed: string
-  settingsTitle: string
-  voicesTab: string
-  speedTab: string
-  voiceModel: string
-  spokenLanguage: string
-  defaultSpeed: string
-  ready: string
-  playbackStopped: string
-  playbackFinished: string
-  voiceSwitching: string
-  tableSentence: string
-  tableNumber: string
-  tableOffset: string
-  tableLang: string
-  tableText: string
-  tableVoice: string
-  tableRate: string
-  tableSize: string
-  tableSaved: string
-  tableDocument: string
-  documents: string
-  documentSearch: string
-  noSavedDocuments: string
-  noMatchingDocuments: string
-  documentsSyncFailed: string
-  documentsSessionExpired: string
-  save: string
-  saveDialogTitle: string
-  documentNameLabel: string
-  documentNamePlaceholder: string
-  documentNameRequired: string
-  overwriteTitle: string
-  overwriteMessage: string
-  reset: string
-  newDocument: string
-  moreActions: string
-  copy: string
-  clone: string
-  upload: string
-  uploadSuccess: string
-  uploadTooLarge: string
-  uploadBinary: string
-  uploadFailed: string
-  edit: string
-  editText: string
-  doubleClickToEdit: string
-  delete: string
-  clear: string
-  clearAll: string
-  view: string
-  deleteConfirmTitle: string
-  deleteConfirmMessage: string
-  discardTitle: string
-  discardMessage: string
-  discardConfirm: string
-  stopPlaybackTitle: string
-  stopPlaybackMessage: string
-  stopPlaybackConfirm: string
-  voiceNotConfigured: string
-  playbackFailed: string
-  theme: string
-  themeDark: string
-  themeLight: string
-  themeEmber: string
-  themeNebula: string
-  themeSky: string
-  themeSepia: string
-  themeForest: string
-  themeMidnight: string
-  themeMint: string
-  themeLavender: string
-  synthesisTab: string
-  synthesisCache: string
-  segmentsUnit: string
-  cachedSegmentsNone: string
-  clearSynthesisCache: string
-  clearAllCacheEntries: string
-  clearSelectedCacheEntries: string
-  viewSynthesisCache: string
-  synthesisCacheDetailsTitle: string
-  cacheSearch: string
-  noMatchingCacheEntries: string
-  loadingCacheEntries: string
-  cacheEntriesSelected: string
-  selectAllCacheEntries: string
-  selectCacheEntry: string
-  playSelectedCacheEntries: string
-  stopSelectedCachePlayback: string
-  resetPlaybackCache: string
-  voiceSearch: string
-  noMatchingVoices: string
-  languageSearch: string
-  noMatchingLanguages: string
-  segmentLanguage: string
-  segmentLocale: string
-  segmentGender: string
-  localeSearch: string
-  noMatchingLocales: string
-  expandSentence: string
-  collapseSentence: string
-  expandAll: string
-  collapseAll: string
-  playWord: string
-  noWords: string
-  noOptions: string
-  tablePlay: string
-  tableWord: string
-  paginationPrevious: string
-  paginationNext: string
-  paginationPageSize: string
-  paginationRows: string
-  paginationTotal: string
-  paginationPage: string
-  tableSortAsc: string
-  tableSortDesc: string
-  tableResize: string
-  adminTitle: string
-  adminSignOut: string
-  adminBackToEditor: string
-  adminSections: string
-  adminPasswordShow: string
-  adminPasswordHide: string
   auth: {
     login: string
     account: string
@@ -171,6 +23,169 @@ export interface UiText {
     createAccount: { title: string; failed: string }
     signOut: { label: string; failed: string }
   }
+  app: {
+    language: string
+    settings: string
+    settingsTitle: string
+    appTitle: string
+    appShortTitle: string
+  }
+  playback: {
+    label: string
+    controls: string
+    speed: string
+    seek: string
+    ready: string
+    switching: string
+    stopped: string
+    finished: string
+    failed: string
+    followSentence: string
+  }
+  editor: {
+    label: string
+    edit: string
+    editText: string
+    doubleClickToEdit: string
+  }
+  info: {
+    label: string
+    collapse: string
+  }
+  metadata: {
+    search: string
+    stale: string
+    noResults: string
+    expand: string
+    restore: string
+    noMetadata: string
+    playSegment: string
+    segmentHint: string
+  }
+  sentences: {
+    expand: string
+    collapse: string
+    expandAll: string
+    collapseAll: string
+    playWord: string
+    noWords: string
+  }
+  voices: {
+    search: string
+    noMatching: string
+    model: string
+    tab: string
+    notConfigured: string
+    segmentLanguage: string
+    segmentLocale: string
+    segmentGender: string
+    spokenLanguage: string
+  }
+  languages: {
+    search: string
+    noMatching: string
+    localeSearch: string
+    noMatchingLocales: string
+  }
+  settings: {
+    speedTab: string
+    defaultSpeed: string
+    concurrency: string
+  }
+  documents: {
+    label: string
+    search: string
+    noSavedDocuments: string
+    noMatchingDocuments: string
+    syncFailed: string
+    sessionExpired: string
+    save: string
+    newDocument: string
+    moreActions: string
+    copy: string
+    clone: string
+    reset: string
+    delete: string
+    namePlaceholder: string
+  }
+  dialogs: {
+    overwriteTitle: string
+    overwriteMessage: string
+    deleteConfirmTitle: string
+    deleteConfirmMessage: string
+    discardTitle: string
+    discardMessage: string
+    discardConfirm: string
+    stopPlaybackTitle: string
+    stopPlaybackMessage: string
+    stopPlaybackConfirm: string
+  }
+  upload: {
+    label: string
+    success: string
+    tooLarge: string
+    failed: string
+    binary: string
+  }
+  cache: {
+    tab: string
+    label: string
+    units: string
+    none: string
+    clear: string
+    clearSelected: string
+    clearAll: string
+    clearAllEntries: string
+    view: string
+    viewTitle: string
+    detailsTitle: string
+    search: string
+    noMatching: string
+    selected: string
+    selectAll: string
+    select: string
+    playSelected: string
+    stopPlayback: string
+    reset: string
+  }
+  table: {
+    sentence: string
+    number: string
+    offset: string
+    lang: string
+    text: string
+    voice: string
+    size: string
+    saved: string
+    play: string
+    word: string
+    sortAsc: string
+    sortDesc: string
+    resize: string
+  }
+  pagination: {
+    previous: string
+    next: string
+    pageSize: string
+    page: string
+  }
+  theme: {
+    label: string
+    dark: string
+    light: string
+    ember: string
+    nebula: string
+    sky: string
+    sepia: string
+    forest: string
+    midnight: string
+    mint: string
+    lavender: string
+  }
+  adminTitle: string
+  adminSignOut: string
+  adminBackToEditor: string
+  adminSections: string
   adminPropertiesActions: string
   adminTabProperties: string
   adminTabSynthesisCache: string
@@ -207,6 +222,13 @@ export interface UiText {
   adminErrorTimeout: string
   adminPropNotInteger: string
   adminPropOutOfRange: string
+  adminPasswordShow: string
+  adminPasswordHide: string
+  stop: string
+  close: string
+  increment: string
+  decrement: string
+  noOptions: string
 }
 
 export const UI_LANGUAGE_OPTIONS: { value: UiLocale; label: string }[] = [

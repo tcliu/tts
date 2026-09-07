@@ -172,7 +172,7 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
       console.error(error)
       playback.setLastStatusReason('error')
       playback.setMetadataAvailable(false)
-      playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playbackFailed)
+      playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playback.failed)
       return
     }
     recordSessionVoiceOverride(toWrittenLang(voice.getEffectiveSegmentLang(index)), voiceEdge)
@@ -203,7 +203,7 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
         return
       }
       playback.setLastStatusReason('switching')
-      playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].voiceSwitching)
+      playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playback.switching)
       generation = playback.getSwitchGeneration() + 1
       playback.setSwitchGeneration(generation)
       await resynthesizeSegment(playIndex, voiceEdge)
@@ -218,7 +218,7 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
       if (generation === playback.getSwitchGeneration()) {
         playback.setLastStatusReason('error')
         playback.setMetadataAvailable(false)
-        playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playbackFailed)
+        playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playback.failed)
       }
     } finally {
       playback.setSwitching(false)

@@ -137,7 +137,7 @@ export function createAudioPlayer(deps: AudioPlaybackDeps) {
           resolve()
           return
         }
-        reject(new Error(UI_TEXT[deps.getLocale()].playbackFailed))
+        reject(new Error(UI_TEXT[deps.getLocale()].playback.failed))
       }
 
       audio.play().then(() => {

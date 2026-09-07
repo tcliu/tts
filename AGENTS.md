@@ -13,10 +13,19 @@ Project-specific development conventions for the TTS web app.
 ## File editing
 
 - Edit with the smallest possible range: select only the lines that change and put their complete final content in the edit body; if an edit is rejected or the file changed since the last read, re-read the section and issue a new minimal edit rather than retrying.
+- An `edit` rejection saying the body "restates" adjacent lines means unchanged
+  context lines leaked into the body: shrink the range to exactly the lines
+  that change and resend; do not retry the same payload.
 
 ## Read first
 - Read the shared references applicable to the files being edited before
   editing, keeping pre-edit investigation within the `agent-progress` read cap.
+- Before `read` on a path not seen in prior tool output or a directory
+  listing, run `glob` to confirm the path instead of guessing file names or
+  worktree paths.
+- If a `~/.agents/references/...` path does not exist, the config root is
+  unconfigured on this machine (fresh clone): ask the user for the config-root
+  path once and use it for the session instead of guessing.
 - When reviewing completed work, follow the `code-review` skill and report
   findings with severity, location, rule, and fix.
 - When a task is ambiguous about what to change or how to approach it, ask the
@@ -36,7 +45,7 @@ Project-specific development conventions for the TTS web app.
 - Do not read or reuse any archived web implementation under `archive/`; it is
   out of scope for this project.
   - Code changes are applied in a separate git branch and worktree under
-    `.worktrees/` per the shared `references/git.md` worktree practice, unless the
+    `.worktrees/` per the shared `~/.agents/references/git.md` worktree practice, unless the
     user opts to apply them on top of the current worktree. Branch names use
     `<type>/<change-name>` (`type` from the conventional-commit set: `feat`,
     `fix`, `refactor`, …) and the worktree path mirrors the branch
@@ -48,12 +57,12 @@ Project-specific development conventions for the TTS web app.
 - Z ladder: sticky content `z-10`, drawer `z-20`, overlays (dialog scrim, menus,
   dropdown panels, tooltip) `z-40`, dev tag `z-50` — keep overlays at or below
   `z-40` so the tag is never covered by a tooltip or modal scrim.
-- Server-side events log through `src/lib/server/logging` following `references/logging.md`: every state-changing action emits a structured `ip=<ip> action=<action> ...` line carrying key identifying info, and async operations also log `_start`/`_end` with `elapsed_ms`; never log secrets, tokens, or document contents.
+- Server-side events log through `src/lib/server/logging` following `~/.agents/references/logging.md`: every state-changing action emits a structured `ip=<ip> action=<action> ...` line carrying key identifying info, and async operations also log `_start`/`_end` with `elapsed_ms`; never log secrets, tokens, or document contents.
 - Server validates required prod env at startup via `assertProdEnv` (`src/lib/server/env.ts`, called from `hooks.server.ts`): missing prod credentials log `env_invalid` and throw fail-fast; see `docs/spec.md` for the gate semantics.
 - User accounts self-register at `/login` with HMAC-signed `httpOnly` `sameSite=strict` sessions; normalize usernames/emails, hash with scrypt, reject the admin username, and share the admin IP-keyed brute-force bucket — see `docs/spec.md` §Auth model.
-- Expose tunable policy thresholds as managed admin properties (file → environment → compiled default via `src/lib/server/admin-properties`) instead of hardcoded constants, per `references/js-ts.md`.
+- Expose tunable policy thresholds as managed admin properties (file → environment → compiled default via `src/lib/server/admin-properties`) instead of hardcoded constants, per `~/.agents/references/js-ts.md`.
 - Throwaway e2e accounts use `e2e_<purpose>_<timestamp>` usernames (`load_<purpose>_<timestamp>` for stress runs, which never target prod); machine rows are identifiable via `LIKE 'e2e\_%'` and must be deleted after the run.
-- Database is dual-backend (dev SQLite, prod Neon via `DATABASE_URL`); follow `references/sql.md` with Postgres-first `sql/schema.sql` and apply prod schema via `npm run schema:apply` — see `ARCHITECTURE.md` for backend topology.
+- Database is dual-backend (dev SQLite, prod Neon via `DATABASE_URL`); follow `~/.agents/references/sql.md` with Postgres-first `sql/schema.sql` and apply prod schema via `npm run schema:apply` — see `ARCHITECTURE.md` for backend topology.
 - Persist shared authentication throttles in the configured database, not process-local memory, so limits hold across serverless instances. Do not clear a shared IP failure bucket after an unrelated successful login; let the configured window expire.
 - Enforce authentication invariants in the domain model as well as HTTP routes: reject reserved identities and short passwords at `createUser`, and expose stable generic registration error codes so account existence cannot be enumerated.
 - Enforce per-user document quotas on writes inside a transaction; enable SQLite foreign keys so development matches production ownership and cascade behavior.
@@ -79,7 +88,9 @@ Project-specific development conventions for the TTS web app.
   Play is clicked.
 - Document navigation is reflected in the URL as `{base}/{docId}` and history-backed so Back/Forward moves between documents.
 - All user-facing strings must go through `UI_TEXT` (keyed by `UiLocale`); add
-  each new string to every locale (`en`, `zh-TW`, `zh-CN`). Surface server
+  each new string to every locale (`en`, `zh-TW`, `zh-CN`). Keys are namespaced
+  by area (`auth.signIn.failed`, `cache.clearAll`, `table.text`); `admin.*`
+  stays flat because the server resolves those keys dynamically. Surface server
   failures as stable wire codes mapped to localized strings; never surface raw
   English literals or technical detail as user-facing errors.
 - The app shell fills the dynamic viewport with `h-dvh` over the
@@ -87,7 +98,7 @@ Project-specific development conventions for the TTS web app.
   (`shrink-0` header, `flex-none` rows) and one flexible editor region; do not
   add `min-h-screen`, clip the shell with `overflow-hidden`, or chase mobile
   keyboard gaps with viewport-unit workarounds — those differences are owned by
-  the browser (see `references/cross-browser.md`).
+  the browser (see `~/.agents/references/cross-browser.md`).
 - Defer editor focus with `tick()` whenever creating a new document changes drawer or dialog visibility (`focusEditor` in `+page.svelte`); synchronous focus into a just-hidden or not-yet-shown subtree is silently dropped. Opening an existing document keeps focus behavior owned by the drawer interaction.
 - Controls that would move focus away from the editor (preview toggles, drawer
   buttons, list-collapse buttons) pass the `Button` `preventFocusSteal` prop so
@@ -104,7 +115,7 @@ Project-specific development conventions for the TTS web app.
   sizing is preset via `maxWidth` and `height`; callers pick a preset instead
   of hardcoding `w-`/`h-` in `className` (implementation detail in
   `docs/spec.md` §Settings model).
-- Settings Voices tab follows the aligned label + control-group row pattern (see `references/responsive-design.md`): voice model group = spoken-language selector (if any) + voice-model selector; support four states a) `label | spoken | voice`, b) `label | voice` (no spoken), c) `label` / `spoken + voice`, d) `label` / `spoken` / `voice` with voice-group left aligned across languages and stacked `flex-col` below `sm` so shrinking forces label and voice-group into separate rows.
+- Settings Voices tab follows the aligned label + control-group row pattern (see `~/.agents/references/responsive-design.md`): voice model group = spoken-language selector (if any) + voice-model selector; support four states a) `label | spoken | voice`, b) `label | voice` (no spoken), c) `label` / `spoken + voice`, d) `label` / `spoken` / `voice` with voice-group left aligned across languages and stacked `flex-col` below `sm` so shrinking forces label and voice-group into separate rows.
 - Documents drawer docks at `lg` and gates overlay-only dismissals (backdrop,
   Escape, swipe) with `isDocked`; keep `DOCKED_QUERY` in `+page.svelte` synced
   with `DocumentsDrawer`; collapsed docked drawer is `inert` + `aria-hidden`.
@@ -135,37 +146,37 @@ Project-specific development conventions for the TTS web app.
 
 ## References
 
-- Follow `references/svelte.md` for Svelte 5 runes and effect rules; component
+- Follow `~/.agents/references/svelte.md` for Svelte 5 runes and effect rules; component
   attributes stay camelCase in this project. Split by coherent responsibility
   into composable factories under `src/lib/`; route components stay thin
   orchestration layers and non-reactive domain clients stay in plain `.ts`.
-- Follow `references/svelte-i18n.md` for multilingual UI text via `UI_TEXT`.
-- Follow `references/js-ts.md` for module design; split by coherent
+- Follow `~/.agents/references/svelte-i18n.md` for multilingual UI text via `UI_TEXT`.
+- Follow `~/.agents/references/js-ts.md` for module design; split by coherent
   responsibility, keep dependency flow one-way, and avoid micro-modules and
   over-fragmentation.
-- Follow `references/tailwind.md` for literal utility classes, runtime style
+- Follow `~/.agents/references/tailwind.md` for literal utility classes, runtime style
   values, and the attribute-driven palette remapping that powers themes.
-- Follow `references/accessibility.md` for focus management, keyboard access,
+- Follow `~/.agents/references/accessibility.md` for focus management, keyboard access,
   labels, and reduced motion.
-- Follow `references/responsive-design.md` for breakpoint, touch-target, and
+- Follow `~/.agents/references/responsive-design.md` for breakpoint, touch-target, and
   overlay-drawer (docked vs overlay, swipe-to-close) behavior.
-- Follow `references/portals.md` for portal and overlay positioning
+- Follow `~/.agents/references/portals.md` for portal and overlay positioning
   (dropdown panels, tooltips, dialogs) including viewport clamping and
   flip-when-crowded placement.
-- Follow `references/ui-patterns.md` for dialogs (centered/full-screen, dismiss
+- Follow `~/.agents/references/ui-patterns.md` for dialogs (centered/full-screen, dismiss
   affordances, focus-first-input), form dialogs (OK/Apply + Reset, discard
   unsaved-changes confirm), icons, comboboxes, and the two-arrow table sort
   pattern.
-- Follow `references/api-client.md` for `snake_case` wire payloads and
+- Follow `~/.agents/references/api-client.md` for `snake_case` wire payloads and
   `camelCase`-at-the-boundary mapping.
-- Follow `references/cross-browser.md` for browser-owned viewport and keyboard
+- Follow `~/.agents/references/cross-browser.md` for browser-owned viewport and keyboard
   differences.
-- Follow `references/logging.md` for server-side structured event logging.
-- Follow `references/reliability.md` for state safety, async flows, and
+- Follow `~/.agents/references/logging.md` for server-side structured event logging.
+- Follow `~/.agents/references/reliability.md` for state safety, async flows, and
   concurrency guards.
-- Follow `references/verification.md` for lint, typecheck, and test validation
+- Follow `~/.agents/references/verification.md` for lint, typecheck, and test validation
   before finishing changes.
-- Follow `references/git.md` for commit message conventions and worktree
+- Follow `~/.agents/references/git.md` for commit message conventions and worktree
   isolation.
 
 ## Keeping references in sync
@@ -189,6 +200,12 @@ Project-specific development conventions for the TTS web app.
 
 - Trivial non-behavioral edits (docs, comments, strings) need only a targeted
   check (e.g. `npm run check` or the single affected test).
+- Use DOM globals (`document`, `location`, `window`) only inside browser
+  `tab.run` code, never in `eval` JS cells — the eval runtime is a Bun worker
+  VM without DOM.
+- Before restarting dev servers or rerunning e2e flows, check `hub ps`/`hub
+  logs` for the existing process; after pruning `node_modules`, rebuild
+  better-sqlite3 before dev or test commands.
 - Run the full suite before finishing behavior-affecting changes or handing
   off a worktree:
 

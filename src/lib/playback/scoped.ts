@@ -260,7 +260,7 @@ export function createScopedPlayback(deps: ScopedDeps) {
     const voice = editor.resolveEffectiveVoice(lang)
     if (!voice?.edge) {
       throw new LocalizedPlaybackError(
-        `${UI_TEXT[content.getLocale() as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(content.getLocale() as keyof typeof UI_TEXT, lang)})`,
+        `${UI_TEXT[content.getLocale() as keyof typeof UI_TEXT].voices.notConfigured} (${segmentLanguageName(content.getLocale() as keyof typeof UI_TEXT, lang)})`,
       )
     }
     const reusable = editor.buildReusableScopedSegments(scoped, text)
@@ -322,7 +322,7 @@ export function createScopedPlayback(deps: ScopedDeps) {
             const segVoice = editor.resolveEffectiveVoice(seg.lang)
             if (!segVoice?.edge) {
               throw new LocalizedPlaybackError(
-                `${UI_TEXT[content.getLocale() as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(content.getLocale() as keyof typeof UI_TEXT, seg.lang)})`,
+                `${UI_TEXT[content.getLocale() as keyof typeof UI_TEXT].voices.notConfigured} (${segmentLanguageName(content.getLocale() as keyof typeof UI_TEXT, seg.lang)})`,
               )
             }
             const cached = peekCachedSynthesis(seg.source.text, segVoice.edge)

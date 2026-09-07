@@ -39,7 +39,7 @@
 
   const text = $derived(UI_TEXT[locale])
 
-  const syncErrorText = $derived(syncError && syncError !== 'session_expired' ? text.documentsSyncFailed : '')
+  const syncErrorText = $derived(syncError && syncError !== 'session_expired' ? text.documents.syncFailed : '')
 
   let dragOffset = $state(0)
   let dragging = $state(false)
@@ -83,7 +83,7 @@
      DOCKED_QUERY, which treats below-lg as the dismissable overlay mode. -->
 <aside
   bind:this={panelRef}
-  aria-label={text.documents}
+  aria-label={text.documents.label}
   aria-hidden={dockedCollapsed ? 'true' : undefined}
   inert={dockedCollapsed}
   class={`absolute inset-y-0 left-0 z-20 flex w-64 shrink-0 flex-col gap-2 border-r border-slate-800 bg-slate-900 py-2 shadow-xl transition-[transform,width,opacity] duration-200 ease-out motion-reduce:transition-none ${isOpen ? 'translate-x-0' : '-translate-x-full'} ${dockedClasses}`}
@@ -97,16 +97,16 @@
       {#snippet icon()}
         <PlusIcon className="h-4 w-4" />
       {/snippet}
-      {text.newDocument}
+      {text.documents.newDocument}
     </Button>
-    <SearchInput bind:value={search} bind:inputRef={inputRef} ariaLabel={text.documentSearch} placeholder={text.documentSearch} />
+    <SearchInput bind:value={search} bind:inputRef={inputRef} ariaLabel={text.documents.search} placeholder={text.documents.search} />
   </div>
   <div tabindex="-1" class="min-h-0 flex-1 overflow-y-auto px-3 outline-none">
     {#if syncErrorText}
       <p class="mb-2 text-xs text-amber-200/90" role="status">{syncErrorText}</p>
     {/if}
     {#if documents.length === 0}
-      <p class="text-xs text-slate-500">{search.trim() ? text.noMatchingDocuments : text.noSavedDocuments}</p>
+      <p class="text-xs text-slate-500">{search.trim() ? text.documents.noMatchingDocuments : text.documents.noSavedDocuments}</p>
     {:else}
       <ul class="flex flex-col gap-1">
         {#each documents as doc (doc.id)}

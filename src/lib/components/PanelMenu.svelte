@@ -42,14 +42,14 @@
     if (override !== undefined) {
       return override
     }
-    if (action === 'play') return uiText.playback
-    if (action === 'reset') return uiText.reset
-    if (action === 'save') return uiText.save
-    if (action === 'delete') return uiText.delete
-    if (action === 'copy') return uiText.copy
-    if (action === 'clone') return uiText.clone
-    if (action === 'upload') return uiText.upload
-    return uiText.info
+    if (action === 'play') return uiText.playback.label
+    if (action === 'reset') return uiText.documents.reset
+    if (action === 'save') return uiText.documents.save
+    if (action === 'delete') return uiText.documents.delete
+    if (action === 'copy') return uiText.documents.copy
+    if (action === 'clone') return uiText.documents.clone
+    if (action === 'upload') return uiText.upload.label
+    return uiText.info.label
   }
 
   function itemClass(_action: PanelAction, state: MenuItemState): string {
@@ -67,7 +67,7 @@
   items={actions}
   itemKey={action => action}
   onSelect={index => onSelect(actions[index])}
-  ariaLabel={uiText.moreActions}
+  ariaLabel={uiText.documents.moreActions}
   align="right"
   autoPlace={true}
   triggerClass="p-2 before:absolute before:-inset-1.5 before:content-['']"

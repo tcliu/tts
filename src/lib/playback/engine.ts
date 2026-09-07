@@ -203,7 +203,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
           try {
             if (!voiceResolved?.edge) {
               throw new LocalizedPlaybackError(
-                `${UI_TEXT[deps.settings.locale as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(deps.settings.locale as keyof typeof UI_TEXT, effectiveLang)})`,
+                `${UI_TEXT[deps.settings.locale as keyof typeof UI_TEXT].voices.notConfigured} (${segmentLanguageName(deps.settings.locale as keyof typeof UI_TEXT, effectiveLang)})`,
               )
             }
             const synth = await getCachedSynthesis(segment.text, voiceResolved.edge, rate, controller.abort.signal, deps.getCacheScopeId())

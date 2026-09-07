@@ -125,7 +125,7 @@
   const columns = $derived.by<DataTableColumn<SynthesisCacheEntry>[]>(() => [
     {
       key: 'lang',
-      header: text.tableLang,
+      header: text.table.lang,
       width: '14%',
       minWidth: 120,
       sortable: true,
@@ -134,7 +134,7 @@
     },
     {
       key: 'voice',
-      header: text.tableVoice,
+      header: text.table.voice,
       width: '20%',
       minWidth: 160,
       sortable: true,
@@ -143,7 +143,7 @@
     },
     {
       key: 'text',
-      header: text.tableText,
+      header: text.table.text,
       width: '36%',
       minWidth: 200,
       searchable: true,
@@ -151,7 +151,7 @@
     },
     {
       key: 'size',
-      header: text.tableSize,
+      header: text.table.size,
       width: '12%',
       minWidth: 90,
       sortable: true,
@@ -159,7 +159,7 @@
     },
     {
       key: 'saved',
-      header: text.tableSaved,
+      header: text.table.saved,
       width: '18%',
       minWidth: 140,
       sortable: true,
@@ -280,7 +280,7 @@
         if (playGeneration === generation) {
           cleanupAudio()
         }
-        reject(new Error(UI_TEXT[locale].playbackFailed))
+        reject(new Error(UI_TEXT[locale].playback.failed))
       }
       audio.play().catch(error => {
         if (playGeneration === generation) {
@@ -318,21 +318,21 @@
   }
 </script>
 
-<BaseDialog title={text.synthesisCacheDetailsTitle} maxWidth="wide" height="tall" closeLabel={text.close} onCancel={onCancel}>
+<BaseDialog title={text.cache.detailsTitle} maxWidth="wide" height="tall" closeLabel={text.close} onCancel={onCancel}>
   <div class="flex min-h-0 flex-1 flex-col gap-1.5">
     <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
       <div class="min-w-0 flex-1">
-        <p class="text-sm font-medium text-slate-100">{text.synthesisCache}</p>
+        <p class="text-sm font-medium text-slate-100">{text.cache.label}</p>
         <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
           {#if selectedKeys.size === 0}
-            {entries.length} {text.segmentsUnit} · {formatBytes(totalBytes)}
+            {entries.length} {text.cache.units} · {formatBytes(totalBytes)}
           {:else}
-            {selectedKeys.size} {text.cacheEntriesSelected} · {entries.length} {text.segmentsUnit} · {formatBytes(totalBytes)}
+            {selectedKeys.size} {text.cache.selected} · {entries.length} {text.cache.units} · {formatBytes(totalBytes)}
           {/if}
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
-        <Button variant="outline" accent="cyan" size="sm" ariaPressed={playing} disabled={!hasSelection} ariaLabel={playing ? text.stopSelectedCachePlayback : text.playSelectedCacheEntries} onClick={() => void playSelected()}>
+        <Button variant="outline" accent="cyan" size="sm" ariaPressed={playing} disabled={!hasSelection} ariaLabel={playing ? text.cache.stopPlayback : text.cache.playSelected} onClick={() => void playSelected()}>
           {#snippet icon()}
             {#if playing}
               <StopIcon className="h-4 w-4" />
@@ -340,19 +340,19 @@
               <SpeakerIcon className="h-4 w-4" />
             {/if}
           {/snippet}
-          {playing ? text.stop : text.playback}
+          {playing ? text.stop : text.playback.label}
         </Button>
-        <Button variant="secondary" size="sm" disabled={!hasSelection} ariaLabel={text.clearSelectedCacheEntries} onClick={() => void clearSelected()}>
+        <Button variant="secondary" size="sm" disabled={!hasSelection} ariaLabel={text.cache.clearSelected} onClick={() => void clearSelected()}>
           {#snippet icon()}
             <DeleteIcon className="h-4 w-4" />
           {/snippet}
-          {text.clear}
+          {text.cache.clear}
         </Button>
-        <Button variant="secondary" size="sm" disabled={entries.length === 0} ariaLabel={text.clearAllCacheEntries} onClick={() => void onClearAll?.()}>
+        <Button variant="secondary" size="sm" disabled={entries.length === 0} ariaLabel={text.cache.clearAllEntries} onClick={() => void onClearAll?.()}>
           {#snippet icon()}
             <DeleteIcon className="h-4 w-4" />
           {/snippet}
-          {text.clearAll}
+          {text.cache.clearAll}
         </Button>
       </div>
     </div>
@@ -362,18 +362,18 @@
       rowId={entry => entry.key}
       {columns}
       loading={loading}
-      emptyMessage={search.trim() ? text.noMatchingCacheEntries : text.cachedSegmentsNone}
+      emptyMessage={search.trim() ? text.cache.noMatching : text.cache.none}
       bind:searchValue={search}
-      searchAriaLabel={text.cacheSearch}
-      searchPlaceholder={text.cacheSearch}
+      searchAriaLabel={text.cache.search}
+      searchPlaceholder={text.cache.search}
       selectable
       selectedIds={selectedKeys}
       onToggleSelection={toggleSelection}
       onToggleAll={toggleAllVisible}
       allSelected={allVisibleSelected}
       someSelected={someVisibleSelected}
-      selectAllAriaLabel={text.selectAllCacheEntries}
-      rowSelectAriaLabel={() => text.selectCacheEntry}
+      selectAllAriaLabel={text.cache.selectAll}
+      rowSelectAriaLabel={() => text.cache.select}
       total={total}
       pageSize={pageSize}
       currentPage={page}
@@ -382,13 +382,13 @@
       bind:sortKey={sortKey}
       bind:sortDirection={sortDir}
       onSort={handleSort}
-      sortAriaLabel={(col, dir) => (dir === 'asc' ? text.tableSortAsc : text.tableSortDesc).replace('{name}', col.header)}
-      resizeAriaLabel={col => text.tableResize.replace('{name}', col.header)}
-      paginationPreviousLabel={text.paginationPrevious}
-      paginationNextLabel={text.paginationNext}
-      paginationPageSizeLabel={text.paginationPageSize}
-      paginationCurrentLabel={text.paginationPage}
-      paginationLabel={text.paginationPage}
+      sortAriaLabel={(col, dir) => (dir === 'asc' ? text.table.sortAsc : text.table.sortDesc).replace('{name}', col.header)}
+      resizeAriaLabel={col => text.table.resize.replace('{name}', col.header)}
+      paginationPreviousLabel={text.pagination.previous}
+      paginationNextLabel={text.pagination.next}
+      paginationPageSizeLabel={text.pagination.pageSize}
+      paginationCurrentLabel={text.pagination.page}
+      paginationLabel={text.pagination.page}
       fillHeight
       tableClass="w-full"
       resizable

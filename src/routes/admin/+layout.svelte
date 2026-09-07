@@ -39,16 +39,16 @@
   const text = $derived(UI_TEXT[locale] ?? UI_TEXT.en)
 
   const themeLabels = $derived<Record<UiTheme, string>>({
-    dark: text.themeDark,
-    ember: text.themeEmber,
-    forest: text.themeForest,
-    midnight: text.themeMidnight,
-    nebula: text.themeNebula,
-    light: text.themeLight,
-    mint: text.themeMint,
-    sepia: text.themeSepia,
-    lavender: text.themeLavender,
-    sky: text.themeSky,
+    dark: text.theme.dark,
+    ember: text.theme.ember,
+    forest: text.theme.forest,
+    midnight: text.theme.midnight,
+    nebula: text.theme.nebula,
+    light: text.theme.light,
+    mint: text.theme.mint,
+    sepia: text.theme.sepia,
+    lavender: text.theme.lavender,
+    sky: text.theme.sky,
   })
 
   const themeOptions = $derived(
@@ -97,24 +97,24 @@
 </script>
 
 <svelte:head>
-  <title>{text.appTitle}</title>
+  <title>{text.app.appTitle}</title>
 </svelte:head>
 
 <div class="flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-200">
   <header class="flex flex-none items-center justify-between border-b border-slate-800 px-3 py-3 sm:px-4">
     <h1 class="text-base font-semibold tracking-tight text-slate-200 sm:text-lg">
-      {text.appShortTitle}
+      {text.app.appShortTitle}
     </h1>
     <div class="flex items-center gap-2">
       <Menu
         items={UI_LANGUAGE_OPTIONS}
         itemKey={option => option.value}
-        ariaLabel={text.language}
-        triggerTooltip={text.language}
+        ariaLabel={text.app.language}
+        triggerTooltip={text.app.language}
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
-        phoneSheetTitle={text.language}
+        phoneSheetTitle={text.app.language}
         closeLabel={text.close}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.locale}
@@ -139,12 +139,12 @@
       <Menu
         items={themeOptions}
         itemKey={option => option.value}
-        ariaLabel={text.theme}
-        triggerTooltip={text.theme}
+        ariaLabel={text.theme.label}
+        triggerTooltip={text.theme.label}
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
-        phoneSheetTitle={text.theme}
+        phoneSheetTitle={text.theme.label}
         closeLabel={text.close}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.theme}

@@ -149,16 +149,16 @@
   const text = $derived(UI_TEXT[settings.locale])
 
   const themeLabels = $derived<Record<UiTheme, string>>({
-    dark: text.themeDark,
-    ember: text.themeEmber,
-    forest: text.themeForest,
-    midnight: text.themeMidnight,
-    nebula: text.themeNebula,
-    light: text.themeLight,
-    mint: text.themeMint,
-    sepia: text.themeSepia,
-    lavender: text.themeLavender,
-    sky: text.themeSky,
+    dark: text.theme.dark,
+    ember: text.theme.ember,
+    forest: text.theme.forest,
+    midnight: text.theme.midnight,
+    nebula: text.theme.nebula,
+    light: text.theme.light,
+    mint: text.theme.mint,
+    sepia: text.theme.sepia,
+    lavender: text.theme.lavender,
+    sky: text.theme.sky,
   })
 
   const themeOptions = $derived(
@@ -177,13 +177,13 @@
 
   const statusMessage = $derived(
     editor.uploadNotice === 'uploaded'
-      ? text.uploadSuccess
+      ? text.upload.success
       : editor.uploadNotice === 'too-large'
-        ? text.uploadTooLarge
+        ? text.upload.tooLarge
         : editor.uploadNotice === 'read-failed'
-          ? text.uploadFailed
+          ? text.upload.failed
           : editor.uploadNotice === 'binary'
-            ? text.uploadBinary
+            ? text.upload.binary
             : playback.statusMessage,
   )
   const uploadNoticeIsError = $derived(editor.uploadNotice !== null && editor.uploadNotice !== 'uploaded')
@@ -461,7 +461,7 @@
 </script>
 
 <svelte:head>
-  <title>{text.appTitle}</title>
+  <title>{text.app.appTitle}</title>
 </svelte:head>
 
 <svelte:window onkeydown={handlePlaybackArrowKey} />
@@ -483,26 +483,26 @@
         bind:buttonEl={drawerButtonRef}
         variant="secondary"
         size="sm"
-        ariaLabel={text.documents}
+        ariaLabel={text.documents.label}
         ariaExpanded={drawerVisible}
-        tooltip={text.documents}
+        tooltip={text.documents.label}
         onClick={toggleDrawer}>
         {#snippet icon()}
           <MenuIcon className="h-4 w-4" />
         {/snippet}
       </Button>
-      <h1 class="text-base font-semibold tracking-tight sm:text-lg">{text.appShortTitle}</h1>
+      <h1 class="text-base font-semibold tracking-tight sm:text-lg">{text.app.appShortTitle}</h1>
     </div>
     <div class="flex items-center gap-2">
       <Menu
         items={UI_LANGUAGE_OPTIONS}
         itemKey={option => option.value}
-        ariaLabel={text.language}
-        triggerTooltip={text.language}
+        ariaLabel={text.app.language}
+        triggerTooltip={text.app.language}
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
-        phoneSheetTitle={text.language}
+        phoneSheetTitle={text.app.language}
         closeLabel={text.close}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.locale}
@@ -527,12 +527,12 @@
       <Menu
         items={themeOptions}
         itemKey={option => option.value}
-        ariaLabel={text.theme}
-        triggerTooltip={text.theme}
+        ariaLabel={text.theme.label}
+        triggerTooltip={text.theme.label}
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
-        phoneSheetTitle={text.theme}
+        phoneSheetTitle={text.theme.label}
         closeLabel={text.close}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.theme}
@@ -558,7 +558,7 @@
           <span>{option.label}</span>
         {/snippet}
       </Menu>
-      <Button variant="secondary" size="sm" ariaLabel={text.settings} tooltip={text.settings} onClick={() => (settingsOpen = true)}>
+      <Button variant="secondary" size="sm" ariaLabel={text.app.settings} tooltip={text.app.settings} onClick={() => (settingsOpen = true)}>
         {#snippet icon()}
           <SettingsIcon className="h-4 w-4" />
         {/snippet}
@@ -590,7 +590,7 @@
       <div class="flex flex-none min-w-0 items-center">
         <EditableText locale={settings.locale} text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
       </div>
-      <section aria-label={text.playbackControls} class="@container flex flex-none flex-wrap items-center gap-1.5">
+      <section aria-label={text.playback.controls} class="@container flex flex-none flex-wrap items-center gap-1.5">
       <span class={REVEAL_CLASS.play}>
         <Button
           variant="outline"
@@ -598,7 +598,7 @@
           size="sm"
           ariaPressed={playback.isPlaying}
           disabled={playback.voiceSwitching || (playback.isPlaying ? false : !settings.canPlay)}
-          ariaLabel={playback.isPlaying ? text.stop : text.playback}
+          ariaLabel={playback.isPlaying ? text.stop : text.playback.label}
           onClick={playback.isPlaying ? playback.stopPlayback : playback.startPlayback}>
           {#snippet icon()}
             {#if playback.isPlaying}
@@ -607,7 +607,7 @@
               <SpeakerIcon className="h-4 w-4" />
             {/if}
           {/snippet}
-          {playback.isPlaying ? text.stop : text.playback}
+          {playback.isPlaying ? text.stop : text.playback.label}
         </Button>
       </span>
 
@@ -616,12 +616,12 @@
           variant="secondary"
           size="sm"
           disabled={editor.currentDocId ? !editor.isDirty : !settings.canPlay}
-          ariaLabel={text.reset}
+          ariaLabel={text.documents.reset}
           onClick={editor.resetEditor}>
           {#snippet icon()}
             <RefreshIcon className="h-4 w-4" />
           {/snippet}
-          {text.reset}
+          {text.documents.reset}
         </Button>
       </span>
 
@@ -630,12 +630,12 @@
           variant="secondary"
           size="sm"
           disabled={editor.saveDisabled}
-          ariaLabel={text.save}
+          ariaLabel={text.documents.save}
           onClick={editor.saveDocument}>
           {#snippet icon()}
             <SaveIcon className="h-4 w-4" />
           {/snippet}
-          {text.save}
+          {text.documents.save}
         </Button>
       </span>
 
@@ -644,10 +644,10 @@
           variant="secondary"
           size="sm"
           disabled={!settings.canPlay}
-          ariaLabel={text.copy}
+          ariaLabel={text.documents.copy}
           onClick={() => void editor.copyEditorContent()}
           icon={copyIcon}>
-          {text.copy}
+          {text.documents.copy}
         </Button>
       </span>
 
@@ -656,7 +656,7 @@
           <Button
             variant="secondary"
             size="sm"
-            ariaLabel={text.delete}
+            ariaLabel={text.documents.delete}
             onClick={() => {
               if (editor.currentDocId) {
                 editor.requestDeleteDocument(editor.currentDocId)
@@ -665,7 +665,7 @@
             {#snippet icon()}
               <DeleteIcon className="h-4 w-4" />
             {/snippet}
-            {text.delete}
+            {text.documents.delete}
           </Button>
         </span>
       {/if}
@@ -676,12 +676,12 @@
           size="sm"
           ariaPressed={showMetadata}
           disabled={!settings.canPlay}
-          ariaLabel={text.info}
+          ariaLabel={text.info.label}
           onClick={() => (showMetadata = !showMetadata)}>
           {#snippet icon()}
             <InfoIcon className="h-4 w-4" />
           {/snippet}
-          {text.info}
+          {text.info.label}
         </Button>
       </span>
 
@@ -690,12 +690,12 @@
           <Button
             variant="secondary"
             size="sm"
-            ariaLabel={text.clone}
+            ariaLabel={text.documents.clone}
             onClick={editor.requestCloneDocument}>
             {#snippet icon()}
               <DocumentIcon className="h-4 w-4" />
             {/snippet}
-            {text.clone}
+            {text.documents.clone}
           </Button>
         </span>
       {/if}
@@ -706,11 +706,11 @@
         ondragover={handleUploadDragOver}
         ondragleave={handleUploadDragLeave}
         ondrop={handleUploadDrop}>
-        <Button variant="secondary" size="sm" ariaLabel={text.upload} onClick={editor.requestUpload}>
+        <Button variant="secondary" size="sm" ariaLabel={text.upload.label} onClick={editor.requestUpload}>
           {#snippet icon()}
             <UploadIcon className="h-4 w-4" />
           {/snippet}
-          {text.upload}
+          {text.upload.label}
         </Button>
       </span>
 
@@ -723,7 +723,7 @@
               onSelect={handlePanelAction}
               isDisabled={panelActionDisabled}
               isPlaying={playback.isPlaying}
-              labels={{ play: playback.isPlaying ? text.stop : text.playback }} />
+              labels={{ play: playback.isPlaying ? text.stop : text.playback.label }} />
           </span>
         {/if}
       {/each}
@@ -744,11 +744,11 @@
                     label={writtenLabel}
                     options={chipLangOptions}
                     activeValue={playback.positionLanguageCode}
-                    ariaLabel={text.segmentLanguage}
+                    ariaLabel={text.voices.segmentLanguage}
                     variant="sky"
                     filterable
-                    filterPlaceholder={text.languageSearch}
-                    emptyText={text.noMatchingLanguages}
+                    filterPlaceholder={text.languages.search}
+                    emptyText={text.languages.noMatching}
                     disabled={playback.isPlaying}
                     onSelect={(v) => void handleLangChipSelectImpl(playback, v)} />
                   {#if playback.positionVoiceName}
@@ -757,11 +757,11 @@
                         label={playback.positionVoiceLocale}
                         options={chipLocaleOptions}
                         activeValue={playback.positionVoiceLocale}
-                        ariaLabel={text.segmentLocale}
+                        ariaLabel={text.voices.segmentLocale}
                         variant="amber"
                         filterable
-                        filterPlaceholder={text.localeSearch}
-                        emptyText={text.noMatchingLocales}
+                        filterPlaceholder={text.languages.localeSearch}
+                        emptyText={text.languages.noMatchingLocales}
                         disabled={playback.isPlaying}
                         onSelect={(v) => void handleLocaleChipSelectImpl(playback, v)} />
                     {/if}
@@ -770,7 +770,7 @@
                         label={playback.positionVoiceGender}
                         options={chipGenderOptions}
                         activeValue={playback.positionVoiceGender}
-                        ariaLabel={text.segmentGender}
+                        ariaLabel={text.voices.segmentGender}
                         variant="fuchsia"
                         disabled={playback.isPlaying}
                         onSelect={(v) => void handleGenderChipSelectImpl(playback, v)} />
@@ -779,11 +779,11 @@
                       label={playback.positionVoiceName}
                       options={chipVoiceOptions}
                       activeValue={activeChipVoiceEdge}
-                      ariaLabel={text.voiceModel}
+                      ariaLabel={text.voices.model}
                       variant="violet"
                       filterable
-                      filterPlaceholder={text.voiceSearch}
-                      emptyText={text.noMatchingVoices}
+                      filterPlaceholder={text.voices.search}
+                      emptyText={text.voices.noMatching}
                       disabled={voiceChipOptions.length === 0}
                       onSelect={(v) => void handleVoiceChipSelectImpl(playback, v)} />
                   {/if}
@@ -791,7 +791,7 @@
                     label={`${playback.playbackSpeed}x`}
                     options={speedChipOptions}
                     activeValue={String(playback.playbackSpeed)}
-                    ariaLabel={text.playbackSpeed}
+                    ariaLabel={text.playback.speed}
                     variant="amber"
                     onSelect={(v) => handleSpeedChipSelect(v)} />
                   {#if metadata.totalSentences > 0}
@@ -809,7 +809,7 @@
                 max={playbackSlider.max}
                 progress={playbackSlider.progress}
                 disabled={playbackSlider.max <= 0}
-                seekLabel={text.seek}
+                seekLabel={text.playback.seek}
                 onInput={playbackSlider.handleInput}
                 onCommit={(e) => playbackSlider.commit(e, elapsed => playback.seekTo(elapsed))} />
             {/if}
@@ -825,7 +825,7 @@
               editable={!playback.isPlaying}
               selectionEnabled={!playback.isPlaying}
               theme={settings.theme}
-              editorAriaLabel={text.editorLabel}
+              editorAriaLabel={text.editor.label}
               containerClass="min-h-0 flex-1"
               editorClass="h-full" />
           </div>
@@ -900,47 +900,47 @@
   {/if}
 
   {#if editor.overwriteConfirmOpen}
-    <BaseDialog title={text.overwriteTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelOverwrite}>
+    <BaseDialog title={text.dialogs.overwriteTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelOverwrite}>
       <div class="flex flex-col gap-4">
-        <p class="text-sm leading-6 text-slate-400">{text.overwriteMessage}</p>
+        <p class="text-sm leading-6 text-slate-400">{text.dialogs.overwriteMessage}</p>
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" onClick={editor.applyOverwrite}>{text.save}</Button>
+          <Button variant="primary" accent="rose" onClick={editor.applyOverwrite}>{text.documents.save}</Button>
         </div>
       </div>
     </BaseDialog>
   {/if}
 
   {#if editor.discardDialogOpen}
-    <BaseDialog title={text.discardTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelDiscard}>
+    <BaseDialog title={text.dialogs.discardTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelDiscard}>
       <div class="flex flex-col gap-4">
-        <p class="text-sm leading-6 text-slate-400">{text.discardMessage}</p>
+        <p class="text-sm leading-6 text-slate-400">{text.dialogs.discardMessage}</p>
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" onClick={editor.confirmDiscard}>{text.discardConfirm}</Button>
+          <Button variant="primary" accent="rose" onClick={editor.confirmDiscard}>{text.dialogs.discardConfirm}</Button>
         </div>
       </div>
     </BaseDialog>
   {/if}
 
   {#if editor.deleteDialogOpen}
-    <BaseDialog title={text.deleteConfirmTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelDelete}>
+    <BaseDialog title={text.dialogs.deleteConfirmTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelDelete}>
       <div class="flex flex-col gap-4">
         <div class="flex min-w-0 flex-col gap-1">
           <p class="truncate text-sm font-medium text-slate-100">{editor.deleteTargetName}</p>
-          <p class="text-sm leading-6 text-slate-400">{text.deleteConfirmMessage}</p>
+          <p class="text-sm leading-6 text-slate-400">{text.dialogs.deleteConfirmMessage}</p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" onClick={editor.confirmDelete}>{text.delete}</Button>
+          <Button variant="primary" accent="rose" onClick={editor.confirmDelete}>{text.documents.delete}</Button>
         </div>
       </div>
     </BaseDialog>
   {/if}
 
   {#if editor.playbackConfirmOpen}
-    <BaseDialog title={text.stopPlaybackTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelPlayback}>
+    <BaseDialog title={text.dialogs.stopPlaybackTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelPlayback}>
       <div class="flex flex-col gap-4">
-        <p class="text-sm leading-6 text-slate-400">{text.stopPlaybackMessage}</p>
+        <p class="text-sm leading-6 text-slate-400">{text.dialogs.stopPlaybackMessage}</p>
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" onClick={editor.confirmPlayback}>{text.stopPlaybackConfirm}</Button>
+          <Button variant="primary" accent="rose" onClick={editor.confirmPlayback}>{text.dialogs.stopPlaybackConfirm}</Button>
         </div>
       </div>
     </BaseDialog>
@@ -962,7 +962,7 @@
 
   {#if showSessionToast}
     <Toast
-      message={text.documentsSessionExpired}
+      message={text.documents.sessionExpired}
       closeLabel={text.close}
       position="top-center"
       type="warning"

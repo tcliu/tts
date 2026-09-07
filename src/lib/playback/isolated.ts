@@ -133,7 +133,7 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
     const resolvedVoice = voice.getResolveEffectiveVoice(lang)
     if (!resolvedVoice?.edge) {
       throw new LocalizedPlaybackError(
-        `${UI_TEXT[context.locale as keyof typeof UI_TEXT].voiceNotConfigured} (${segmentLanguageName(context.locale as keyof typeof UI_TEXT, lang)})`,
+        `${UI_TEXT[context.locale as keyof typeof UI_TEXT].voices.notConfigured} (${segmentLanguageName(context.locale as keyof typeof UI_TEXT, lang)})`,
       )
     }
 
@@ -208,7 +208,7 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
       state.setActiveInfoOffset(-1)
       state.setActiveInfoKind(null)
       state.setLastStatusReason('finished')
-      state.setStatusMessage(UI_TEXT[context.locale as keyof typeof UI_TEXT].playbackFinished)
+      state.setStatusMessage(UI_TEXT[context.locale as keyof typeof UI_TEXT].playback.finished)
       state.setPlaybackElapsed(0)
       if (selFrom >= 0 && selTo >= 0) {
         state.setResumeSelection({ from: selFrom, to: selTo })
@@ -226,7 +226,7 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
       audio.clearPlaybackHighlight()
       console.error(error)
       state.setStatusMessage(
-        error instanceof LocalizedPlaybackError ? error.message : UI_TEXT[context.locale as keyof typeof UI_TEXT].playbackFailed,
+        error instanceof LocalizedPlaybackError ? error.message : UI_TEXT[context.locale as keyof typeof UI_TEXT].playback.failed,
       )
       return true
     }
