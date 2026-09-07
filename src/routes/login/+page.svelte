@@ -128,7 +128,7 @@
           <span>{option.label}</span>
         {/snippet}
       </Menu>
-      <Button size="sm" ariaLabel={text.authGoToEditor} tooltip={text.authGoToEditor} onClick={goToLastDoc}>
+      <Button size="sm" ariaLabel={text.auth.goToEditor} tooltip={text.auth.goToEditor} onClick={goToLastDoc}>
         {#snippet icon()}
           <DocumentIcon />
         {/snippet}

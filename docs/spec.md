@@ -253,9 +253,11 @@ speeds, text segmentation, and sequential segment playback behavior.
   characters. New users are created via `POST /api/auth/register`.
   Login and registration attempts share a database-backed per-IP bucket (5 per
   15 min; `rate_limited` at 429). Successful login does not clear the bucket.
-  Registration failures use generic stable codes and never disclose whether a
-  username or email is already registered; short passwords surface
-  `password_too_short` with the configured `min_length` so the form can name it.
+  Sign-in failures stay generic (`invalid_credentials`, surfaced as "Invalid
+  username or password") and never disclose whether the identifier exists;
+  registration failures likewise use generic stable codes. Short passwords
+  surface `password_too_short` with the configured `min_length` so the form
+  can name it.
 - Sessions are HMAC-signed `httpOnly` `sameSite=strict` cookies:
   `tts-user-session` for users, `tts-admin-session` for admins (24h TTL,
   30d with remember-me). The `hooks.server.ts` handle resolves

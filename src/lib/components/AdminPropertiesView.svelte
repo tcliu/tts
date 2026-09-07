@@ -27,11 +27,13 @@
   let resetError = $state('')
 
   function propertyLabel(property: { labelKey: string; key: string }): string {
-    return text[property.labelKey as keyof typeof text] ?? property.key
+    const value = text[property.labelKey as keyof typeof text]
+    return typeof value === 'string' ? value : property.key
   }
 
   function propertyDescription(property: { descriptionKey: string }): string {
-    return text[property.descriptionKey as keyof typeof text] ?? ''
+    const value = text[property.descriptionKey as keyof typeof text]
+    return typeof value === 'string' ? value : ''
   }
 
   function handleApply() {

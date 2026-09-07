@@ -151,26 +151,26 @@ export interface UiText {
   adminSections: string
   adminPasswordShow: string
   adminPasswordHide: string
-  authLogin: string
-  authCreateAccount: string
-  authAccountOptions: string
-  authAccount: string
-  authSignOut: string
-  authUsernameOrEmail: string
-  authUsername: string
-  authEmail: string
-  authPassword: string
-  authRememberMe: string
-  authContinue: string
-  authGoToEditor: string
-  authFillBoth: string
-  authFillAll: string
-  authSignInFailed: string
-  authUsernameTaken: string
-  authUsernameReserved: string
-  authPasswordTooShort: string
-  authCreateAccountFailed: string
-  authSignOutFailed: string
+  auth: {
+    login: string
+    account: string
+    accountOptions: string
+    usernameOrEmail: string
+    username: string
+    email: string
+    password: string
+    rememberMe: string
+    continue: string
+    goToEditor: string
+    fillBoth: string
+    fillAll: string
+    usernameTaken: string
+    usernameReserved: string
+    passwordTooShort: string
+    signIn: { failed: string }
+    createAccount: { title: string; failed: string }
+    signOut: { label: string; failed: string }
+  }
   adminPropertiesActions: string
   adminTabProperties: string
   adminTabSynthesisCache: string

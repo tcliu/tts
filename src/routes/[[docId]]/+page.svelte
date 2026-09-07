@@ -350,7 +350,7 @@
       // sync toggle stops pushing mutations.
       await invalidateAll()
     } catch (error) {
-      accountError = error instanceof Error ? error.message : text.authSignOutFailed
+      accountError = error instanceof Error ? error.message : text.auth.signOut.failed
     } finally {
       accountPending = false
     }
@@ -563,7 +563,7 @@
           <SettingsIcon className="h-4 w-4" />
         {/snippet}
       </Button>
-      <Button variant="secondary" size="sm" ariaLabel={adminPresence.isAdmin ? text.adminTitle : (data?.user ? data.user.username : text.authLogin)} tooltip={adminPresence.isAdmin ? text.adminTitle : (data?.user ? data.user.username : text.authLogin)} onClick={handleProfileClick}>
+      <Button variant="secondary" size="sm" ariaLabel={adminPresence.isAdmin ? text.adminTitle : (data?.user ? data.user.username : text.auth.login)} tooltip={adminPresence.isAdmin ? text.adminTitle : (data?.user ? data.user.username : text.auth.login)} onClick={handleProfileClick}>
         {#snippet icon()}
           <ProfileIcon className="h-4 w-4" />
         {/snippet}
@@ -947,14 +947,14 @@
   {/if}
 
   {#if accountOpen && data?.user}
-    <BaseDialog title={text.authAccount} maxWidth="md" closeLabel={text.close} onCancel={() => (accountOpen = false)}>
+    <BaseDialog title={text.auth.account} maxWidth="md" closeLabel={text.close} onCancel={() => (accountOpen = false)}>
       <div class="flex flex-col gap-4">
         <p class="truncate text-sm font-medium text-slate-100">{data.user.username}</p>
         {#if accountError}
           <p class="text-sm text-rose-400">{accountError}</p>
         {/if}
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" pending={accountPending} onClick={() => void handleAccountLogout()}>{text.authSignOut}</Button>
+          <Button variant="primary" accent="rose" pending={accountPending} onClick={() => void handleAccountLogout()}>{text.auth.signOut.label}</Button>
         </div>
       </div>
     </BaseDialog>
