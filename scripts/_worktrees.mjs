@@ -173,6 +173,22 @@ export function getAheadBehind(root, base, branch, registered = true) {
   }
 }
 
+// Unix timestamp of a worktree's HEAD commit, resolved inside its own path
+// (correct for unregistered dirs too). Null when unresolvable.
+export function getLastCommitTime(worktreePath) {
+  try {
+    const out = execFileSync("git", ["log", "-1", "--format=%ct"], {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    }).trim();
+    const t = Number(out);
+    return Number.isNaN(t) ? null : t;
+  } catch {
+    return null;
+  }
+}
+
 export function registerWorktree(root, worktreePath, branch) {
   execFileSync("git", ["worktree", "add", worktreePath, "-b", branch], {
     cwd: root,

@@ -26,6 +26,7 @@ import { StringDecoder } from "node:string_decoder";
 import {
   deleteBranch,
   getAheadBehind,
+  getLastCommitTime,
   getMainRoot,
   listDeleteTargets,
   readBranchFromGitDir,
@@ -172,7 +173,6 @@ function writeLines(lines) {
   state.fullClear = false;
 }
 // ---- domain ----
-
 function refreshList() {
   const root = state.mainRoot;
   const nested = listDeleteTargets(root);
@@ -185,14 +185,19 @@ function refreshList() {
       registered: true,
       main: true,
       aheadBehind: null,
+      commitTime: getLastCommitTime(root),
     },
   ];
-  for (const r of nested) {
-    rows.push({
+  // Latest commits first; rows without a resolvable time sink to the bottom.
+  // Main stays pinned at the top.
+  const ordered = nested
+    .map((r) => ({
       ...r,
       aheadBehind: r.main ? null : getAheadBehind(root, base, r.branch, r.registered),
-    });
-  }
+      commitTime: getLastCommitTime(r.path),
+    }))
+    .sort((a, b) => (b.commitTime ?? -1) - (a.commitTime ?? -1));
+  for (const r of ordered) rows.push(r);
   state.rows = rows;
   // Keep surviving selections across refreshes; only vanished paths drop.
   const paths = new Set(rows.map((r) => r.path));
@@ -233,6 +238,23 @@ function listWindow() {
   return { first, last, boxH: listH };
 }
 
+function formatRelativeTime(epochSec) {
+  if (epochSec == null) return "";
+  const s = Math.max(0, Date.now() / 1000 - epochSec);
+  if (s < 60) return `${Math.floor(s)}s ago`;
+  const m = s / 60;
+  if (m < 60) return `${Math.floor(m)}m ago`;
+  const h = m / 60;
+  if (h < 24) return `${Math.floor(h)}h ago`;
+  const d = h / 24;
+  if (d < 7) return `${Math.floor(d)}d ago`;
+  const w = d / 7;
+  if (w < 5) return `${Math.floor(w)}w ago`;
+  const mo = d / 30;
+  if (mo < 12) return `${Math.floor(mo)}mo ago`;
+  return `${Math.floor(d / 365)}y ago`;
+}
+
 function renderListRows() {
   const { boxW } = layout();
   const contentW = boxW - 4;
@@ -254,6 +276,8 @@ function renderListRows() {
     const parts = [];
     if (ab?.ahead > 0) parts.push(`+${ab.ahead}`);
     if (ab?.behind > 0) parts.push(`-${ab.behind}`);
+    const age = formatRelativeTime(r.commitTime);
+    if (age) parts.push(age);
     const counts = parts.length ? ` ${c.dim}· ${parts.join(" ")}${c.reset}` : "";
     let cells = `${marker} ${box} ${r.name} ${branch}${unregistered}${mainTag}${counts}`;
     if (!cursor) cells = c.dim + cells + c.reset;
