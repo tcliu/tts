@@ -130,6 +130,49 @@ export function readBranchFromGitDir(worktreePath) {
   }
 }
 
+export function resolveBaseBranch(root = process.cwd()) {
+  try {
+    const ref = execFileSync("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], {
+      cwd: root,
+      encoding: "utf-8",
+      stdio: "pipe",
+    }).trim();
+    const name = ref.replace("refs/remotes/origin/", "");
+    if (name && name !== "HEAD" && name !== ref) return name;
+  } catch {}
+  for (const cand of ["main", "master"]) {
+    try {
+      execFileSync("git", ["rev-parse", "--verify", `refs/heads/${cand}`], {
+        cwd: root,
+        encoding: "utf-8",
+        stdio: "pipe",
+      });
+      return cand;
+    } catch {}
+  }
+  return null;
+}
+
+// Commits the branch is ahead of / behind the base (both repo-global names,
+// resolved in root). Null when unresolvable; skipped for the main row,
+// detached HEAD, and unregistered dirs (foreign .git names may collide).
+export function getAheadBehind(root, base, branch, registered = true) {
+  if (!base || !branch || branch === base || branch === "HEAD") return null;
+  if (registered === false) return null;
+  try {
+    const out = execFileSync(
+      "git",
+      ["rev-list", "--left-right", "--count", `${base}...${branch}`],
+      { cwd: root, encoding: "utf-8", stdio: "pipe" },
+    ).trim();
+    const [behind, ahead] = out.split(/\s+/).map(Number);
+    if (Number.isNaN(behind) || Number.isNaN(ahead)) return null;
+    return { ahead, behind };
+  } catch {
+    return null;
+  }
+}
+
 export function registerWorktree(root, worktreePath, branch) {
   execFileSync("git", ["worktree", "add", worktreePath, "-b", branch], {
     cwd: root,
