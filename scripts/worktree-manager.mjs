@@ -274,12 +274,15 @@ function renderListRows() {
     const mainTag = r.main ? ` ${c.yellow}[main]${c.reset}` : "";
     const ab = r.aheadBehind;
     const parts = [];
-    if (ab?.ahead > 0) parts.push(`+${ab.ahead}`);
-    if (ab?.behind > 0) parts.push(`-${ab.behind}`);
+    if (ab?.ahead > 0) parts.push(`${c.green}+${ab.ahead}${c.reset}`);
+    if (ab?.behind > 0) parts.push(`${c.yellow}-${ab.behind}${c.reset}`);
     const age = formatRelativeTime(r.commitTime);
-    if (age) parts.push(age);
-    const counts = parts.length ? ` ${c.dim}· ${parts.join(" ")}${c.reset}` : "";
-    let cells = `${marker} ${box} ${r.name} ${branch}${unregistered}${mainTag}${counts}`;
+    if (age) {
+      const fresh = Date.now() / 1000 - r.commitTime < 3600;
+      parts.push(`${fresh ? c.cyan : c.dim}${age}${c.reset}`);
+    }
+    const meta = parts.length ? ` ${c.dim}·${c.reset} ${parts.join(" ")}` : "";
+    let cells = `${marker} ${box} ${r.name} ${branch}${unregistered}${mainTag}${meta}`;
     if (!cursor) cells = c.dim + cells + c.reset;
     // Last two content columns are reserved for the scroll edge marker.
     let row = padRight(truncateAnsi(cells, contentW - 2), contentW - 2);
