@@ -25,11 +25,12 @@ import { StringDecoder } from "node:string_decoder";
 
 import {
   deleteBranch,
+  getAheadBehind,
   getMainRoot,
   listDeleteTargets,
   readBranchFromGitDir,
-  readDevTag,
   removeWorktree,
+  resolveBaseBranch,
 } from "./_worktrees.mjs";
 
 const c = {
@@ -170,12 +171,12 @@ function writeLines(lines) {
   state.lastLines = lines;
   state.fullClear = false;
 }
-
 // ---- domain ----
 
 function refreshList() {
   const root = state.mainRoot;
   const nested = listDeleteTargets(root);
+  const base = resolveBaseBranch(root);
   const rows = [
     {
       path: root,
@@ -183,10 +184,15 @@ function refreshList() {
       branch: readBranchFromGitDir(root) ?? "HEAD",
       registered: true,
       main: true,
-      devTag: readDevTag(root),
+      aheadBehind: null,
     },
   ];
-  for (const r of nested) rows.push({ ...r, devTag: readDevTag(r.path) });
+  for (const r of nested) {
+    rows.push({
+      ...r,
+      aheadBehind: r.main ? null : getAheadBehind(root, base, r.branch, r.registered),
+    });
+  }
   state.rows = rows;
   // Keep surviving selections across refreshes; only vanished paths drop.
   const paths = new Set(rows.map((r) => r.path));
@@ -244,8 +250,12 @@ function renderListRows() {
     const unregistered =
       r.registered === false ? ` ${c.yellow}[unregistered]${c.reset}` : "";
     const mainTag = r.main ? ` ${c.yellow}[main]${c.reset}` : "";
-    const dev = r.devTag ? ` ${c.dim}· ${r.devTag}${c.reset}` : "";
-    let cells = `${marker} ${box} ${r.name} ${branch}${unregistered}${mainTag}${dev}`;
+    const ab = r.aheadBehind;
+    const parts = [];
+    if (ab?.ahead > 0) parts.push(`+${ab.ahead}`);
+    if (ab?.behind > 0) parts.push(`-${ab.behind}`);
+    const counts = parts.length ? ` ${c.dim}· ${parts.join(" ")}${c.reset}` : "";
+    let cells = `${marker} ${box} ${r.name} ${branch}${unregistered}${mainTag}${counts}`;
     if (!cursor) cells = c.dim + cells + c.reset;
     // Last two content columns are reserved for the scroll edge marker.
     let row = padRight(truncateAnsi(cells, contentW - 2), contentW - 2);
