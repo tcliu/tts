@@ -130,7 +130,14 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
     const next = new Map(session.getLangOverrides())
     next.set(index, lang)
     session.setLangOverrides(next)
-    await resynthesizeSegment(index, edge)
+    // Gate Play/seek while the new language synthesizes, mirroring the
+    // voice path. Errors propagate as before; the flag always resets.
+    playback.setSwitching(true)
+    try {
+      await resynthesizeSegment(index, edge)
+    } finally {
+      playback.setSwitching(false)
+    }
   }
 
   function recordSessionVoiceOverride(languageCode: string, voiceEdge: string) {
@@ -166,16 +173,28 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
     }
     const remapResume = index === playback.getResumeIndex() && playback.getResumeTime() > 0
     const resumeCharOffset = remapResume ? ops.getCharOffsetAtPosition(index, playback.getResumeTime()) : null
+    // Optimistic: the chip label derives from the effective voice, so record
+    // first and the UI flips instantly while synthesis runs in the background.
+    const langKey = toWrittenLang(voice.getEffectiveSegmentLang(index))
+    const prevEdge = session.getVoiceSelections().get(langKey)
+    recordSessionVoiceOverride(langKey, voiceEdge)
+    playback.setSwitching(true)
     try {
       await resynthesizeSegment(index, voiceEdge)
     } catch (error) {
+      // Roll back so a failed switch keeps the previous voice (and label).
+      const next = new Map(session.getVoiceSelections())
+      if (prevEdge === undefined) next.delete(langKey)
+      else next.set(langKey, prevEdge)
+      session.setVoiceSelections(next)
       console.error(error)
       playback.setLastStatusReason('error')
       playback.setMetadataAvailable(false)
       playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playback.failed)
       return
+    } finally {
+      playback.setSwitching(false)
     }
-    recordSessionVoiceOverride(toWrittenLang(voice.getEffectiveSegmentLang(index)), voiceEdge)
     if (resumeCharOffset != null) {
       const remapped = ops.getResumeTimeForCharOffset(index, resumeCharOffset)
       playback.setResumeTime(remapped)
