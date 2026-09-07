@@ -3,6 +3,7 @@
   import CodeEditor from '$lib/components/CodeEditor.svelte'
   import Button from '$lib/components/Button.svelte'
   import BaseDialog from '$lib/components/BaseDialog.svelte'
+  import UserAuthPanel, { type AuthPanelMode } from '$lib/components/UserAuthPanel.svelte'
   import EditableText from '$lib/components/EditableText.svelte'
   import SearchInput from '$lib/components/SearchInput.svelte'
   import PanelMenu from '$lib/components/PanelMenu.svelte'
@@ -293,6 +294,7 @@
     return (
       settingsOpen ||
       accountOpen ||
+      loginOpen ||
       editor.overwriteConfirmOpen ||
       editor.discardDialogOpen ||
       editor.deleteDialogOpen ||
@@ -309,9 +311,16 @@
     settings.setTheme(value)
   }
   function handleLoginClick() {
-    // The active slug is already persisted to localStorage on every
-    // navigation, so the login page reads it back directly.
-    void goto('/login')
+    // The dialog owns the foreground (both sit at z-40); drop the toast so
+    // it cannot linger above the scrim. The profile button remains as the
+    // re-entry point if the dialog is cancelled.
+    sessionToastDismissed = true
+    loginOpen = true
+  }
+
+  function closeLoginDialog() {
+    loginOpen = false
+    loginMode = 'signin'
   }
 
   let sessionToastDismissed = $state(false)
@@ -320,6 +329,8 @@
   })
   const showSessionToast = $derived(documents.syncError === 'session_expired' && !sessionToastDismissed)
 
+  let loginOpen = $state(false)
+  let loginMode = $state<AuthPanelMode>('signin')
   let accountOpen = $state(false)
   let accountPending = $state(false)
   let accountError = $state('')
@@ -960,10 +971,22 @@
     </BaseDialog>
   {/if}
 
+  {#if loginOpen}
+    <BaseDialog
+      title={loginMode === 'signin' ? text.auth.login : text.auth.createAccount.title}
+      maxWidth="md"
+      closeLabel={text.close}
+      onCancel={closeLoginDialog}>
+      <UserAuthPanel embedded bind:mode={loginMode} onsuccess={closeLoginDialog} />
+    </BaseDialog>
+  {/if}
+
   {#if showSessionToast}
     <Toast
       message={text.documents.sessionExpired}
       closeLabel={text.close}
+      actionLabel={text.auth.login}
+      onAction={handleLoginClick}
       position="top-center"
       type="warning"
       onClose={() => (sessionToastDismissed = true)} />
