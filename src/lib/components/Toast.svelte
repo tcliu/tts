@@ -14,10 +14,22 @@
     position?: ToastPosition
     size?: ToastSize
     type?: ToastType
+    // Paired: the action button renders only when both are set.
+    actionLabel?: string
+    onAction?: () => void
     onClose: () => void
   }
 
-  let { message, closeLabel, position = 'bottom-right', size = 'sm', type = 'info', onClose }: Props = $props()
+  let {
+    message,
+    closeLabel,
+    actionLabel,
+    onAction,
+    position = 'bottom-right',
+    size = 'sm',
+    type = 'info',
+    onClose,
+  }: Props = $props()
 
   // Viewport-edge positions in the ToastifierJS style: corners and top/bottom
   // center. On phone widths the toast spans the viewport with safe margins;
@@ -64,6 +76,11 @@
   aria-live="polite"
   class={`fixed z-40 flex items-start gap-3 rounded-md px-4 py-3 shadow-lg shadow-slate-950/25 backdrop-blur-sm ${typeClasses[type]} ${positionClasses[position]}`}>
   <p class={`min-w-0 flex-1 font-medium ${sizeClasses[size]}`}>{message}</p>
+  {#if actionLabel && onAction}
+    <Button variant="ghost" size="sm" onClick={onAction} className="-my-1 shrink-0 font-semibold">
+      {actionLabel}
+    </Button>
+  {/if}
   <Button
     variant="ghost"
     size="sm"

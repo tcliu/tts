@@ -9,8 +9,18 @@
   import { login, register, UserAuthError } from '$lib/user-auth'
   import { lastDocUrl } from '$lib/document-history'
 
-  type Mode = 'signin' | 'register'
-  let mode = $state<Mode>('signin')
+  export type AuthPanelMode = 'signin' | 'register'
+
+  interface Props {
+    embedded?: boolean
+    onsuccess?: () => void
+    mode?: AuthPanelMode
+  }
+  // `embedded` drops the standalone page's centering wrapper and card chrome
+  // when the panel is hosted inside a dialog; `onsuccess` lets the host close
+  // that dialog instead of this panel navigating to the last document. `mode`
+  // is bindable so a dialog host can title the dialog from the active mode.
+  let { embedded = false, onsuccess, mode = $bindable('signin') }: Props = $props()
   let identifier = $state('')
   let username = $state('')
   let email = $state('')
@@ -24,6 +34,15 @@
   const settings = useSettings()
   const text = $derived(UI_TEXT[settings.locale])
 
+  const outerClass = $derived(
+    embedded ? 'w-full' : 'flex min-h-full items-center justify-center px-4 py-10 @max-md:p-0',
+  )
+  const cardClass = $derived(
+    embedded
+      ? 'w-full'
+      : 'w-full max-w-md rounded-xl border border-slate-800 bg-slate-900/95 p-6 shadow-2xl shadow-slate-950/60 @max-md:max-w-none @max-md:self-stretch @max-md:rounded-none @max-md:border-x-0',
+  )
+
   $effect(() => {
     if (mode === 'signin') {
       void tick().then(() => identifierInput?.focus())
@@ -32,7 +51,7 @@
     }
   })
 
-  function switchMode(next: Mode) {
+  function switchMode(next: AuthPanelMode) {
     mode = next
     password = ''
     error = ''
@@ -65,13 +84,21 @@
       error = text.auth.fillBoth
       return
     }
+    pending = true
+    error = ''
     try {
       const result = await login(identifier.trim(), password, rememberMe)
-      await goto(result.kind === 'admin' ? '/admin/properties' : lastDocUrl())
+      if (result.kind === 'admin') {
+        await goto('/admin/properties')
+      } else if (!onsuccess) {
+        await goto(lastDocUrl())
+      }
       // The session cookie is fresh from the login response; re-run loads so
       // `data.user` (and the header profile button) reflects the new session
-      // even when the navigation reused cached load data.
+      // even when the navigation reused cached load data. In-dialog sign-in
+      // needs no navigation — the host closes the dialog via `onsuccess`.
       await invalidateAll()
+      if (result.kind !== 'admin') onsuccess?.()
     } catch (err) {
       error = mapSignInError(err)
     } finally {
@@ -88,9 +115,12 @@
     error = ''
     try {
       await register(username.trim(), email.trim(), password)
-      await goto(lastDocUrl())
+      if (!onsuccess) {
+        await goto(lastDocUrl())
+      }
       // Same as sign-in: force fresh loads so the header shows the profile.
       await invalidateAll()
+      onsuccess?.()
     } catch (err) {
       error = mapRegisterError(err)
     } finally {
@@ -99,13 +129,15 @@
   }
 </script>
 
-<div class="flex min-h-full items-center justify-center px-4 py-10 @max-md:p-0">
-  <div class="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900/95 p-6 shadow-2xl shadow-slate-950/60 @max-md:max-w-none @max-md:self-stretch @max-md:rounded-none @max-md:border-x-0">
-    <h1 class="text-2xl font-semibold tracking-tight text-slate-100">
-      {mode === 'signin' ? text.auth.login : text.auth.createAccount.title}
-    </h1>
+<div class={outerClass}>
+  <div class={cardClass}>
+    {#if !embedded}
+      <h1 class="text-2xl font-semibold tracking-tight text-slate-100">
+        {mode === 'signin' ? text.auth.login : text.auth.createAccount.title}
+      </h1>
+    {/if}
 
-    <div class="mt-4">
+    <div class={embedded ? '' : 'mt-4'}>
       <div class="mb-4 flex rounded-lg border border-slate-700 p-0.5" role="group" aria-label={text.auth.accountOptions}>
         <button
           type="button"

@@ -119,7 +119,10 @@
   server; Save disables again once the server holds the copy.
 - Clicking the profile button while signed in as a user opens an Account
   dialog showing the username with a sign-out action; admins go to
-  `/admin/properties` instead and signed-out visitors go to `/login`.
+  `/admin/properties` instead and signed-out visitors open a sign-in dialog
+  in place (the same sign-in / create-account form as `/login`, hosted in a
+  dialog). Admin sign-ins from the dialog still navigate to
+  `/admin/properties`.
 - Opening a different document, starting a new document, cloning, uploading, or
   resetting with unsaved edits shows a discard confirmation first; cancelling
   keeps the current content.
@@ -199,7 +202,9 @@
 
 - `/login` shows a sign-in / create-account card. A toggle switches between
   the two modes: sign-in takes username-or-email + password + remember-me;
-  create-account takes username + email + password.
+  create-account takes username + email + password. It serves direct visits
+  and admin redirects; the editor's profile button and the session-expired
+  toast open the same form as an in-editor dialog instead.
 - On success, admins go to `/admin/properties` and users go back to the
   last-opened document (the active slug persisted in `localStorage`; `/`
   for a fresh buffer). Already-authenticated visitors are bounced away from
