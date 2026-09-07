@@ -19,8 +19,8 @@
 // closes the pane, PgUp/PgDn scrolls. The interactive shell keeps the
 // fullscreen suspend/resume flow because it needs a real TTY.
 import { spawn } from "node:child_process";
+import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import { stdin, stdout } from "node:process";
 
 import {
   deleteBranch,
@@ -55,11 +55,11 @@ const PRESET_COMMANDS = [
 
 const HELP_TEXT =
   "Arrows: move · Space: select · a: all · Tab: menu · c: cmd · s: shell · " +
-  "Del: delete (batch when >1 checked) · r: refresh · PgUp/PgDn: cmd output · " +
+  "Del: delete · r: refresh · PgUp/PgDn: cmd output · " +
   "q: quit · Ctrl-C: stop cmd/quit";
 
 const DEFAULT_STATUS =
-  `${c.green}Ready.${c.reset} Tab: menu · Space: select · Del: delete (batch when >1 checked) · c: cmd · s: shell · r: refresh · q: quit.`;
+  `${c.green}Ready.${c.reset} Tab: menu · Space: select · Del: delete · c: cmd · s: shell · r: refresh · q: quit.`;
 
 const MODES = ["Actions", "Command"];
 
@@ -1307,7 +1307,8 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  state.mainRoot = getMainRoot(process.cwd());
+  const startDir = path.resolve(process.argv[2] ?? ".");
+  state.mainRoot = getMainRoot(startDir);
   refreshList();
   stdin.setRawMode(true);
   stdin.resume();
