@@ -1,60 +1,80 @@
 import { detectTtsLanguage, SEGMENT_CJK_RE, SINGLE_CJK_RE, PUNCT_KEEP_RE, PUNCT_ONLY_RE, minimumLength } from '../detect'
 
+// Hoisted: the char loop below runs per code unit, so inline literal regexes
+// pay call overhead millions of times on large documents.
+const WS_CHAR_RE = /^\s$/
+const DIGIT_CHAR_RE = /\d/
+const EM_DASH_CHAR_RE = /[—─]/
+
 export function splitTtsRuns(text: string) {
   const runs: { text: string; lang: string; start: number; end: number }[] = []
-  let pendingWhitespace = ''
-  let currentText = ''
+  // Array accumulation joined on flush: `currentText += char` per code unit
+  // is quadratic for long same-script runs.
+  let pendingChars: string[] = []
+  let pendingLength = 0
+  let currentChars: string[] = []
+  let currentLength = 0
   let currentCjk: boolean | null = null
 
   const flush = (endIndex: number) => {
-    if (!currentText) return
-    const start = endIndex - pendingWhitespace.length - currentText.length
+    if (currentChars.length === 0) return
+    const currentText = currentChars.join('')
+    const pendingText = pendingChars.join('')
+    const start = endIndex - pendingLength - currentLength
     const lang = detectTtsLanguage(currentText)
-    runs.push({ text: pendingWhitespace + currentText, lang, start, end: endIndex })
-    pendingWhitespace = ''
-    currentText = ''
+    runs.push({ text: pendingText + currentText, lang, start, end: endIndex })
+    pendingChars = []
+    pendingLength = 0
+    currentChars = []
+    currentLength = 0
+  }
+
+  const pushChar = (char: string) => {
+    currentChars.push(char)
+    currentLength += 1
   }
 
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i]
-    if (/^\s$/.test(char)) {
+    if (WS_CHAR_RE.test(char)) {
       if (currentCjk === false) {
-        currentText += char
+        pushChar(char)
       } else {
         flush(i)
-        pendingWhitespace += char
+        pendingChars.push(char)
+        pendingLength += 1
       }
       continue
     }
-    if (/\d/.test(char) && currentCjk !== null) {
-      currentText += char
+    if (DIGIT_CHAR_RE.test(char) && currentCjk !== null) {
+      pushChar(char)
       continue
     }
-    if (currentCjk && /[—─]/.test(char)) {
-      currentText += char
+    if (currentCjk && EM_DASH_CHAR_RE.test(char)) {
+      pushChar(char)
       continue
     }
-    if (currentCjk && (char === ',' || char === '.') && i + 1 < text.length && /\d/.test(text[i + 1])) {
-      currentText += char
+    if (currentCjk && (char === ',' || char === '.') && i + 1 < text.length && DIGIT_CHAR_RE.test(text[i + 1])) {
+      pushChar(char)
       continue
     }
-    if (currentCjk !== null && currentText && PUNCT_KEEP_RE.test(char)) {
-      currentText += char
+    if (currentCjk !== null && currentChars.length > 0 && PUNCT_KEEP_RE.test(char)) {
+      pushChar(char)
       continue
     }
     const cjk = SEGMENT_CJK_RE.test(char)
     if (currentCjk === null || currentCjk === cjk) {
       currentCjk = cjk
-      currentText += char
+      pushChar(char)
     } else {
       flush(i)
       currentCjk = cjk
-      currentText = char
+      pushChar(char)
     }
   }
   flush(text.length)
-  if (pendingWhitespace && runs.length > 0) {
-    runs[runs.length - 1].text += pendingWhitespace
+  if (pendingChars.length > 0 && runs.length > 0) {
+    runs[runs.length - 1].text += pendingChars.join('')
     runs[runs.length - 1].end = text.length
   }
   return reattachBracketEdges(runs)
