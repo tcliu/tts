@@ -114,6 +114,12 @@ const FOREIGN_WORDS: Record<string, string[]> = {
 function isProbablyEnglish(text: string): boolean {
   return ENGLISH_DISTINCTIVE_RE.test(text)
 }
+// Lowercased once at module load so scoring a paragraph never re-lowercases
+// the word lists; matching semantics are unchanged (tokens are lowercased).
+const LOWER_FOREIGN_WORDS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(FOREIGN_WORDS).map(([lang, words]) => [lang, words.map(word => word.toLowerCase())]),
+)
+
 function foreignWordScore(tokens: Set<string>, lang: string, minTokenLength = 3): number {
   const words = LOWER_FOREIGN_WORDS[lang]
   if (!words) return 0
@@ -123,12 +129,6 @@ function foreignWordScore(tokens: Set<string>, lang: string, minTokenLength = 3)
   }
   return score
 }
-
-// Lowercased once at module load so scoring a paragraph never re-lowercases
-// the word lists; matching semantics are unchanged (tokens are lowercased).
-const LOWER_FOREIGN_WORDS: Record<string, string[]> = Object.fromEntries(
-  Object.entries(FOREIGN_WORDS).map(([lang, words]) => [lang, words.map(word => word.toLowerCase())]),
-)
 
 function bestForeignLanguage(text: string, minTokenLength = 3): { lang: string | null; score: number } {
   // Tokenize once: the previous per-language split re-ran toLowerCase plus a

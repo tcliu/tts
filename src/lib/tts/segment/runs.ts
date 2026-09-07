@@ -11,27 +11,22 @@ export function splitTtsRuns(text: string) {
   // Array accumulation joined on flush: `currentText += char` per code unit
   // is quadratic for long same-script runs.
   let pendingChars: string[] = []
-  let pendingLength = 0
   let currentChars: string[] = []
-  let currentLength = 0
   let currentCjk: boolean | null = null
 
   const flush = (endIndex: number) => {
     if (currentChars.length === 0) return
     const currentText = currentChars.join('')
     const pendingText = pendingChars.join('')
-    const start = endIndex - pendingLength - currentLength
+    const start = endIndex - pendingChars.length - currentChars.length
     const lang = detectTtsLanguage(currentText)
     runs.push({ text: pendingText + currentText, lang, start, end: endIndex })
     pendingChars = []
-    pendingLength = 0
     currentChars = []
-    currentLength = 0
   }
 
   const pushChar = (char: string) => {
     currentChars.push(char)
-    currentLength += 1
   }
 
   for (let i = 0; i < text.length; i += 1) {
@@ -42,7 +37,6 @@ export function splitTtsRuns(text: string) {
       } else {
         flush(i)
         pendingChars.push(char)
-        pendingLength += 1
       }
       continue
     }
