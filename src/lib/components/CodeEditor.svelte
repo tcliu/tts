@@ -139,6 +139,28 @@
       class: enabled ? '' : 'cm-selectionDisabled',
     })
   }
+  // Large pastes through the browser's native contenteditable path force
+  // CodeMirror to reverse-engineer the change from DOM mutations (seconds
+  // for hundreds of KB). Applying the plain-text clipboard payload as a
+  // single transaction reaches the same document state without that pass.
+  function pasteExtension() {
+    return EditorView.domEventHandlers({
+      paste(event, view) {
+        // While playback locks the editor the DOM is not editable, so a
+        // paste event cannot arrive; refuse defensively to match that.
+        if (!editable) {
+          return false
+        }
+        const text = event.clipboardData?.getData('text/plain') ?? ''
+        if (text.length === 0) {
+          return false
+        }
+        event.preventDefault()
+        view.dispatch(view.state.replaceSelection(text), { userEvent: 'input.paste', scrollIntoView: true })
+        return true
+      },
+    })
+  }
 
   function insertTwoSpaces(): boolean {
     if (!editorView) return false
@@ -198,6 +220,7 @@
           editableCompartment.of(EditorView.editable.of(editable)),
           selectionGuardCompartment.of(selectionGuardExtension(selectionEnabled)),
           selectionAttrCompartment.of(selectionAttrExtension(selectionEnabled)),
+          pasteExtension(),
           drawSelection(),
           playbackHighlightCompartment.of(playbackHighlightField(null, null)),
           lineNumbers(),
