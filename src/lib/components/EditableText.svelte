@@ -68,20 +68,14 @@
       }
       // Compute the remaining horizontal width so the editable input's max
       // width is the lesser of the `maxWidth` prop and available space.
-      // The editable root (displayBtn's direct parent) only spans label+icon,
-      // so walk up to the first ancestor with meaningful space to its right.
+      // Measured from the viewport's right edge (the header row spans the
+      // full width), so no ancestor walk is needed.
       try {
-        let row: Element | null = displayBtn?.parentElement ?? null
-        while (row && labelRect) {
-          const rect = row.getBoundingClientRect()
-          if (rect.right - labelRect.right >= 56) break
-          row = row.parentElement
-        }
-        const rowRect = row?.getBoundingClientRect()
-        if (labelRect && rowRect) {
+        if (labelRect) {
           // Reserve room for sibling action buttons (e.g. delete) + padding.
           const reserved = 48
-          const remaining = Math.max(0, Math.floor(rowRect.right - labelRect.left - reserved))
+          const viewportRight = document.documentElement.clientWidth
+          const remaining = Math.max(0, Math.floor(viewportRight - labelRect.left - reserved))
           computedMaxWidth = Math.min(maxWidth, remaining)
         } else {
           computedMaxWidth = maxWidth

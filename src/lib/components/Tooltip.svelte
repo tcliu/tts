@@ -5,11 +5,11 @@
     children: Snippet
     align?: 'center' | 'left' | 'right'
     class?: string
+    trigger?: HTMLElement | null
   }
 
-  let { children, align = 'center', class: extraClass = '' }: Props = $props()
+  let { children, align = 'center', class: extraClass = '', trigger = null }: Props = $props()
 
-  let anchor = $state<HTMLElement | null>(null)
   let tooltipEl = $state<HTMLElement | null>(null)
   let visible = $state(false)
   let top = $state(0)
@@ -19,7 +19,6 @@
   const PLACEMENT_GAP = 8
 
   function place() {
-    const trigger = anchor?.parentElement
     if (!trigger) {
       return
     }
@@ -117,7 +116,6 @@
   }
 
   $effect(() => {
-    const trigger = anchor?.parentElement
     if (!trigger || !supportsHover) {
       return
     }
@@ -136,7 +134,6 @@
   })
 
   $effect(() => {
-    const trigger = anchor?.parentElement
     if (!trigger) {
       return
     }
@@ -181,10 +178,10 @@
     if (!visible) {
       return
     }
-    const trigger = anchor?.parentElement
+    const currentTrigger = trigger
     const reposition = () => place()
     const hideWhenAway = (event: PointerEvent) => {
-      if (!trigger || (event.target instanceof Node && trigger.contains(event.target))) {
+      if (!currentTrigger || (event.target instanceof Node && currentTrigger.contains(event.target))) {
         return
       }
       hide()
@@ -214,9 +211,7 @@
   }
 </script>
 
-<span bind:this={anchor} class="hidden"></span>
-
-{#if visible}
+  {#if visible}
   <span
     bind:this={tooltipEl}
     use:portal
