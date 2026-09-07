@@ -156,6 +156,7 @@
   // Pixel width per data column; empty until the first resize.
   let columnWidths = $state<number[]>([])
   let tableContainer: HTMLElement | null = null
+  let headerEls = $state<(HTMLElement | null)[]>([])
 
   const managedWidths = $derived(resizable && columnWidths.length > 0)
 
@@ -173,8 +174,7 @@
   }
 
   function getColumnCellWidth(i: number): number {
-    const th = tableContainer?.querySelector<HTMLElement>(`th[data-col-index="${i}"]`)
-    return th?.offsetWidth ?? MIN_COLUMN_WIDTH
+    return headerEls[i]?.offsetWidth ?? MIN_COLUMN_WIDTH
   }
 
   const resize = createColumnResize({
@@ -265,9 +265,9 @@
             {@const isAsc = isActive && sortDirection === 'asc'}
             {@const isDesc = isActive && sortDirection === 'desc'}
             <th
+              bind:this={headerEls[i]}
               class="sticky top-0 z-10 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur {column.sortable ? 'group' : ''} {managedWidths ? '' : column.widthClass} {managedWidths ? '' : column.minWidthClass}"
               style={managedWidths ? '' : [column.widthStyle, column.minWidthStyle].filter(Boolean).join('; ')}
-              data-col-index={i}
               aria-sort={isActive ? (isAsc ? 'ascending' : 'descending') : undefined}>
               {#if column.sortable}
                 <span class="flex w-full items-center gap-2 text-left">

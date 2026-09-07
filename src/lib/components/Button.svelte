@@ -96,6 +96,8 @@
   function handlePreventFocusSteal(event: PointerEvent) {
     event.preventDefault()
   }
+
+  let triggerEl = $state<HTMLElement | null>(null)
 </script>
 
 {#snippet buttonInner()}
@@ -114,11 +116,10 @@
       {@render buttonInner()}
     </button>
   {/snippet}
-
 {#if tooltip}
-  <span class="group relative inline-flex">
+  <span bind:this={triggerEl} class="group relative inline-flex">
     {@render buttonElement()}
-    <Tooltip align={tooltipAlign}>{tooltip}</Tooltip>
+    <Tooltip align={tooltipAlign} trigger={triggerEl}>{tooltip}</Tooltip>
   </span>
 {:else}
   {@render buttonElement()}

@@ -73,6 +73,7 @@
   const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
   let triggerRef = $state<HTMLButtonElement | null>(null)
+  let tooltipTriggerEl = $state<HTMLElement | null>(null)
   let overlayRef = $state<HTMLDivElement | null>(null)
   let panelRef = $state<HTMLDivElement | null>(null)
   let dialogRef = $state<HTMLDivElement | null>(null)
@@ -317,9 +318,9 @@
   data-escape-capture={open ? '' : null}
   onfocusout={handleFocusOut}>
   {#if triggerTooltip}
-    <span class="group relative inline-flex">
+    <span bind:this={tooltipTriggerEl} class="group relative inline-flex">
       {@render triggerButton()}
-      <Tooltip align={triggerTooltipAlign}>{triggerTooltip}</Tooltip>
+      <Tooltip align={triggerTooltipAlign} trigger={tooltipTriggerEl}>{triggerTooltip}</Tooltip>
     </span>
   {:else}
     {@render triggerButton()}
