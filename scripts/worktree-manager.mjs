@@ -20,6 +20,7 @@
 // fullscreen suspend/resume flow because it needs a real TTY.
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { stdin, stdout } from "node:process";
 import { StringDecoder } from "node:string_decoder";
 
 import {
@@ -1302,6 +1303,10 @@ const state = {
 };
 
 async function main() {
+  if (process.argv[2] === "--help" || process.argv[2] === "-h") {
+    console.log("Usage: worktree-manager [dir]\n\nManage git worktrees rooted at the repository containing [dir] (default: current directory).");
+    return;
+  }
   if (!stdin.isTTY || !stdout.isTTY) {
     console.error("worktree-manager requires an interactive terminal.");
     process.exitCode = 1;
