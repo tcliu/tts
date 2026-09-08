@@ -73,7 +73,6 @@
   const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
   let triggerRef = $state<HTMLButtonElement | null>(null)
-  let tooltipTriggerEl = $state<HTMLElement | null>(null)
   let overlayRef = $state<HTMLDivElement | null>(null)
   let panelRef = $state<HTMLDivElement | null>(null)
   let dialogRef = $state<HTMLDivElement | null>(null)
@@ -82,7 +81,6 @@
   let sheetDragOffset = $state(0)
   let sheetDragging = $state(false)
   let reduceMotion = $state(false)
-
   const usePhoneSheet = $derived(phoneSheetTitle !== undefined && isPhoneViewport)
 
   onMount(() => {
@@ -312,13 +310,9 @@
   bind:this={containerRef}
   data-escape-capture={open ? '' : null}
   onfocusout={handleFocusOut}>
+  {@render triggerButton()}
   {#if triggerTooltip}
-    <span bind:this={tooltipTriggerEl} class="group relative inline-flex">
-      {@render triggerButton()}
-      <Tooltip align={triggerTooltipAlign} trigger={tooltipTriggerEl}>{triggerTooltip}</Tooltip>
-    </span>
-  {:else}
-    {@render triggerButton()}
+    <Tooltip align={triggerTooltipAlign} trigger={triggerRef}>{triggerTooltip}</Tooltip>
   {/if}
   {#if open}
     {#if usePhoneSheet}
