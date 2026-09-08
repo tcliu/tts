@@ -4,8 +4,7 @@
   import Button from '$lib/components/Button.svelte'
   import Checkbox from '$lib/components/Checkbox.svelte'
   import PasswordInput from '$lib/components/PasswordInput.svelte'
-  import { UI_TEXT } from '$lib/ui-text'
-  import { useSettings } from '$lib/use-settings.svelte'
+  import { getI18nContext } from '$lib/i18n.svelte'
   import { login, register, UserAuthError } from '$lib/user-auth'
   import { lastDocUrl } from '$lib/document-history'
 
@@ -31,8 +30,7 @@
   let identifierInput = $state<HTMLInputElement | null>(null)
   let registerUsernameInput = $state<HTMLInputElement | null>(null)
 
-  const settings = useSettings()
-  const text = $derived(UI_TEXT[settings.locale])
+  const i18n = getI18nContext()
 
   const outerClass = $derived(
     embedded ? 'w-full' : 'flex min-h-full items-center justify-center px-4 py-10 @max-md:p-0',
@@ -62,26 +60,26 @@
   // localized strings so the form never shows a raw code.
   function mapSignInError(err: unknown): string {
     const code = err instanceof Error ? err.message : ''
-    if (code === 'invalid_credentials') return text.auth.signIn.failed
-    if (code === 'rate_limited') return text.adminErrorRateLimited
-    return text.auth.signIn.failed
+    if (code === 'invalid_credentials') return i18n.t('auth.signIn.failed')
+    if (code === 'rate_limited') return i18n.t('adminErrorRateLimited')
+    return i18n.t('auth.signIn.failed')
   }
 
   function mapRegisterError(err: unknown): string {
     const code = err instanceof Error ? err.message : ''
-    if (code === 'rate_limited') return text.adminErrorRateLimited
-    if (code === 'username is reserved') return text.auth.usernameReserved
+    if (code === 'rate_limited') return i18n.t('adminErrorRateLimited')
+    if (code === 'username is reserved') return i18n.t('auth.usernameReserved')
     if (code === 'password_too_short') {
       const min = err instanceof UserAuthError ? err.minLength : null
-      if (typeof min === 'number') return text.auth.passwordTooShort.replace('{min}', String(min))
-      return text.auth.createAccount.failed
+      if (typeof min === 'number') return i18n.t('auth.passwordTooShort', { min })
+      return i18n.t('auth.createAccount.failed')
     }
-    return text.auth.createAccount.failed
+    return i18n.t('auth.createAccount.failed')
   }
 
   async function handleSignIn() {
     if (!identifier.trim() || !password) {
-      error = text.auth.fillBoth
+      error = i18n.t('auth.fillBoth')
       return
     }
     pending = true
@@ -108,7 +106,7 @@
 
   async function handleRegister() {
     if (!username.trim() || !email.trim() || !password) {
-      error = text.auth.fillAll
+      error = i18n.t('auth.fillAll')
       return
     }
     pending = true
@@ -133,25 +131,25 @@
   <div class={cardClass}>
     {#if !embedded}
       <h1 class="text-2xl font-semibold tracking-tight text-slate-100">
-        {mode === 'signin' ? text.auth.login : text.auth.createAccount.title}
+        {mode === 'signin' ? i18n.t('auth.login') : i18n.t('auth.createAccount.title')}
       </h1>
     {/if}
 
     <div class={embedded ? '' : 'mt-4'}>
-      <div class="mb-4 flex rounded-lg border border-slate-700 p-0.5" role="group" aria-label={text.auth.accountOptions}>
+      <div class="mb-4 flex rounded-lg border border-slate-700 p-0.5" role="group" aria-label={i18n.t('auth.accountOptions')}>
         <button
           type="button"
           aria-pressed={mode === 'signin'}
           onclick={() => switchMode('signin')}
           class={`flex-1 rounded-md px-3 py-1.5 text-sm font-semibold outline-none transition ${mode === 'signin' ? 'bg-slate-800 text-slate-100' : 'text-slate-400 hover:text-slate-200 focus:text-slate-200'}`}>
-          {text.auth.login}
+          {i18n.t('auth.login')}
         </button>
         <button
           type="button"
           aria-pressed={mode === 'register'}
           onclick={() => switchMode('register')}
           class={`flex-1 rounded-md px-3 py-1.5 text-sm font-semibold outline-none transition ${mode === 'register' ? 'bg-slate-800 text-slate-100' : 'text-slate-400 hover:text-slate-200 focus:text-slate-200'}`}>
-          {text.auth.createAccount.title}
+          {i18n.t('auth.createAccount.title')}
         </button>
       </div>
 
@@ -164,7 +162,7 @@
           }}
           novalidate>
           <label class="flex flex-col gap-1.5">
-            <span class="text-sm font-medium text-slate-200">{text.auth.usernameOrEmail}</span>
+            <span class="text-sm font-medium text-slate-200">{i18n.t('auth.usernameOrEmail')}</span>
             <input
               bind:this={identifierInput}
               bind:value={identifier}
@@ -174,15 +172,15 @@
               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500 disabled:opacity-40" />
           </label>
           <label class="flex flex-col gap-1.5">
-            <span class="text-sm font-medium text-slate-200">{text.auth.password}</span>
-            <PasswordInput bind:value={password} locale={settings.locale} disabled={pending} />
+            <span class="text-sm font-medium text-slate-200">{i18n.t('auth.password')}</span>
+            <PasswordInput bind:value={password} disabled={pending} />
           </label>
           {#if error}
             <p class="text-sm text-rose-400" role="alert">{error}</p>
           {/if}
-          <Checkbox bind:checked={rememberMe} name="rememberMe" label={text.auth.rememberMe} disabled={pending} />
+          <Checkbox bind:checked={rememberMe} name="rememberMe" label={i18n.t('auth.rememberMe')} disabled={pending} />
           <Button variant="primary" accent="cyan" type="submit" pending={pending} className="w-full">
-            {text.auth.continue}
+            {i18n.t('auth.continue')}
           </Button>
         </form>
       {:else}
@@ -194,7 +192,7 @@
           }}
           novalidate>
           <label class="flex flex-col gap-1.5">
-            <span class="text-sm font-medium text-slate-200">{text.auth.username}</span>
+            <span class="text-sm font-medium text-slate-200">{i18n.t('auth.username')}</span>
             <input
               bind:this={registerUsernameInput}
               bind:value={username}
@@ -204,7 +202,7 @@
               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500 disabled:opacity-40" />
           </label>
           <label class="flex flex-col gap-1.5">
-            <span class="text-sm font-medium text-slate-200">{text.auth.email}</span>
+            <span class="text-sm font-medium text-slate-200">{i18n.t('auth.email')}</span>
             <input
               bind:value={email}
               type="email"
@@ -213,14 +211,14 @@
               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500 disabled:opacity-40" />
           </label>
           <label class="flex flex-col gap-1.5">
-            <span class="text-sm font-medium text-slate-200">{text.auth.password}</span>
-            <PasswordInput bind:value={password} locale={settings.locale} disabled={pending} />
+            <span class="text-sm font-medium text-slate-200">{i18n.t('auth.password')}</span>
+            <PasswordInput bind:value={password} disabled={pending} />
           </label>
           {#if error}
             <p class="text-sm text-rose-400" role="alert">{error}</p>
           {/if}
           <Button variant="primary" accent="cyan" type="submit" pending={pending} className="w-full">
-            {text.auth.continue}
+            {i18n.t('auth.continue')}
           </Button>
         </form>
       {/if}

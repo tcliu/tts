@@ -6,7 +6,7 @@ import {
   updateAdminProperties,
   type AdminProperty,
 } from '$lib/admin-client'
-import type { UiText } from '$lib/ui-text'
+import type { MessageKey, TtsI18n } from '$lib/i18n.svelte'
 
 export function useAdminProperties(onSignedOut: () => void) {
   let properties = $state<AdminProperty[]>([])
@@ -33,23 +33,26 @@ export function useAdminProperties(onSignedOut: () => void) {
   function validateDraft(
     property: AdminProperty,
     raw: string,
-    text: UiText,
+    i18n: TtsI18n,
   ): { ok: true; value: number } | { ok: false; error: string } {
-    const label = text[property.labelKey as keyof UiText] ?? property.key
+    // Label keys arrive as wire data; fall back to the property key when the
+    // server sends a key with no dictionary entry (t returns the key itself).
+    const labelKey = property.labelKey
+    const labelMessage = i18n.t(labelKey as MessageKey)
+    const label = labelMessage === labelKey ? property.key : labelMessage
     const parsed = Number(raw.trim())
     if (!Number.isInteger(parsed)) {
-      return { ok: false, error: `${label}: ${text.adminPropNotInteger}` }
+      return { ok: false, error: `${label}: ${i18n.t('adminPropNotInteger')}` }
     }
     if (parsed < (property.min ?? Number.NEGATIVE_INFINITY) || parsed > (property.max ?? Number.POSITIVE_INFINITY)) {
       return {
         ok: false,
-        error: `${label}: ${text.adminPropOutOfRange
-          .replace('{min}', String(property.min ?? 0))
-          .replace('{max}', String(property.max ?? Number.MAX_SAFE_INTEGER))}`,
+        error: `${label}: ${i18n.t('adminPropOutOfRange', { min: String(property.min ?? 0), max: String(property.max ?? Number.MAX_SAFE_INTEGER) })}`,
       }
     }
     return { ok: true, value: parsed }
   }
+
 
   async function load(): Promise<boolean> {
     try {
@@ -66,7 +69,7 @@ export function useAdminProperties(onSignedOut: () => void) {
     }
   }
 
-  function apply(text: UiText): string | null {
+  function apply(i18n: TtsI18n): string | null {
     if (pending) return null
     const changed = properties.filter(
       property => hasDraftValue(property.key) && draftValues[property.key] !== String(property.value),
@@ -76,7 +79,7 @@ export function useAdminProperties(onSignedOut: () => void) {
     }
     const payload: Array<{ key: string; value: number | null }> = []
     for (const property of changed) {
-      const validated = validateDraft(property, draftValues[property.key] ?? '', text)
+      const validated = validateDraft(property, draftValues[property.key] ?? '', i18n)
       if (!validated.ok) {
         return validated.error
       }

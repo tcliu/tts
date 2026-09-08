@@ -6,19 +6,18 @@
   import SpeakerIcon from '$lib/icons/SpeakerIcon.svelte'
   import StopIcon from '$lib/icons/StopIcon.svelte'
   import { adminErrorMessage } from '$lib/admin-client'
-  import { UI_TEXT, type UiLocale } from '$lib/ui-text'
+  import { getI18nContext } from '$lib/i18n.svelte'
   import { formatBytes } from '$lib/format-bytes'
   import type { AdminServerCacheEntry } from '$lib/admin-client'
   import type { useAdminSynthesisCache } from '$lib/use-admin-synthesis-cache.svelte'
 
   interface Props {
-    locale: UiLocale
     cacheState: ReturnType<typeof useAdminSynthesisCache>
   }
 
-  let { locale, cacheState }: Props = $props()
+  let { cacheState }: Props = $props()
 
-  const text = $derived(UI_TEXT[locale])
+  const i18n = getI18nContext()
 
   let search = $state('')
   let selectedKeys = $state(new Set<string>())
@@ -96,7 +95,7 @@
   const columns = $derived.by<DataTableColumn<AdminServerCacheEntry>[]>(() => [
     {
       key: 'text',
-      header: text.table.text,
+      header: i18n.t('table.text'),
       width: '52%',
       minWidth: 200,
       sortable: true,
@@ -105,7 +104,7 @@
     },
     {
       key: 'voice',
-      header: text.table.voice,
+      header: i18n.t('table.voice'),
       width: '20%',
       minWidth: 120,
       sortable: true,
@@ -114,7 +113,7 @@
     },
     {
       key: 'size',
-      header: text.table.size,
+      header: i18n.t('table.size'),
       width: '10%',
       minWidth: 76,
       sortable: true,
@@ -123,7 +122,7 @@
     },
     {
       key: 'saved',
-      header: text.table.saved,
+      header: i18n.t('table.saved'),
       width: '18%',
       minWidth: 132,
       sortable: true,
@@ -149,7 +148,7 @@
   })
 
   const savedAtFormatter = $derived(
-    new Intl.DateTimeFormat(locale, {
+    new Intl.DateTimeFormat(i18n.locale, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -251,7 +250,7 @@
         if (playGeneration === generation) {
           cleanupAudio()
         }
-        reject(new Error(UI_TEXT[locale].playback.failed))
+        reject(new Error(i18n.t('playback.failed')))
       }
       audio.play().catch(error => {
         if (playGeneration === generation) {
@@ -284,7 +283,7 @@
       }
     } catch {
       if (playGeneration === generation) {
-        playError = UI_TEXT[locale].playback.failed
+        playError = i18n.t('playback.failed')
       }
     } finally {
       if (playGeneration === generation) {
@@ -302,7 +301,7 @@
 <div class="flex min-h-0 flex-1 flex-col gap-1.5">
   {#if cacheState.loadError}
     <p class="rounded-lg border border-rose-700 bg-rose-950/50 px-3 py-2 text-sm text-rose-200" role="alert">
-      {adminErrorMessage(cacheState.loadError, text)}
+      {adminErrorMessage(cacheState.loadError, i18n)}
     </p>
   {/if}
   {#if playError}
@@ -312,13 +311,13 @@
   {/if}
   <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
     <div class="min-w-0 flex-1">
-      <p class="text-sm font-medium text-slate-100">{text.adminServerCache}</p>
+      <p class="text-sm font-medium text-slate-100">{i18n.t('adminServerCache')}</p>
       <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
         {#if selectedKeys.size === 0}
-          {cacheState.stats?.entries ?? 0} {text.cache.units} · {formatBytes(cacheState.stats?.bytes ?? 0)}
+          {cacheState.stats?.entries ?? 0} {i18n.t('cache.units')} · {formatBytes(cacheState.stats?.bytes ?? 0)}
         {:else}
-          {selectedKeys.size} {text.cache.selected} ·
-          {cacheState.stats?.entries ?? 0} {text.cache.units} · {formatBytes(cacheState.stats?.bytes ?? 0)}
+          {selectedKeys.size} {i18n.t('cache.selected')} ·
+          {cacheState.stats?.entries ?? 0} {i18n.t('cache.units')} · {formatBytes(cacheState.stats?.bytes ?? 0)}
         {/if}
       </p>
     </div>
@@ -329,7 +328,7 @@
         size="sm"
         ariaPressed={playing}
         disabled={(!hasSelection && !playing) || cacheState.pending}
-        ariaLabel={playing ? text.cache.stopPlayback : text.cache.playSelected}
+        ariaLabel={playing ? i18n.t('cache.stopPlayback') : i18n.t('cache.playSelected')}
         onClick={() => void playSelected()}>
         {#snippet icon()}
           {#if playing}
@@ -338,31 +337,31 @@
             <SpeakerIcon className="h-4 w-4" />
           {/if}
         {/snippet}
-        {playing ? text.stop : text.playback.label}
+        {playing ? i18n.t('stop') : i18n.t('playback.label')}
       </Button>
       <Button
         variant="secondary"
         size="sm"
         disabled={!hasSelection || cacheState.pending}
         pending={cacheState.pending}
-        ariaLabel={text.cache.clearSelected}
+        ariaLabel={i18n.t('cache.clearSelected')}
         onClick={() => void clearSelected()}>
         {#snippet icon()}
           <DeleteIcon className="h-4 w-4" />
         {/snippet}
-        {text.cache.clear}
+        {i18n.t('cache.clear')}
       </Button>
       <Button
         variant="secondary"
         size="sm"
         disabled={cacheState.entries.length === 0 || cacheState.pending}
         pending={cacheState.pending}
-        ariaLabel={text.adminClearAllServerCache}
+        ariaLabel={i18n.t('adminClearAllServerCache')}
         onClick={() => void cacheState.clearAll()}>
         {#snippet icon()}
           <DeleteIcon className="h-4 w-4" />
         {/snippet}
-        {text.cache.clearAll}
+        {i18n.t('cache.clearAll')}
       </Button>
     </div>
   </div>
@@ -372,18 +371,18 @@
     rowId={entry => entry.key}
     {columns}
     loading={cacheState.loading}
-    emptyMessage={search.trim() ? text.cache.noMatching : text.adminServerCacheEmpty}
+    emptyMessage={search.trim() ? i18n.t('cache.noMatching') : i18n.t('adminServerCacheEmpty')}
     bind:searchValue={search}
-    searchAriaLabel={text.cache.search}
-    searchPlaceholder={text.cache.search}
+    searchAriaLabel={i18n.t('cache.search')}
+    searchPlaceholder={i18n.t('cache.search')}
     selectable
     selectedIds={selectedKeys}
     onToggleSelection={toggleSelection}
     onToggleAll={toggleAllVisible}
     allSelected={allVisibleSelected}
     someSelected={someVisibleSelected}
-    selectAllAriaLabel={text.cache.selectAll}
-    rowSelectAriaLabel={() => text.cache.select}
+    selectAllAriaLabel={i18n.t('cache.selectAll')}
+    rowSelectAriaLabel={() => i18n.t('cache.select')}
     total={total}
     pageSize={pageSize}
     currentPage={page}
@@ -392,13 +391,13 @@
     bind:sortKey={sortKey}
     bind:sortDirection={sortDir}
     onSort={handleSort}
-    sortAriaLabel={(col, dir) => (dir === 'asc' ? text.table.sortAsc : text.table.sortDesc).replace('{name}', col.header)}
-    resizeAriaLabel={col => text.table.resize.replace('{name}', col.header)}
-    paginationPreviousLabel={text.pagination.previous}
-    paginationNextLabel={text.pagination.next}
-    paginationPageSizeLabel={text.pagination.pageSize}
-    paginationCurrentLabel={text.pagination.page}
-    paginationLabel={text.pagination.page}
+    sortAriaLabel={(col, dir) => i18n.t(dir === 'asc' ? 'table.sortAsc' : 'table.sortDesc', { name: col.header })}
+    resizeAriaLabel={col => i18n.t('table.resize', { name: col.header })}
+    paginationPreviousLabel={i18n.t('pagination.previous')}
+    paginationNextLabel={i18n.t('pagination.next')}
+    paginationPageSizeLabel={i18n.t('pagination.pageSize')}
+    paginationCurrentLabel={i18n.t('pagination.page')}
+    paginationLabel={i18n.t('pagination.page')}
     fillHeight
     tableClass="w-full"
     resizable

@@ -2,7 +2,8 @@ import { toWrittenLang } from '../tts-reference'
 import { splitTtsSegments } from '../tts-reference'
 import { getCachedSynthesis, peekCachedSynthesis } from '../tts-client'
 import { CANONICAL_SYNTHESIS_RATE, canonicalRate } from '../tts-cache-key'
-import { UI_TEXT, segmentLanguageName } from '../ui-text'
+import { segmentLanguageName } from '../ui-text'
+import type { TtsI18n } from '../i18n.svelte'
 import { hasNonEmptySelection, trimmedContentRange, type ReusableScopedSegment } from './selection-scope'
 import { buildSegmentMeta } from './segment-meta'
 import { LocalizedPlaybackError, type PlaybackController, type SegmentMeta } from './types'
@@ -14,7 +15,7 @@ import { readAudioDuration } from './audio-helpers'
  */
 export interface ContentDeps {
   getContent: () => string
-  getLocale: () => string
+  i18n: TtsI18n
   getCacheScopeId: () => string
   getEffectiveSpeed: () => number
 }
@@ -260,7 +261,7 @@ export function createScopedPlayback(deps: ScopedDeps) {
     const voice = editor.resolveEffectiveVoice(lang)
     if (!voice?.edge) {
       throw new LocalizedPlaybackError(
-        `${UI_TEXT[content.getLocale() as keyof typeof UI_TEXT].voices.notConfigured} (${segmentLanguageName(content.getLocale() as keyof typeof UI_TEXT, lang)})`,
+        `${content.i18n.t('voices.notConfigured')} (${segmentLanguageName(content.i18n.locale, lang)})`,
       )
     }
     const reusable = editor.buildReusableScopedSegments(scoped, text)
@@ -322,7 +323,7 @@ export function createScopedPlayback(deps: ScopedDeps) {
             const segVoice = editor.resolveEffectiveVoice(seg.lang)
             if (!segVoice?.edge) {
               throw new LocalizedPlaybackError(
-                `${UI_TEXT[content.getLocale() as keyof typeof UI_TEXT].voices.notConfigured} (${segmentLanguageName(content.getLocale() as keyof typeof UI_TEXT, seg.lang)})`,
+                `${content.i18n.t('voices.notConfigured')} (${segmentLanguageName(content.i18n.locale, seg.lang)})`,
               )
             }
             const cached = peekCachedSynthesis(seg.source.text, segVoice.edge)

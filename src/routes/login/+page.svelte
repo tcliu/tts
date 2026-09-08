@@ -3,7 +3,8 @@
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
   import PaletteIcon from '$lib/icons/PaletteIcon.svelte'
   import { THEME_ICONS, THEME_MENU_OPTIONS } from '$lib/page/theme'
-  import { UI_LANGUAGE_OPTIONS, UI_TEXT, type UiLocale } from '$lib/ui-text'
+  import { UI_LANGUAGE_OPTIONS } from '$lib/ui-text'
+  import { getI18nContext, type Locale } from '$lib/i18n.svelte'
   import { useSettings, type UiTheme } from '$lib/use-settings.svelte'
   import UserAuthPanel from '$lib/components/UserAuthPanel.svelte'
   import Button from '$lib/components/Button.svelte'
@@ -14,26 +15,26 @@
   import { lastDocUrl } from '$lib/document-history'
 
   const settings = useSettings()
-  const text = $derived(UI_TEXT[settings.locale])
+  const i18n = getI18nContext()
 
   const themeLabels = $derived<Record<UiTheme, string>>({
-    dark: text.theme.dark,
-    ember: text.theme.ember,
-    forest: text.theme.forest,
-    midnight: text.theme.midnight,
-    nebula: text.theme.nebula,
-    light: text.theme.light,
-    mint: text.theme.mint,
-    sepia: text.theme.sepia,
-    lavender: text.theme.lavender,
-    sky: text.theme.sky,
+    dark: i18n.t('theme.dark'),
+    ember: i18n.t('theme.ember'),
+    forest: i18n.t('theme.forest'),
+    midnight: i18n.t('theme.midnight'),
+    nebula: i18n.t('theme.nebula'),
+    light: i18n.t('theme.light'),
+    mint: i18n.t('theme.mint'),
+    sepia: i18n.t('theme.sepia'),
+    lavender: i18n.t('theme.lavender'),
+    sky: i18n.t('theme.sky'),
   })
 
   const themeOptions = $derived(
     THEME_MENU_OPTIONS.map(option => ({ value: option.value, label: themeLabels[option.value], icon: THEME_ICONS[option.value] })),
   )
 
-  function selectLanguage(value: UiLocale) {
+  function selectLanguage(value: Locale) {
     settings.setLocale(value)
   }
 
@@ -55,25 +56,25 @@
   })
 </script>
 <svelte:head>
-  <title>{text.app.appTitle}</title>
+  <title>{i18n.t('app.appTitle')}</title>
 </svelte:head>
 
 <div class="flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-200">
   <header class="flex flex-none items-center justify-between border-b border-slate-800 px-3 py-3 sm:px-4">
     <h1 class="text-base font-semibold tracking-tight text-slate-200 sm:text-lg">
-      {text.app.appShortTitle}
+      {i18n.t('app.appShortTitle')}
     </h1>
     <div class="flex items-center gap-2">
       <Menu
         items={UI_LANGUAGE_OPTIONS}
         itemKey={option => option.value}
-        ariaLabel={text.app.language}
-        triggerTooltip={text.app.language}
+        ariaLabel={i18n.t('app.language')}
+        triggerTooltip={i18n.t('app.language')}
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
-        phoneSheetTitle={text.app.language}
-        closeLabel={text.close}
+        phoneSheetTitle={i18n.t('app.language')}
+        closeLabel={i18n.t('close')}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.locale}
         itemClass={(option, state) =>
@@ -97,13 +98,13 @@
       <Menu
         items={themeOptions}
         itemKey={option => option.value}
-        ariaLabel={text.theme.label}
-        triggerTooltip={text.theme.label}
+        ariaLabel={i18n.t('theme.label')}
+        triggerTooltip={i18n.t('theme.label')}
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
-        phoneSheetTitle={text.theme.label}
-        closeLabel={text.close}
+        phoneSheetTitle={i18n.t('theme.label')}
+        closeLabel={i18n.t('close')}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.theme}
         itemClass={(option, state) =>
@@ -128,7 +129,7 @@
           <span>{option.label}</span>
         {/snippet}
       </Menu>
-      <Button size="sm" ariaLabel={text.auth.goToEditor} tooltip={text.auth.goToEditor} onClick={goToLastDoc}>
+      <Button size="sm" ariaLabel={i18n.t('auth.goToEditor')} tooltip={i18n.t('auth.goToEditor')} onClick={goToLastDoc}>
         {#snippet icon()}
           <DocumentIcon />
         {/snippet}

@@ -3,11 +3,10 @@
   import Tooltip from './Tooltip.svelte'
   import EyeIcon from '$lib/icons/EyeIcon.svelte'
   import EyeSlashIcon from '$lib/icons/EyeSlashIcon.svelte'
-  import { UI_TEXT, type UiLocale } from '$lib/ui-text'
+  import { getI18nContext } from '$lib/i18n.svelte'
 
   interface Props {
     value: string
-    locale: UiLocale
     id?: string
     name?: string
     placeholder?: string
@@ -20,7 +19,6 @@
 
   let {
     value = $bindable(),
-    locale,
     id,
     name,
     placeholder,
@@ -31,7 +29,7 @@
     oninput,
   }: Props = $props()
 
-  const text = $derived(UI_TEXT[locale])
+  const i18n = getI18nContext()
 
   let visible = $state(false)
   let input = $state<HTMLInputElement>()
@@ -64,7 +62,7 @@
   <button
     bind:this={toggleBtn}
     onclick={toggleVisibility}
-    aria-label={visible ? text.adminPasswordHide : text.adminPasswordShow}
+    aria-label={visible ? i18n.t('adminPasswordHide') : i18n.t('adminPasswordShow')}
     type="button"
     {disabled}
     class="absolute inset-y-0 right-1 my-1 inline-flex w-9 items-center justify-center rounded-md text-slate-400 outline-none transition hover:bg-slate-800 hover:text-cyan-300 focus:bg-slate-800 focus:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
@@ -73,6 +71,6 @@
     {:else}
       <EyeIcon className="h-5 w-5" />
     {/if}
-    <Tooltip trigger={toggleBtn}>{visible ? text.adminPasswordHide : text.adminPasswordShow}</Tooltip>
+    <Tooltip trigger={toggleBtn}>{visible ? i18n.t('adminPasswordHide') : i18n.t('adminPasswordShow')}</Tooltip>
   </button>
 </div>

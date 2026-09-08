@@ -6,13 +6,12 @@
   import DeleteIcon from '$lib/icons/DeleteIcon.svelte'
   import SpeakerIcon from '$lib/icons/SpeakerIcon.svelte'
   import StopIcon from '$lib/icons/StopIcon.svelte'
-  import { UI_TEXT, type UiLocale } from '$lib/ui-text'
+  import { getI18nContext } from '$lib/i18n.svelte'
   import { formatBytes } from '$lib/format-bytes'
   import type { SynthesisCacheEntry } from '$lib/tts-client'
   import { VOICE_LOOKUP as voiceLookup, voiceLabel, languageLabel, snippet } from '$lib/synthesis-cache/voice-helpers'
 
   interface Props {
-    locale: UiLocale
     entries: SynthesisCacheEntry[]
     loading?: boolean
     onCancel: () => void
@@ -22,7 +21,6 @@
   }
 
   let {
-    locale,
     entries,
     loading = false,
     onCancel,
@@ -30,7 +28,7 @@
     onClearAll,
     onBeforePlay,
   }: Props = $props()
-  const text = $derived(UI_TEXT[locale])
+  const i18n = getI18nContext()
 
   let search = $state('')
   let selectedKeys = $state(new Set<string>())
@@ -72,7 +70,7 @@
       let cmp = 0
       switch (sortKey) {
         case 'lang': {
-          cmp = languageLabel(a, locale).localeCompare(languageLabel(b, locale))
+          cmp = languageLabel(a, i18n.locale).localeCompare(languageLabel(b, i18n.locale))
           break
         }
         case 'voice': {
@@ -125,7 +123,7 @@
   const columns = $derived.by<DataTableColumn<SynthesisCacheEntry>[]>(() => [
     {
       key: 'lang',
-      header: text.table.lang,
+      header: i18n.t('table.lang'),
       width: '14%',
       minWidth: 120,
       sortable: true,
@@ -134,7 +132,7 @@
     },
     {
       key: 'voice',
-      header: text.table.voice,
+      header: i18n.t('table.voice'),
       width: '20%',
       minWidth: 160,
       sortable: true,
@@ -143,7 +141,7 @@
     },
     {
       key: 'text',
-      header: text.table.text,
+      header: i18n.t('table.text'),
       width: '36%',
       minWidth: 200,
       searchable: true,
@@ -151,7 +149,7 @@
     },
     {
       key: 'size',
-      header: text.table.size,
+      header: i18n.t('table.size'),
       width: '12%',
       minWidth: 90,
       sortable: true,
@@ -159,7 +157,7 @@
     },
     {
       key: 'saved',
-      header: text.table.saved,
+      header: i18n.t('table.saved'),
       width: '18%',
       minWidth: 140,
       sortable: true,
@@ -188,7 +186,7 @@
   })
 
   const savedAtFormatter = $derived(
-    new Intl.DateTimeFormat(locale, {
+    new Intl.DateTimeFormat(i18n.locale, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -280,7 +278,7 @@
         if (playGeneration === generation) {
           cleanupAudio()
         }
-        reject(new Error(UI_TEXT[locale].playback.failed))
+        reject(new Error(i18n.t('playback.failed')))
       }
       audio.play().catch(error => {
         if (playGeneration === generation) {
@@ -318,21 +316,21 @@
   }
 </script>
 
-<BaseDialog title={text.cache.detailsTitle} maxWidth="wide" height="tall" closeLabel={text.close} onCancel={onCancel}>
+<BaseDialog title={i18n.t('cache.detailsTitle')} maxWidth="wide" height="tall" closeLabel={i18n.t('close')} onCancel={onCancel}>
   <div class="flex min-h-0 flex-1 flex-col gap-1.5">
     <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
       <div class="min-w-0 flex-1">
-        <p class="text-sm font-medium text-slate-100">{text.cache.label}</p>
+        <p class="text-sm font-medium text-slate-100">{i18n.t('cache.label')}</p>
         <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
           {#if selectedKeys.size === 0}
-            {entries.length} {text.cache.units} · {formatBytes(totalBytes)}
+            {entries.length} {i18n.t('cache.units')} · {formatBytes(totalBytes)}
           {:else}
-            {selectedKeys.size} {text.cache.selected} · {entries.length} {text.cache.units} · {formatBytes(totalBytes)}
+            {selectedKeys.size} {i18n.t('cache.selected')} · {entries.length} {i18n.t('cache.units')} · {formatBytes(totalBytes)}
           {/if}
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
-        <Button variant="outline" accent="cyan" size="sm" ariaPressed={playing} disabled={!hasSelection} ariaLabel={playing ? text.cache.stopPlayback : text.cache.playSelected} onClick={() => void playSelected()}>
+        <Button variant="outline" accent="cyan" size="sm" ariaPressed={playing} disabled={!hasSelection} ariaLabel={playing ? i18n.t('cache.stopPlayback') : i18n.t('cache.playSelected')} onClick={() => void playSelected()}>
           {#snippet icon()}
             {#if playing}
               <StopIcon className="h-4 w-4" />
@@ -340,19 +338,19 @@
               <SpeakerIcon className="h-4 w-4" />
             {/if}
           {/snippet}
-          {playing ? text.stop : text.playback.label}
+          {playing ? i18n.t('stop') : i18n.t('playback.label')}
         </Button>
-        <Button variant="secondary" size="sm" disabled={!hasSelection} ariaLabel={text.cache.clearSelected} onClick={() => void clearSelected()}>
+        <Button variant="secondary" size="sm" disabled={!hasSelection} ariaLabel={i18n.t('cache.clearSelected')} onClick={() => void clearSelected()}>
           {#snippet icon()}
             <DeleteIcon className="h-4 w-4" />
           {/snippet}
-          {text.cache.clear}
+          {i18n.t('cache.clear')}
         </Button>
-        <Button variant="secondary" size="sm" disabled={entries.length === 0} ariaLabel={text.cache.clearAllEntries} onClick={() => void onClearAll?.()}>
+        <Button variant="secondary" size="sm" disabled={entries.length === 0} ariaLabel={i18n.t('cache.clearAllEntries')} onClick={() => void onClearAll?.()}>
           {#snippet icon()}
             <DeleteIcon className="h-4 w-4" />
           {/snippet}
-          {text.cache.clearAll}
+          {i18n.t('cache.clearAll')}
         </Button>
       </div>
     </div>
@@ -362,18 +360,18 @@
       rowId={entry => entry.key}
       {columns}
       loading={loading}
-      emptyMessage={search.trim() ? text.cache.noMatching : text.cache.none}
+      emptyMessage={search.trim() ? i18n.t('cache.noMatching') : i18n.t('cache.none')}
       bind:searchValue={search}
-      searchAriaLabel={text.cache.search}
-      searchPlaceholder={text.cache.search}
+      searchAriaLabel={i18n.t('cache.search')}
+      searchPlaceholder={i18n.t('cache.search')}
       selectable
       selectedIds={selectedKeys}
       onToggleSelection={toggleSelection}
       onToggleAll={toggleAllVisible}
       allSelected={allVisibleSelected}
       someSelected={someVisibleSelected}
-      selectAllAriaLabel={text.cache.selectAll}
-      rowSelectAriaLabel={() => text.cache.select}
+      selectAllAriaLabel={i18n.t('cache.selectAll')}
+      rowSelectAriaLabel={() => i18n.t('cache.select')}
       total={total}
       pageSize={pageSize}
       currentPage={page}
@@ -382,13 +380,13 @@
       bind:sortKey={sortKey}
       bind:sortDirection={sortDir}
       onSort={handleSort}
-      sortAriaLabel={(col, dir) => (dir === 'asc' ? text.table.sortAsc : text.table.sortDesc).replace('{name}', col.header)}
-      resizeAriaLabel={col => text.table.resize.replace('{name}', col.header)}
-      paginationPreviousLabel={text.pagination.previous}
-      paginationNextLabel={text.pagination.next}
-      paginationPageSizeLabel={text.pagination.pageSize}
-      paginationCurrentLabel={text.pagination.page}
-      paginationLabel={text.pagination.page}
+      sortAriaLabel={(col, dir) => i18n.t(dir === 'asc' ? 'table.sortAsc' : 'table.sortDesc', { name: col.header })}
+      resizeAriaLabel={col => i18n.t('table.resize', { name: col.header })}
+      paginationPreviousLabel={i18n.t('pagination.previous')}
+      paginationNextLabel={i18n.t('pagination.next')}
+      paginationPageSizeLabel={i18n.t('pagination.pageSize')}
+      paginationCurrentLabel={i18n.t('pagination.page')}
+      paginationLabel={i18n.t('pagination.page')}
       fillHeight
       tableClass="w-full"
       resizable
@@ -397,7 +395,7 @@
 </BaseDialog>
 
 {#snippet langCell(entry: SynthesisCacheEntry)}
-  <span class="text-slate-400">{languageLabel(entry, locale)}</span>
+  <span class="text-slate-400">{languageLabel(entry, i18n.locale)}</span>
 {/snippet}
 
 {#snippet voiceCell(entry: SynthesisCacheEntry)}

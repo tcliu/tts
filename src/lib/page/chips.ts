@@ -1,5 +1,6 @@
 import { REFERENCE_LANGUAGES, SPEED_OPTIONS } from '../tts-reference'
-import { segmentLanguageName, type UiLocale } from '../ui-text'
+import { segmentLanguageName } from '../ui-text'
+import type { Locale } from '../i18n.svelte'
 
 function voiceLocale(edge: string): string {
   return edge.split('-').slice(0, 2).join('-')
@@ -11,14 +12,14 @@ export function chipVoiceLabel(voice: { name: string; gender: string; edge: stri
   return voice.group ? `${base} · ${voice.group}` : base
 }
 
-export function buildChipLangOptions(locale: UiLocale): { value: string; label: string }[] {
+export function buildChipLangOptions(locale: Locale): { value: string; label: string }[] {
   return REFERENCE_LANGUAGES.map(lang => ({
     value: lang.code,
     label: `${segmentLanguageName(locale, lang.code)} · ${lang.code}`,
   }))
 }
 
-export function buildWrittenLabel(locale: UiLocale, positionLanguageCode: string): string {
+export function buildWrittenLabel(locale: Locale, positionLanguageCode: string): string {
   return positionLanguageCode ? segmentLanguageName(locale, positionLanguageCode) : ''
 }
 

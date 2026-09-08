@@ -1,8 +1,8 @@
 import { activeHighlightRange } from '../tts-reference'
 import { splitHighlightRanges, type TtsSegment } from '../tts/segment'
 import { CANONICAL_SYNTHESIS_RATE } from '../tts-cache-key'
-import { UI_TEXT } from '../ui-text'
 import { segmentLanguageName } from '../ui-text'
+import type { TtsI18n } from '../i18n.svelte'
 import { getCachedSynthesis } from '../tts-client'
 import { buildSegmentMeta } from './segment-meta'
 import { LocalizedPlaybackError } from './types'
@@ -93,7 +93,7 @@ export interface PlaybackEngineDeps {
   highlight: HighlightDeps
   lifecycle: PlaybackLifecycle
   settings: {
-    locale: string
+    i18n: TtsI18n
     synthesisConcurrency: number
   }
   getCacheScopeId: () => string
@@ -203,7 +203,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps) {
           try {
             if (!voiceResolved?.edge) {
               throw new LocalizedPlaybackError(
-                `${UI_TEXT[deps.settings.locale as keyof typeof UI_TEXT].voices.notConfigured} (${segmentLanguageName(deps.settings.locale as keyof typeof UI_TEXT, effectiveLang)})`,
+                `${deps.settings.i18n.t('voices.notConfigured')} (${segmentLanguageName(deps.settings.i18n.locale, effectiveLang)})`,
               )
             }
             const synth = await getCachedSynthesis(segment.text, voiceResolved.edge, rate, controller.abort.signal, deps.getCacheScopeId())

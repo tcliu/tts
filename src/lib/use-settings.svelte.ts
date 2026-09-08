@@ -1,5 +1,5 @@
 import { REFERENCE_LANGUAGES, SPEEDS, defaultGroupByLanguage, defaultVoiceByLanguage, SPOKEN_GROUP, toWrittenLang, voiceForSelection } from './tts-reference'
-import { UI_TEXT, type UiLocale } from './ui-text'
+import { getI18nContext, type Locale, type TtsI18n } from './i18n.svelte'
 
 const STORAGE_KEY = 'tts:web-settings'
 const SAVE_DEBOUNCE_MS = 300
@@ -9,8 +9,8 @@ const MAX_CONCURRENCY = 8
 export type UiTheme = 'dark' | 'light' | 'ember' | 'sepia' | 'nebula' | 'sky' | 'forest' | 'midnight' | 'mint' | 'lavender'
 
 export interface SettingsHandle {
-  readonly locale: UiLocale
-  setLocale: (locale: UiLocale) => void
+  readonly locale: Locale
+  setLocale: (locale: Locale) => void
   content: string
   readonly speed: number
   setSpeed: (speed: number) => void
@@ -27,12 +27,11 @@ export interface SettingsHandle {
   hydrate: () => () => void
 }
 
-export function useSettings(): SettingsHandle {
+export function useSettings(provided?: TtsI18n): SettingsHandle {
+  const i18n = provided ?? getI18nContext()
   let storageReady = $state(false)
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let pendingSave: Record<string, unknown> | null = null
-
-  let locale = $state<UiLocale>('en')
   let content = $state('')
   let speed = $state<number>(1)
   let synthesisConcurrency = $state<number>(4)
@@ -59,7 +58,7 @@ export function useSettings(): SettingsHandle {
       return
     }
     pendingSave = {
-      locale,
+      locale: i18n.locale,
       content,
       speed,
       synthesisConcurrency,
@@ -73,12 +72,6 @@ export function useSettings(): SettingsHandle {
     saveTimer = setTimeout(flushSettingsSave, SAVE_DEBOUNCE_MS)
   })
 
-  $effect(() => {
-    if (typeof document === 'undefined') {
-      return
-    }
-    document.documentElement.lang = locale
-  })
 
   $effect(() => {
     if (typeof document === 'undefined') {
@@ -103,7 +96,7 @@ export function useSettings(): SettingsHandle {
       if (saved) {
         try {
           const parsed = JSON.parse(saved) as {
-            locale?: UiLocale
+            locale?: Locale
             content?: string
             speed?: number
             voiceSelections?: Record<string, string>
@@ -112,7 +105,7 @@ export function useSettings(): SettingsHandle {
             theme?: UiTheme
           }
           if (parsed.locale === 'en' || parsed.locale === 'zh-TW' || parsed.locale === 'zh-CN') {
-            locale = parsed.locale
+            i18n.setLocale(parsed.locale)
           }
           content = parsed.content ?? content
           speed = SPEEDS.includes((parsed.speed ?? 1) as (typeof SPEEDS)[number]) ? (parsed.speed ?? 1) : 1
@@ -173,10 +166,10 @@ export function useSettings(): SettingsHandle {
 
   return {
     get locale() {
-      return locale
+      return i18n.locale
     },
-    setLocale(next) {
-      locale = next
+    setLocale(next: Locale) {
+      i18n.setLocale(next)
     },
     get content() {
       return content

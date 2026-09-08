@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useDocumentEditor, type DocumentEditorHandle } from './use-document-editor.svelte'
 import type { DocumentsHandle } from './use-documents.svelte'
 import type { SettingsHandle } from './use-settings.svelte'
+import { createTtsI18n } from './i18n.svelte'
 import { MAX_UPLOAD_BYTES } from './upload-text'
 
 function createEditor(overrides: Partial<Parameters<typeof useDocumentEditor>[0]> = {}): {
@@ -23,6 +24,7 @@ function createEditor(overrides: Partial<Parameters<typeof useDocumentEditor>[0]
     },
   } as unknown as SettingsHandle
   const deps = {
+    i18n: createTtsI18n(),
     settings,
     documents: {} as DocumentsHandle,
     resetPlaybackSession: vi.fn(),

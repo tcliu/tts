@@ -16,10 +16,9 @@
   import CopyIcon from '$lib/icons/CopyIcon.svelte'
   import DocumentIcon from '$lib/icons/DocumentIcon.svelte'
   import UploadIcon from '$lib/icons/UploadIcon.svelte'
-  import { UI_TEXT, type UiLocale } from '$lib/ui-text'
+  import { getI18nContext } from '$lib/i18n.svelte'
 
   interface Props {
-    locale: UiLocale
     actions: PanelAction[]
     onSelect: (action: PanelAction) => void
     isDisabled?: (action: PanelAction) => boolean
@@ -29,9 +28,9 @@
     isPlaying?: boolean
   }
 
-  let { locale, actions, onSelect, isDisabled, labels, isPlaying = false }: Props = $props()
+  let { actions, onSelect, isDisabled, labels, isPlaying = false }: Props = $props()
 
-  const uiText = $derived(UI_TEXT[locale])
+  const i18n = getI18nContext()
 
   function actionDisabled(action: PanelAction): boolean {
     return isDisabled ? isDisabled(action) : false
@@ -42,14 +41,14 @@
     if (override !== undefined) {
       return override
     }
-    if (action === 'play') return uiText.playback.label
-    if (action === 'reset') return uiText.documents.reset
-    if (action === 'save') return uiText.documents.save
-    if (action === 'delete') return uiText.documents.delete
-    if (action === 'copy') return uiText.documents.copy
-    if (action === 'clone') return uiText.documents.clone
-    if (action === 'upload') return uiText.upload.label
-    return uiText.info.label
+    if (action === 'play') return i18n.t('playback.label')
+    if (action === 'reset') return i18n.t('documents.reset')
+    if (action === 'save') return i18n.t('documents.save')
+    if (action === 'delete') return i18n.t('documents.delete')
+    if (action === 'copy') return i18n.t('documents.copy')
+    if (action === 'clone') return i18n.t('documents.clone')
+    if (action === 'upload') return i18n.t('upload.label')
+    return i18n.t('info.label')
   }
 
   function itemClass(_action: PanelAction, state: MenuItemState): string {
@@ -67,7 +66,7 @@
   items={actions}
   itemKey={action => action}
   onSelect={index => onSelect(actions[index])}
-  ariaLabel={uiText.documents.moreActions}
+  ariaLabel={i18n.t('documents.moreActions')}
   align="right"
   autoPlace={true}
   triggerClass="p-2 before:absolute before:-inset-1.5 before:content-['']"

@@ -16,7 +16,7 @@ import {
   peekCachedSynthesis,
 } from './tts-client'
 import { CANONICAL_SYNTHESIS_RATE, canonicalRate } from './tts-cache-key'
-import { UI_TEXT, segmentLanguageName, type UiLocale } from './ui-text'
+import type { TtsI18n } from './i18n.svelte'
 import {
   hasNonEmptySelection,
   trimmedContentRange,
@@ -107,7 +107,7 @@ export interface PlaybackHandle {
   readonly playbackSpeed: number
   readonly effectiveSpeed: number
   initStatus: () => void
-  onLocaleChanged: (locale: UiLocale) => void
+  onLocaleChanged: () => void
   startPlayback: () => Promise<void>
   stopPlayback: () => void
   seekTo: (elapsed: number) => Promise<void>
@@ -135,6 +135,7 @@ export interface PlaybackHandle {
 
 export interface PlaybackDeps {
   settings: SettingsHandle
+  i18n: TtsI18n
   getEditor: () => CodeEditorHandle | null
   getCacheScopeId: () => string
   prepareForPlayback: () => void
@@ -149,7 +150,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let measuredTotal = $state(0)
   let playbackElapsed = $state(0)
   let playbackDuration = $state(0)
-  let statusMessage = $state(UI_TEXT[deps.settings.locale].playback.ready)
+  let statusMessage = $state(deps.i18n.t('playback.ready'))
 
   let lastStatusReason = $state<'ready' | 'stopped' | 'switching' | 'finished' | 'error'>('ready')
   let playbackEnded = $state(false)
@@ -160,7 +161,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   let metadataAvailable = $state(false)
 
   const playAudioBlob = createAudioPlayer({
-    getLocale: () => deps.settings.locale,
+    i18n: deps.i18n,
     getCurrentAudio: () => currentAudio,
     setCurrentAudio: value => { currentAudio = value },
     getCurrentAudioUrl: () => currentAudioUrl,
@@ -294,20 +295,19 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     return segment?.text ?? ''
   })
 
-  function statusForReason(reason: typeof lastStatusReason, locale: UiLocale): string {
-    const strings = UI_TEXT[locale]
-    if (reason === 'stopped') return strings.playback.stopped
-    if (reason === 'switching') return strings.playback.switching
-    if (reason === 'finished') return strings.playback.finished
-    if (reason === 'error') return strings.playback.failed
-    return strings.playback.ready
+  function statusForReason(reason: typeof lastStatusReason): string {
+    if (reason === 'stopped') return deps.i18n.t('playback.stopped')
+    if (reason === 'switching') return deps.i18n.t('playback.switching')
+    if (reason === 'finished') return deps.i18n.t('playback.finished')
+    if (reason === 'error') return deps.i18n.t('playback.failed')
+    return deps.i18n.t('playback.ready')
   }
 
   $effect(() => {
     if (isPlaying) {
       return
     }
-    statusMessage = statusForReason(lastStatusReason, deps.settings.locale)
+    statusMessage = statusForReason(lastStatusReason)
   })
 
   $effect(() => {
@@ -377,14 +377,14 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       session.resumeTime = 0
       activeInfoOffset = -1
       activeInfoKind = null
-      statusMessage = UI_TEXT[deps.settings.locale].playback.finished
+      statusMessage = deps.i18n.t('playback.finished')
       return
     }
     lastStatusReason = 'stopped'
     playbackEnded = false
     activeInfoOffset = -1
     activeInfoKind = null
-    statusMessage = UI_TEXT[deps.settings.locale].playback.stopped
+    statusMessage = deps.i18n.t('playback.stopped')
   }
 
   function segmentDurationAt(index: number): number {
@@ -516,7 +516,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     playedDuration = measuredTotal
     playbackElapsed = 0
     deps.getEditor()?.clearPlaybackHighlight?.()
-    statusMessage = UI_TEXT[deps.settings.locale].playback.finished
+    statusMessage = deps.i18n.t('playback.finished')
   }
 
   function failPlaybackRun(error: unknown, options?: { clearActiveInfo?: boolean; clearHighlight?: boolean }) {
@@ -532,7 +532,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       deps.getEditor()?.clearPlaybackHighlight?.()
     }
     console.error(error)
-    statusMessage = error instanceof LocalizedPlaybackError ? error.message : UI_TEXT[deps.settings.locale].playback.failed
+    statusMessage = error instanceof LocalizedPlaybackError ? error.message : deps.i18n.t('playback.failed')
   }
 
   function recordSegmentMeta(index: number, meta: SegmentMeta) {
@@ -666,7 +666,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
     },
     lifecycle: { finishPlaybackRun, failPlaybackRun },
     settings: {
-      locale: deps.settings.locale,
+      i18n: deps.i18n,
       synthesisConcurrency: deps.settings.synthesisConcurrency,
     },
     getCacheScopeId: () => deps.getCacheScopeId(),
@@ -829,7 +829,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       get sessionOffset() { return session.offset },
       get effectiveSpeed() { return effectiveSpeed },
       get cacheScopeId() { return deps.getCacheScopeId() },
-      get locale() { return deps.settings.locale },
+      i18n: deps.i18n,
       get sessionSegmentsLength() { return session.segments.length },
     },
     audio: {
@@ -926,7 +926,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
   const __scoped = createScopedPlayback({
     content: {
       getContent: () => deps.settings.content,
-      getLocale: () => deps.settings.locale,
+      i18n: deps.i18n,
       getCacheScopeId: () => deps.getCacheScopeId(),
       getEffectiveSpeed: () => effectiveSpeed,
     },
@@ -1078,16 +1078,11 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
 
   function initStatus() {
     lastStatusReason = 'ready'
-    statusMessage = UI_TEXT[deps.settings.locale].playback.ready
+    statusMessage = deps.i18n.t('playback.ready')
   }
 
-  function onLocaleChanged(next: UiLocale) {
-    if (lastStatusReason === 'ready') {
-      lastStatusReason = 'ready'
-      statusMessage = UI_TEXT[next].playback.ready
-      return
-    }
-    statusMessage = statusForReason(lastStatusReason, next)
+  function onLocaleChanged() {
+    statusMessage = statusForReason(lastStatusReason)
   }
 
   const voiceSwitch = createVoiceSwitch({
@@ -1134,7 +1129,7 @@ export function usePlayback(deps: PlaybackDeps): PlaybackHandle {
       runPlayback,
       recordSegmentMeta,
     },
-    locale: deps.settings.locale,
+    i18n: deps.i18n,
     defaultSpeed: deps.settings.speed,
   })
   const { resynthesizeSegment, overrideSegmentLanguage, overrideSegmentVoice, recordSessionVoiceOverride, setPlaybackSpeed } = voiceSwitch

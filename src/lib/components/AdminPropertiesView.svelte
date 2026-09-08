@@ -5,90 +5,91 @@
   import RefreshIcon from '$lib/icons/RefreshIcon.svelte'
   import SaveIcon from '$lib/icons/SaveIcon.svelte'
   import { adminErrorMessage } from '$lib/admin-client'
-  import { UI_TEXT, type UiLocale } from '$lib/ui-text'
+  import { getI18nContext, type MessageKey } from '$lib/i18n.svelte'
   import type { useAdminProperties } from '$lib/use-admin-properties.svelte'
 
   interface Props {
-    locale: UiLocale
     propertiesState: ReturnType<typeof useAdminProperties>
   }
 
-  let { locale, propertiesState }: Props = $props()
+  let { propertiesState }: Props = $props()
 
-  const text = $derived(UI_TEXT[locale])
+  const i18n = getI18nContext()
 
   const sourceLabels = $derived<Record<string, string>>({
-    file: text.adminSourceFile,
-    environment: text.adminSourceEnvironment,
-    default: text.adminSourceDefault,
+    file: i18n.t('adminSourceFile'),
+    environment: i18n.t('adminSourceEnvironment'),
+    default: i18n.t('adminSourceDefault'),
   })
 
   let applyError = $state('')
   let resetError = $state('')
 
   function propertyLabel(property: { labelKey: string; key: string }): string {
-    const value = text[property.labelKey as keyof typeof text]
-    return typeof value === 'string' ? value : property.key
+    // Label keys arrive as wire data; fall back to the property key when the
+    // server sends a key with no dictionary entry (t returns the key itself).
+    const message = i18n.t(property.labelKey as MessageKey)
+    return message === property.labelKey ? property.key : message
   }
 
   function propertyDescription(property: { descriptionKey: string }): string {
-    const value = text[property.descriptionKey as keyof typeof text]
-    return typeof value === 'string' ? value : ''
+    const message = i18n.t(property.descriptionKey as MessageKey)
+    return message === property.descriptionKey ? '' : message
   }
 
   function handleApply() {
     resetError = ''
-    applyError = propertiesState.apply(text) ?? ''
+    applyError = propertiesState.apply(i18n) ?? ''
   }
 
   async function handleResetProperty(property: Parameters<typeof propertiesState.resetProperty>[0]) {
     applyError = ''
     const code = await propertiesState.resetProperty(property)
-    resetError = code ? adminErrorMessage(code, text) : ''
+    resetError = code ? adminErrorMessage(code, i18n) : ''
   }
 </script>
 
 <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
   {#if propertiesState.loadError || applyError || resetError}
     <p class="rounded-lg border border-rose-700 bg-rose-950/50 px-3 py-2 text-sm text-rose-200" role="alert">
-      {applyError || resetError || (propertiesState.loadError ? adminErrorMessage(propertiesState.loadError, text) : '')}
+      {applyError || resetError || (propertiesState.loadError ? adminErrorMessage(propertiesState.loadError, i18n) : '')}
     </p>
   {/if}
-  <section aria-label={text.adminPropertiesActions} class="flex flex-none flex-wrap items-center gap-1.5">
+  <section aria-label={i18n.t('adminPropertiesActions')} class="flex flex-none flex-wrap items-center gap-1.5">
     <Button
       variant="outline"
       accent="cyan"
       size="sm"
       disabled={!propertiesState.hasUnsavedChanges || propertiesState.pending}
       pending={propertiesState.pending}
-      ariaLabel={text.adminApply}
+      ariaLabel={i18n.t('adminApply')}
       onClick={handleApply}>
       {#snippet icon()}
         <SaveIcon className="h-4 w-4" />
       {/snippet}
-      {text.adminApply}
+      {i18n.t('adminApply')}
     </Button>
     <Button
       variant="secondary"
       size="sm"
       disabled={propertiesState.pending}
-      ariaLabel={text.adminReload}
+      ariaLabel={i18n.t('adminReload')}
       onClick={() => void propertiesState.reload()}>
       {#snippet icon()}
         <RefreshIcon className="h-4 w-4" />
       {/snippet}
-      {text.adminReload}
+      {i18n.t('adminReload')}
     </Button>
     <Button
       variant="secondary"
       size="sm"
       disabled={propertiesState.pending || !propertiesState.hasUnsavedChanges}
-      ariaLabel={text.adminReset}
+      ariaLabel={i18n.t('adminReset')}
       onClick={() => propertiesState.resetDraft()}>
       {#snippet icon()}
         <ResetIcon className="h-4 w-4" />
       {/snippet}
-      {text.adminReset}
+      {i18n.t('adminReset')}
     </Button>
   </section>
   <div
@@ -111,8 +112,8 @@
             </span>
           </div>
           <p class="mt-0.5 text-xs text-slate-400">{propertyDescription(property)}</p>
-          <p class="mt-0.5 truncate text-xs text-slate-500" title={`${property.key} (${text.adminEnv} ${property.envKey})`}>
-            {property.key} ({text.adminEnv} {property.envKey})
+          <p class="mt-0.5 truncate text-xs text-slate-500" title={`${property.key} (${i18n.t('adminEnv')} ${property.envKey})`}>
+            {property.key} ({i18n.t('adminEnv')} {property.envKey})
           </p>
         </div>
         <div class="flex min-w-0 items-center gap-2">
@@ -126,13 +127,13 @@
             step={1}
             disabled={propertiesState.pending}
             ariaLabel={label}
-            incrementLabel={text.increment}
-            decrementLabel={text.decrement} />
+            incrementLabel={i18n.t('increment')}
+            decrementLabel={i18n.t('decrement')} />
           {#if property.source === 'file'}
             <Button
               size="sm"
-              ariaLabel={text.adminRevertToDefault}
-              tooltip={text.adminRevertToDefault}
+              ariaLabel={i18n.t('adminRevertToDefault')}
+              tooltip={i18n.t('adminRevertToDefault')}
               tooltipAlign="right"
               disabled={propertiesState.pending}
               onClick={() => void handleResetProperty(property)}

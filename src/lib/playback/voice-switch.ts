@@ -1,6 +1,6 @@
 import { SPEEDS } from '../tts-reference'
 import { toWrittenLang } from '../tts-reference'
-import { UI_TEXT } from '../ui-text'
+import type { TtsI18n } from '../i18n.svelte'
 import { getCachedSynthesis } from '../tts-client'
 import { readAudioDuration } from './audio-helpers'
 import { buildSegmentMeta } from '../playback/segment-meta'
@@ -73,7 +73,7 @@ export interface VoiceSwitchDeps {
   playback: VoiceSwitchPlayback
   voice: VoiceResolvers
   ops: VoiceSwitchOps
-  locale: string
+  i18n: TtsI18n
   defaultSpeed: number
 }
 
@@ -190,7 +190,7 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
       console.error(error)
       playback.setLastStatusReason('error')
       playback.setMetadataAvailable(false)
-      playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playback.failed)
+      playback.setStatusMessage(deps.i18n.t('playback.failed'))
       return
     } finally {
       playback.setSwitching(false)
@@ -222,7 +222,7 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
         return
       }
       playback.setLastStatusReason('switching')
-      playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playback.switching)
+      playback.setStatusMessage(deps.i18n.t('playback.switching'))
       generation = playback.getSwitchGeneration() + 1
       playback.setSwitchGeneration(generation)
       await resynthesizeSegment(playIndex, voiceEdge)
@@ -237,7 +237,7 @@ export function createVoiceSwitch(deps: VoiceSwitchDeps) {
       if (generation === playback.getSwitchGeneration()) {
         playback.setLastStatusReason('error')
         playback.setMetadataAvailable(false)
-        playback.setStatusMessage(UI_TEXT[deps.locale as keyof typeof UI_TEXT].playback.failed)
+        playback.setStatusMessage(deps.i18n.t('playback.failed'))
       }
     } finally {
       playback.setSwitching(false)

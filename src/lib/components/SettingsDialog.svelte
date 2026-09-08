@@ -7,12 +7,11 @@
   import Tabs from '$lib/components/Tabs.svelte'
   import DeleteIcon from '$lib/icons/DeleteIcon.svelte'
   import EyeIcon from '$lib/icons/EyeIcon.svelte'
-  import { UI_TEXT, type UiLocale } from '$lib/ui-text'
+  import { getI18nContext } from '$lib/i18n.svelte'
   import { REFERENCE_LANGUAGES, SPEEDS, SPEED_STEP, getVoiceGroups, getVoiceOptions } from '$lib/tts-reference'
   import { formatBytes } from '$lib/format-bytes'
 
   interface Props {
-    locale: UiLocale
     speed: number
     synthesisConcurrency: number
     voiceSelections: Record<string, string>
@@ -28,7 +27,6 @@
   }
 
   let {
-    locale,
     speed,
     synthesisConcurrency,
     voiceSelections,
@@ -43,7 +41,7 @@
     onViewCache,
   }: Props = $props()
 
-  const text = $derived(UI_TEXT[locale])
+  const i18n = getI18nContext()
 
   let voiceSearch = $state('')
 
@@ -79,23 +77,23 @@
   const MAX_SPEED = SPEEDS[SPEEDS.length - 1]
 </script>
 
-<BaseDialog title={text.app.settingsTitle} maxWidth="2xl" height="fixed" closeLabel={text.close} onCancel={onCancel}>
+<BaseDialog title={i18n.t('app.settingsTitle')} maxWidth="2xl" height="fixed" closeLabel={i18n.t('close')} onCancel={onCancel}>
   <Tabs
-    ariaLabel={text.app.settingsTitle}
+    ariaLabel={i18n.t('app.settingsTitle')}
     state={{}}
     tabs={[
-      { label: text.voices.tab, path: 'voices', content: voicesContent },
-      { label: text.settings.speedTab, path: 'speed', content: speedContent },
-      { label: text.cache.tab, path: 'synthesis', content: synthesisContent },
+      { label: i18n.t('voices.tab'), path: 'voices', content: voicesContent },
+      { label: i18n.t('settings.speedTab'), path: 'speed', content: speedContent },
+      { label: i18n.t('cache.tab'), path: 'synthesis', content: synthesisContent },
     ]} />
 </BaseDialog>
 
 {#snippet voicesContent()}
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <SearchInput bind:value={voiceSearch} ariaLabel={text.voices.search} placeholder={text.voices.search} wrapperClass="shrink-0" />
+    <SearchInput bind:value={voiceSearch} ariaLabel={i18n.t('voices.search')} placeholder={i18n.t('voices.search')} wrapperClass="shrink-0" />
     <div tabindex="-1" class="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 outline-none">
       {#if filteredLanguages.length === 0}
-        <p class="p-3 text-sm text-slate-500">{text.voices.noMatching}</p>
+        <p class="p-3 text-sm text-slate-500">{i18n.t('voices.noMatching')}</p>
       {:else}
         {#each filteredLanguages as language, i}
           {@const validGroups = voiceGroups(language.code)}
@@ -106,21 +104,21 @@
             <div class="flex w-full min-w-0 flex-1 flex-wrap items-center gap-2.5 text-sm text-slate-300 sm:w-auto">
               {#if validGroups.length > 1}
                 <SelectDropdown
-                  ariaLabel={`${language.name} ${text.voices.spokenLanguage}`}
+                  ariaLabel={`${language.name} ${i18n.t('voices.spokenLanguage')}`}
                   buttonLabel={group}
                   activeValue={group}
                   options={validGroups.map(group => ({ value: group, label: group }))}
                   size="sm"
-                  emptyLabel={text.noOptions}
+                  emptyLabel={i18n.t('noOptions')}
                   onSelect={group => onSelectGroup(language.code, group)} />
               {/if}
               <SelectDropdown
-                ariaLabel={`${language.name} ${text.voices.model}`}
+                ariaLabel={`${language.name} ${i18n.t('voices.model')}`}
                 buttonLabel={voiceLabel(voicesFor(language.code, group).find(voice => voice.edge === voiceSelections[language.code]) ?? voicesFor(language.code, group)[0])}
                 activeValue={voiceSelections[language.code]}
                 options={voicesFor(language.code, group).map(voice => ({ value: voice.edge, label: voiceLabel(voice) }))}
                 size="sm"
-                emptyLabel={text.noOptions}
+                emptyLabel={i18n.t('noOptions')}
                 onSelect={voiceId => onSelectVoice(language.code, voiceId)} />
             </div>
           </section>
@@ -133,16 +131,16 @@
   {#snippet speedContent()}
     <div class="rounded-xl border border-slate-800 bg-slate-950/50">
       <div class="grid items-center gap-2 p-3 @min-md:grid-cols-[minmax(0,1fr)_11rem]">
-        <label for="default-speed" class="text-sm font-medium text-slate-100">{text.settings.defaultSpeed}</label>
+        <label for="default-speed" class="text-sm font-medium text-slate-100">{i18n.t('settings.defaultSpeed')}</label>
         <NumberInput
           id="default-speed"
           value={String(speed)}
           min={MIN_SPEED}
           max={MAX_SPEED}
           step={SPEED_STEP}
-          ariaLabel={text.settings.defaultSpeed}
-          incrementLabel={text.increment}
-          decrementLabel={text.decrement}
+          ariaLabel={i18n.t('settings.defaultSpeed')}
+          incrementLabel={i18n.t('increment')}
+          decrementLabel={i18n.t('decrement')}
           oninput={event => {
             const raw = Number((event.target as HTMLInputElement).value)
             if (Number.isFinite(raw)) {
@@ -161,16 +159,16 @@
   {#snippet synthesisContent()}
     <div class="rounded-xl border border-slate-800 bg-slate-950/50">
       <div class="grid items-center gap-2 p-3 @min-md:grid-cols-[minmax(0,1fr)_11rem]">
-        <label for="concurrent-synthesis" class="text-sm font-medium text-slate-100">{text.settings.concurrency}</label>
+        <label for="concurrent-synthesis" class="text-sm font-medium text-slate-100">{i18n.t('settings.concurrency')}</label>
         <NumberInput
           id="concurrent-synthesis"
           value={String(synthesisConcurrency)}
           min={1}
           max={8}
           step={1}
-          ariaLabel={text.settings.concurrency}
-          incrementLabel={text.increment}
-          decrementLabel={text.decrement}
+          ariaLabel={i18n.t('settings.concurrency')}
+          incrementLabel={i18n.t('increment')}
+          decrementLabel={i18n.t('decrement')}
           oninput={event => {
             const raw = Number((event.target as HTMLInputElement).value)
             if (Number.isFinite(raw)) {
@@ -185,14 +183,14 @@
       </div>
       <div class="grid items-center gap-2 border-t border-slate-800 p-3 @min-md:grid-cols-[minmax(0,1fr)_auto]">
         <div class="text-sm">
-          <span class="font-medium text-slate-100">{text.cache.label}</span>
+          <span class="font-medium text-slate-100">{i18n.t('cache.label')}</span>
           <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
             {#if cacheStats === null}
               —
             {:else if cacheStats.segments === 0}
-              {text.cache.none}
+              {i18n.t('cache.none')}
             {:else}
-              {cacheStats.segments} {text.cache.units} · {formatBytes(cacheStats.bytes)}
+              {cacheStats.segments} {i18n.t('cache.units')} · {formatBytes(cacheStats.bytes)}
             {/if}
           </p>
         </div>
@@ -201,23 +199,23 @@
             variant="secondary"
             size="sm"
             disabled={cacheStats === null || cacheStats.segments === 0}
-            ariaLabel={text.cache.viewTitle}
+            ariaLabel={i18n.t('cache.viewTitle')}
             onClick={onViewCache}>
             {#snippet icon()}
               <EyeIcon className="h-4 w-4" />
             {/snippet}
-            {text.cache.view}
+            {i18n.t('cache.view')}
           </Button>
           <Button
             variant="secondary"
             size="sm"
             disabled={cacheStats === null || cacheStats.segments === 0}
-            ariaLabel={text.cache.clearAllEntries}
+            ariaLabel={i18n.t('cache.clearAllEntries')}
             onClick={onClearCache}>
             {#snippet icon()}
               <DeleteIcon className="h-4 w-4" />
             {/snippet}
-            {text.cache.clearAll}
+            {i18n.t('cache.clearAll')}
           </Button>
         </div>
       </div>

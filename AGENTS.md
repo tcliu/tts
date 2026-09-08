@@ -87,12 +87,16 @@ Project-specific development conventions for the TTS web app.
   playback starts, but it must not pre-highlight the first selected word until
   Play is clicked.
 - Document navigation is reflected in the URL as `{base}/{docId}` and history-backed so Back/Forward moves between documents.
-- All user-facing strings must go through `UI_TEXT` (keyed by `UiLocale`); add
-  each new string to every locale (`en`, `zh-TW`, `zh-CN`). Keys are namespaced
-  by area (`auth.signIn.failed`, `cache.clearAll`, `table.text`); `admin.*`
-  stays flat because the server resolves those keys dynamically. Surface server
-  failures as stable wire codes mapped to localized strings; never surface raw
-  English literals or technical detail as user-facing errors.
+- All user-facing strings go through the context i18n store (`src/lib/i18n.svelte.ts`):
+  components call `getI18nContext()` once and render `i18n.t('dotted.key')`;
+  plain `.ts` helpers receive the store explicitly instead of calling
+  `getContext`. Add each new string to every locale (`en`, `zh-TW`, `zh-CN`).
+  Keys are namespaced by area (`auth.signIn.failed`, `cache.clearAll`,
+  `table.text`); `admin.*` stays flat because the server resolves those keys
+  dynamically. Surface server failures as stable wire codes mapped to
+  localized strings; never surface raw English literals or technical detail
+  as user-facing errors. Locale persistence stays in the `tts:web-settings`
+  blob owned by `use-settings` (`settings.locale` delegates to the store).
 - The app shell fills the dynamic viewport with `h-dvh` over the
   `html/body { min-height: 100% }` base, with non-shrinking chrome
   (`shrink-0` header, `flex-none` rows) and one flexible editor region; do not
@@ -150,7 +154,7 @@ Project-specific development conventions for the TTS web app.
   attributes stay camelCase in this project. Split by coherent responsibility
   into composable factories under `src/lib/`; route components stay thin
   orchestration layers and non-reactive domain clients stay in plain `.ts`.
-- Follow `~/.agents/references/svelte-i18n.md` for multilingual UI text via `UI_TEXT`.
+- Follow `~/.agents/references/svelte-i18n.md` for multilingual UI text via the context store (`getI18nContext`/`i18n.t`).
 - Follow `~/.agents/references/js-ts.md` for module design; split by coherent
   responsibility, keep dependency flow one-way, and avoid micro-modules and
   over-fragmentation.
