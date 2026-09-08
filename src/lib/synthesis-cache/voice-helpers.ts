@@ -1,5 +1,6 @@
 import { REFERENCE_LANGUAGES } from '../tts-reference'
-import { segmentLanguageName, type UiLocale } from '../ui-text'
+import { segmentLanguageName } from '../ui-text'
+import type { Locale } from '../i18n.svelte'
 import type { SynthesisCacheEntry } from '../tts-client'
 
 export const VOICE_LOOKUP = new Map(
@@ -30,7 +31,7 @@ export function voiceLabel(entry: SynthesisCacheEntry): string {
   return pieces.join(' \u00b7 ')
 }
 
-export function languageLabel(entry: SynthesisCacheEntry, locale: UiLocale): string {
+export function languageLabel(entry: SynthesisCacheEntry, locale: Locale): string {
   const code = voiceMeta(entry)?.languageCode
   return code ? `${segmentLanguageName(locale, code)} \u00b7 ${code}` : '\u2014'
 }

@@ -2,8 +2,11 @@
   import type { Snippet } from 'svelte'
   import '../styles.css'
   import type { LayoutData } from './$types'
+  import { createTtsI18n, setI18nContext } from '$lib/i18n.svelte'
 
   let { children, data }: { children: Snippet; data: LayoutData } = $props()
+
+  setI18nContext(createTtsI18n())
 </script>
 
 {@render children()}

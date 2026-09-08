@@ -1,6 +1,6 @@
 import type { SettingsHandle } from './use-settings.svelte'
 import type { DocumentsHandle } from './use-documents.svelte'
-import { UI_TEXT } from './ui-text'
+import type { TtsI18n } from './i18n.svelte'
 import { readTextFile } from './upload-text'
 import { browser } from '$app/environment'
 import {
@@ -19,6 +19,7 @@ const UPLOAD_NOTICE_MS = 4000
 interface DocumentEditorDeps {
   settings: SettingsHandle
   documents: DocumentsHandle
+  i18n: TtsI18n
   resetPlaybackSession: () => void
   closeDrawer: () => void
   focusEditor: () => void
@@ -68,7 +69,7 @@ export function useDocumentEditor(deps: DocumentEditorDeps) {
   const deleteTargetName = $derived(deleteTargetId ? (documents.findById(deleteTargetId)?.name ?? '') : '')
 
   function nextAvailableDraftName(): string {
-    return nextAvailableDraftNameImpl(documents, settings.locale)
+    return nextAvailableDraftNameImpl(documents, deps.i18n)
   }
 
   function resetDraftCacheId() {

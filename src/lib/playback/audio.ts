@@ -1,9 +1,9 @@
-import { UI_TEXT, type UiLocale } from '../ui-text'
+import type { TtsI18n } from '../i18n.svelte'
 
 import type { PlaybackController } from './types'
 
 interface AudioPlaybackDeps {
-  getLocale: () => UiLocale
+  i18n: TtsI18n
   getCurrentAudio: () => HTMLAudioElement | null
   setCurrentAudio: (audio: HTMLAudioElement | null) => void
   getCurrentAudioUrl: () => string
@@ -137,7 +137,7 @@ export function createAudioPlayer(deps: AudioPlaybackDeps) {
           resolve()
           return
         }
-        reject(new Error(UI_TEXT[deps.getLocale()].playback.failed))
+        reject(new Error(deps.i18n.t('playback.failed')))
       }
 
       audio.play().then(() => {

@@ -202,6 +202,12 @@ speeds, text segmentation, and sequential segment playback behavior.
   `contain-layout`, and Play / Clear-selected / Clear-all controls; Play stops
   main playback first).
 - Default speed options must match the speed list in `tts.mjs`.
+- The UI locale (`en`, `zh-TW`, `zh-CN`) lives in the context i18n store
+  (`src/lib/i18n.svelte.ts`) provided once by the root layout; components read
+  it with `getI18nContext()` and render `i18n.t('dotted.key')`, while plain
+  `.ts` helpers receive the store explicitly. Persistence stays in the
+  `tts:web-settings` blob: `use-settings` hydrates the store locale from it
+  and writes back on change, and the store syncs `documentElement.lang`.
 
 - `/admin` hosts `Properties` and `Synthesis cache` tabs; bare `/admin` renders the Properties tab. `+layout.server.ts` redirects visitors without an admin session to `/login`; authenticated loads expose `adminAuthenticated` so first paint picks the right state. All admin data loads client-side through cookie-guarded APIs.
 - Sign-in requires `ADMIN_PASSWORD_HASH` (or `ADMIN_PASSWORD`, hashed in
@@ -233,8 +239,8 @@ speeds, text segmentation, and sequential segment playback behavior.
   `GET /api/admin/synthesis-cache`,
   `GET /api/admin/synthesis-cache/audio`,
   `DELETE /api/admin/synthesis-cache` (clear all or selected keys).
-  Error bodies carry stable codes the client maps to localized `UI_TEXT`
-  strings.
+  Error bodies carry stable codes the client maps to localized context-store
+  strings (`i18n.t`).
 - The Synthesis cache tab lists unexpired server entries (`key`, `text`,
   `voice`, `saved_at`, `bytes`) with search/sort/pagination, selection-scoped
   Play, and selective or total clear; stats cover every cache file including

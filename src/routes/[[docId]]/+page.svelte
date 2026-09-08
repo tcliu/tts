@@ -26,7 +26,8 @@
   import CheckIcon from '$lib/icons/CheckIcon.svelte'
   import UploadIcon from '$lib/icons/UploadIcon.svelte'
 
-  import { UI_LANGUAGE_OPTIONS, UI_TEXT, segmentLanguageName, type UiLocale } from '$lib/ui-text'
+  import { UI_LANGUAGE_OPTIONS } from '$lib/ui-text'
+  import { getI18nContext, type Locale } from '$lib/i18n.svelte'
   import { SPEED_OPTIONS } from '$lib/tts-reference'
   import ChipDropdown from '$lib/components/ChipDropdown.svelte'
   import { THEME_ICONS, THEME_MENU_OPTIONS } from '$lib/page/theme'
@@ -82,13 +83,13 @@
     mq.addEventListener('change', update)
     return () => mq.removeEventListener('change', update)
   })
+  const i18n = getI18nContext()
 
   // Late-bound so playback can notify the metadata layer without a circular
-  // factory dependency; assigned once the metadata composable exists below.
   const hooks: { prepareForPlayback: () => void } = { prepareForPlayback: () => {} }
-
   const playback = usePlayback({
     settings,
+    i18n,
     getEditor: () => editorRef,
     getCacheScopeId: () => editor.cacheScopeId,
     prepareForPlayback: () => hooks.prepareForPlayback(),
@@ -104,6 +105,7 @@
   const editor = useDocumentEditor({
     settings,
     documents,
+    i18n,
     resetPlaybackSession: () => {
       playback.resetSession()
     },
@@ -147,19 +149,17 @@
 
   let editorRef = $state<CodeEditorHandle | null>(null)
 
-  const text = $derived(UI_TEXT[settings.locale])
-
   const themeLabels = $derived<Record<UiTheme, string>>({
-    dark: text.theme.dark,
-    ember: text.theme.ember,
-    forest: text.theme.forest,
-    midnight: text.theme.midnight,
-    nebula: text.theme.nebula,
-    light: text.theme.light,
-    mint: text.theme.mint,
-    sepia: text.theme.sepia,
-    lavender: text.theme.lavender,
-    sky: text.theme.sky,
+    dark: i18n.t('theme.dark'),
+    ember: i18n.t('theme.ember'),
+    forest: i18n.t('theme.forest'),
+    midnight: i18n.t('theme.midnight'),
+    nebula: i18n.t('theme.nebula'),
+    light: i18n.t('theme.light'),
+    mint: i18n.t('theme.mint'),
+    sepia: i18n.t('theme.sepia'),
+    lavender: i18n.t('theme.lavender'),
+    sky: i18n.t('theme.sky'),
   })
 
   const themeOptions = $derived(
@@ -178,13 +178,13 @@
 
   const statusMessage = $derived(
     editor.uploadNotice === 'uploaded'
-      ? text.upload.success
+      ? i18n.t('upload.success')
       : editor.uploadNotice === 'too-large'
-        ? text.upload.tooLarge
+        ? i18n.t('upload.tooLarge')
         : editor.uploadNotice === 'read-failed'
-          ? text.upload.failed
+          ? i18n.t('upload.failed')
           : editor.uploadNotice === 'binary'
-            ? text.upload.binary
+            ? i18n.t('upload.binary')
             : playback.statusMessage,
   )
   const uploadNoticeIsError = $derived(editor.uploadNotice !== null && editor.uploadNotice !== 'uploaded')
@@ -302,9 +302,9 @@
     )
   }
 
-  function selectLanguage(value: UiLocale) {
+  function selectLanguage(value: Locale) {
     settings.setLocale(value)
-    playback.onLocaleChanged(value)
+    playback.onLocaleChanged()
   }
 
   function selectTheme(value: UiTheme) {
@@ -361,7 +361,7 @@
       // sync toggle stops pushing mutations.
       await invalidateAll()
     } catch (error) {
-      accountError = error instanceof Error ? error.message : text.auth.signOut.failed
+      accountError = error instanceof Error ? error.message : i18n.t('auth.signOut.failed')
     } finally {
       accountPending = false
     }
@@ -472,7 +472,7 @@
 </script>
 
 <svelte:head>
-  <title>{text.app.appTitle}</title>
+  <title>{i18n.t('app.appTitle')}</title>
 </svelte:head>
 
 <svelte:window onkeydown={handlePlaybackArrowKey} />
@@ -494,27 +494,27 @@
         bind:buttonEl={drawerButtonRef}
         variant="secondary"
         size="sm"
-        ariaLabel={text.documents.label}
+        ariaLabel={i18n.t('documents.label')}
         ariaExpanded={drawerVisible}
-        tooltip={text.documents.label}
+        tooltip={i18n.t('documents.label')}
         onClick={toggleDrawer}>
         {#snippet icon()}
           <MenuIcon className="h-4 w-4" />
         {/snippet}
       </Button>
-      <h1 class="text-base font-semibold tracking-tight sm:text-lg">{text.app.appShortTitle}</h1>
+      <h1 class="text-base font-semibold tracking-tight sm:text-lg">{i18n.t('app.appShortTitle')}</h1>
     </div>
     <div class="flex items-center gap-2">
       <Menu
         items={UI_LANGUAGE_OPTIONS}
         itemKey={option => option.value}
-        ariaLabel={text.app.language}
-        triggerTooltip={text.app.language}
+        ariaLabel={i18n.t('app.language')}
+        triggerTooltip={i18n.t('app.language')}
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
-        phoneSheetTitle={text.app.language}
-        closeLabel={text.close}
+        phoneSheetTitle={i18n.t('app.language')}
+        closeLabel={i18n.t('close')}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.locale}
         itemClass={(option, state) =>
@@ -538,13 +538,13 @@
       <Menu
         items={themeOptions}
         itemKey={option => option.value}
-        ariaLabel={text.theme.label}
-        triggerTooltip={text.theme.label}
+        ariaLabel={i18n.t('theme.label')}
+        triggerTooltip={i18n.t('theme.label')}
         align="right"
         autoPlace={true}
         triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
-        phoneSheetTitle={text.theme.label}
-        closeLabel={text.close}
+        phoneSheetTitle={i18n.t('theme.label')}
+        closeLabel={i18n.t('close')}
         itemRole="menuitemradio"
         itemChecked={option => option.value === settings.theme}
         itemClass={(option, state) =>
@@ -569,12 +569,12 @@
           <span>{option.label}</span>
         {/snippet}
       </Menu>
-      <Button variant="secondary" size="sm" ariaLabel={text.app.settings} tooltip={text.app.settings} onClick={() => (settingsOpen = true)}>
+      <Button variant="secondary" size="sm" ariaLabel={i18n.t('app.settings')} tooltip={i18n.t('app.settings')} onClick={() => (settingsOpen = true)}>
         {#snippet icon()}
           <SettingsIcon className="h-4 w-4" />
         {/snippet}
       </Button>
-      <Button variant="secondary" size="sm" ariaLabel={adminPresence.isAdmin ? text.adminTitle : (data?.user ? data.user.username : text.auth.login)} tooltip={adminPresence.isAdmin ? text.adminTitle : (data?.user ? data.user.username : text.auth.login)} onClick={handleProfileClick}>
+      <Button variant="secondary" size="sm" ariaLabel={adminPresence.isAdmin ? i18n.t('adminTitle') : (data?.user ? data.user.username : i18n.t('auth.login'))} tooltip={adminPresence.isAdmin ? i18n.t('adminTitle') : (data?.user ? data.user.username : i18n.t('auth.login'))} onClick={handleProfileClick}>
         {#snippet icon()}
           <ProfileIcon className="h-4 w-4" />
         {/snippet}
@@ -584,7 +584,6 @@
 
   <div class="relative flex min-h-0 flex-1 overflow-hidden">
     <DocumentsDrawer
-      locale={settings.locale}
       documents={drawer.visibleDocuments}
       bind:search={() => drawer.documentSearch, v => (drawer.documentSearch = v)}
       currentDocId={editor.currentDocId}
@@ -599,9 +598,9 @@
 
     <main class="flex min-w-0 flex-1 flex-col gap-2 px-3 py-2 sm:px-4 sm:py-2">
       <div class="flex flex-none min-w-0 items-center">
-        <EditableText locale={settings.locale} text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
+        <EditableText text={editor.currentDocName} onChange={editor.renameDocument} size="lg" maxWidth={480} />
       </div>
-      <section aria-label={text.playback.controls} class="@container flex flex-none flex-wrap items-center gap-1.5">
+      <section aria-label={i18n.t('playback.controls')} class="@container flex flex-none flex-wrap items-center gap-1.5">
       <span class={REVEAL_CLASS.play}>
         <Button
           variant="outline"
@@ -609,7 +608,7 @@
           size="sm"
           ariaPressed={playback.isPlaying}
           disabled={playback.voiceSwitching || (playback.isPlaying ? false : !settings.canPlay)}
-          ariaLabel={playback.isPlaying ? text.stop : text.playback.label}
+          ariaLabel={playback.isPlaying ? i18n.t('stop') : i18n.t('playback.label')}
           onClick={playback.isPlaying ? playback.stopPlayback : playback.startPlayback}>
           {#snippet icon()}
             {#if playback.isPlaying}
@@ -618,7 +617,7 @@
               <SpeakerIcon className="h-4 w-4" />
             {/if}
           {/snippet}
-          {playback.isPlaying ? text.stop : text.playback.label}
+          {playback.isPlaying ? i18n.t('stop') : i18n.t('playback.label')}
         </Button>
       </span>
 
@@ -627,12 +626,12 @@
           variant="secondary"
           size="sm"
           disabled={editor.currentDocId ? !editor.isDirty : !settings.canPlay}
-          ariaLabel={text.documents.reset}
+          ariaLabel={i18n.t('documents.reset')}
           onClick={editor.resetEditor}>
           {#snippet icon()}
             <RefreshIcon className="h-4 w-4" />
           {/snippet}
-          {text.documents.reset}
+          {i18n.t('documents.reset')}
         </Button>
       </span>
 
@@ -641,12 +640,12 @@
           variant="secondary"
           size="sm"
           disabled={editor.saveDisabled}
-          ariaLabel={text.documents.save}
+          ariaLabel={i18n.t('documents.save')}
           onClick={editor.saveDocument}>
           {#snippet icon()}
             <SaveIcon className="h-4 w-4" />
           {/snippet}
-          {text.documents.save}
+          {i18n.t('documents.save')}
         </Button>
       </span>
 
@@ -655,10 +654,10 @@
           variant="secondary"
           size="sm"
           disabled={!settings.canPlay}
-          ariaLabel={text.documents.copy}
+          ariaLabel={i18n.t('documents.copy')}
           onClick={() => void editor.copyEditorContent()}
           icon={copyIcon}>
-          {text.documents.copy}
+          {i18n.t('documents.copy')}
         </Button>
       </span>
 
@@ -667,7 +666,7 @@
           <Button
             variant="secondary"
             size="sm"
-            ariaLabel={text.documents.delete}
+            ariaLabel={i18n.t('documents.delete')}
             onClick={() => {
               if (editor.currentDocId) {
                 editor.requestDeleteDocument(editor.currentDocId)
@@ -676,7 +675,7 @@
             {#snippet icon()}
               <DeleteIcon className="h-4 w-4" />
             {/snippet}
-            {text.documents.delete}
+            {i18n.t('documents.delete')}
           </Button>
         </span>
       {/if}
@@ -687,12 +686,12 @@
           size="sm"
           ariaPressed={showMetadata}
           disabled={!settings.canPlay}
-          ariaLabel={text.info.label}
+          ariaLabel={i18n.t('info.label')}
           onClick={() => (showMetadata = !showMetadata)}>
           {#snippet icon()}
             <InfoIcon className="h-4 w-4" />
           {/snippet}
-          {text.info.label}
+          {i18n.t('info.label')}
         </Button>
       </span>
 
@@ -701,12 +700,12 @@
           <Button
             variant="secondary"
             size="sm"
-            ariaLabel={text.documents.clone}
+            ariaLabel={i18n.t('documents.clone')}
             onClick={editor.requestCloneDocument}>
             {#snippet icon()}
               <DocumentIcon className="h-4 w-4" />
             {/snippet}
-            {text.documents.clone}
+            {i18n.t('documents.clone')}
           </Button>
         </span>
       {/if}
@@ -717,11 +716,11 @@
         ondragover={handleUploadDragOver}
         ondragleave={handleUploadDragLeave}
         ondrop={handleUploadDrop}>
-        <Button variant="secondary" size="sm" ariaLabel={text.upload.label} onClick={editor.requestUpload}>
+        <Button variant="secondary" size="sm" ariaLabel={i18n.t('upload.label')} onClick={editor.requestUpload}>
           {#snippet icon()}
             <UploadIcon className="h-4 w-4" />
           {/snippet}
-          {text.upload.label}
+          {i18n.t('upload.label')}
         </Button>
       </span>
 
@@ -729,12 +728,11 @@
         {#if band.menuClass && toolbarMenus[i].length > 0}
           <span class={band.menuClass}>
             <PanelMenu
-              locale={settings.locale}
               actions={toolbarMenus[i]}
               onSelect={handlePanelAction}
               isDisabled={panelActionDisabled}
               isPlaying={playback.isPlaying}
-              labels={{ play: playback.isPlaying ? text.stop : text.playback.label }} />
+              labels={{ play: playback.isPlaying ? i18n.t('stop') : i18n.t('playback.label') }} />
           </span>
         {/if}
       {/each}
@@ -755,11 +753,11 @@
                     label={writtenLabel}
                     options={chipLangOptions}
                     activeValue={playback.positionLanguageCode}
-                    ariaLabel={text.voices.segmentLanguage}
+                    ariaLabel={i18n.t('voices.segmentLanguage')}
                     variant="sky"
                     filterable
-                    filterPlaceholder={text.languages.search}
-                    emptyText={text.languages.noMatching}
+                    filterPlaceholder={i18n.t('languages.search')}
+                    emptyText={i18n.t('languages.noMatching')}
                     disabled={playback.isPlaying}
                     onSelect={(v) => void handleLangChipSelectImpl(playback, v)} />
                   {#if playback.positionVoiceName}
@@ -768,11 +766,11 @@
                         label={playback.positionVoiceLocale}
                         options={chipLocaleOptions}
                         activeValue={playback.positionVoiceLocale}
-                        ariaLabel={text.voices.segmentLocale}
+                        ariaLabel={i18n.t('voices.segmentLocale')}
                         variant="amber"
                         filterable
-                        filterPlaceholder={text.languages.localeSearch}
-                        emptyText={text.languages.noMatchingLocales}
+                        filterPlaceholder={i18n.t('languages.localeSearch')}
+                        emptyText={i18n.t('languages.noMatchingLocales')}
                         disabled={playback.isPlaying}
                         onSelect={(v) => void handleLocaleChipSelectImpl(playback, v)} />
                     {/if}
@@ -781,7 +779,7 @@
                         label={playback.positionVoiceGender}
                         options={chipGenderOptions}
                         activeValue={playback.positionVoiceGender}
-                        ariaLabel={text.voices.segmentGender}
+                        ariaLabel={i18n.t('voices.segmentGender')}
                         variant="fuchsia"
                         disabled={playback.isPlaying}
                         onSelect={(v) => void handleGenderChipSelectImpl(playback, v)} />
@@ -790,11 +788,11 @@
                       label={playback.positionVoiceName}
                       options={chipVoiceOptions}
                       activeValue={activeChipVoiceEdge}
-                      ariaLabel={text.voices.model}
+                      ariaLabel={i18n.t('voices.model')}
                       variant="violet"
                       filterable
-                      filterPlaceholder={text.voices.search}
-                      emptyText={text.voices.noMatching}
+                      filterPlaceholder={i18n.t('voices.search')}
+                      emptyText={i18n.t('voices.noMatching')}
                       disabled={voiceChipOptions.length === 0}
                       onSelect={(v) => void handleVoiceChipSelectImpl(playback, v)} />
                   {/if}
@@ -802,7 +800,7 @@
                     label={`${playback.playbackSpeed}x`}
                     options={speedChipOptions}
                     activeValue={String(playback.playbackSpeed)}
-                    ariaLabel={text.playback.speed}
+                    ariaLabel={i18n.t('playback.speed')}
                     variant="amber"
                     onSelect={(v) => handleSpeedChipSelect(v)} />
                   {#if metadata.totalSentences > 0}
@@ -820,7 +818,7 @@
                 max={playbackSlider.max}
                 progress={playbackSlider.progress}
                 disabled={playbackSlider.max <= 0}
-                seekLabel={text.playback.seek}
+                seekLabel={i18n.t('playback.seek')}
                 onInput={playbackSlider.handleInput}
                 onCommit={(e) => playbackSlider.commit(e, elapsed => playback.seekTo(elapsed))} />
             {/if}
@@ -836,7 +834,7 @@
               editable={!playback.isPlaying}
               selectionEnabled={!playback.isPlaying}
               theme={settings.theme}
-              editorAriaLabel={text.editor.label}
+              editorAriaLabel={i18n.t('editor.label')}
               containerClass="min-h-0 flex-1"
               editorClass="h-full" />
           </div>
@@ -845,7 +843,6 @@
             <MetadataPanel
               metadata={metadata}
               playback={playback}
-              text={text}
               isDocked={isDocked}
               expanded={metadataExpanded}
               onToggleExpand={() => {
@@ -875,7 +872,6 @@
   {#if settingsOpen}
     {#await import('$lib/components/SettingsDialog.svelte') then { default: SettingsDialog }}
       <SettingsDialog
-        locale={settings.locale}
         speed={settings.speed}
         synthesisConcurrency={settings.synthesisConcurrency}
         voiceSelections={settings.voiceSelections}
@@ -897,7 +893,6 @@
   {#if synthesisCache.dialogOpen}
     {#await import('$lib/components/SynthesisCacheDialog.svelte') then { default: SynthesisCacheDialog }}
       <SynthesisCacheDialog
-        locale={settings.locale}
         entries={synthesisCache.entries}
         loading={synthesisCache.dialogLoading}
         onCancel={synthesisCache.closeDialog}
@@ -911,61 +906,61 @@
   {/if}
 
   {#if editor.overwriteConfirmOpen}
-    <BaseDialog title={text.dialogs.overwriteTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelOverwrite}>
+    <BaseDialog title={i18n.t('dialogs.overwriteTitle')} maxWidth="md" closeLabel={i18n.t('close')} onCancel={editor.cancelOverwrite}>
       <div class="flex flex-col gap-4">
-        <p class="text-sm leading-6 text-slate-400">{text.dialogs.overwriteMessage}</p>
+        <p class="text-sm leading-6 text-slate-400">{i18n.t('dialogs.overwriteMessage')}</p>
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" onClick={editor.applyOverwrite}>{text.documents.save}</Button>
+          <Button variant="primary" accent="rose" onClick={editor.applyOverwrite}>{i18n.t('documents.save')}</Button>
         </div>
       </div>
     </BaseDialog>
   {/if}
 
   {#if editor.discardDialogOpen}
-    <BaseDialog title={text.dialogs.discardTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelDiscard}>
+    <BaseDialog title={i18n.t('dialogs.discardTitle')} maxWidth="md" closeLabel={i18n.t('close')} onCancel={editor.cancelDiscard}>
       <div class="flex flex-col gap-4">
-        <p class="text-sm leading-6 text-slate-400">{text.dialogs.discardMessage}</p>
+        <p class="text-sm leading-6 text-slate-400">{i18n.t('dialogs.discardMessage')}</p>
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" onClick={editor.confirmDiscard}>{text.dialogs.discardConfirm}</Button>
+          <Button variant="primary" accent="rose" onClick={editor.confirmDiscard}>{i18n.t('dialogs.discardConfirm')}</Button>
         </div>
       </div>
     </BaseDialog>
   {/if}
 
   {#if editor.deleteDialogOpen}
-    <BaseDialog title={text.dialogs.deleteConfirmTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelDelete}>
+    <BaseDialog title={i18n.t('dialogs.deleteConfirmTitle')} maxWidth="md" closeLabel={i18n.t('close')} onCancel={editor.cancelDelete}>
       <div class="flex flex-col gap-4">
         <div class="flex min-w-0 flex-col gap-1">
           <p class="truncate text-sm font-medium text-slate-100">{editor.deleteTargetName}</p>
-          <p class="text-sm leading-6 text-slate-400">{text.dialogs.deleteConfirmMessage}</p>
+          <p class="text-sm leading-6 text-slate-400">{i18n.t('dialogs.deleteConfirmMessage')}</p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" onClick={editor.confirmDelete}>{text.documents.delete}</Button>
+          <Button variant="primary" accent="rose" onClick={editor.confirmDelete}>{i18n.t('documents.delete')}</Button>
         </div>
       </div>
     </BaseDialog>
   {/if}
 
   {#if editor.playbackConfirmOpen}
-    <BaseDialog title={text.dialogs.stopPlaybackTitle} maxWidth="md" closeLabel={text.close} onCancel={editor.cancelPlayback}>
+    <BaseDialog title={i18n.t('dialogs.stopPlaybackTitle')} maxWidth="md" closeLabel={i18n.t('close')} onCancel={editor.cancelPlayback}>
       <div class="flex flex-col gap-4">
-        <p class="text-sm leading-6 text-slate-400">{text.dialogs.stopPlaybackMessage}</p>
+        <p class="text-sm leading-6 text-slate-400">{i18n.t('dialogs.stopPlaybackMessage')}</p>
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" onClick={editor.confirmPlayback}>{text.dialogs.stopPlaybackConfirm}</Button>
+          <Button variant="primary" accent="rose" onClick={editor.confirmPlayback}>{i18n.t('dialogs.stopPlaybackConfirm')}</Button>
         </div>
       </div>
     </BaseDialog>
   {/if}
 
   {#if accountOpen && data?.user}
-    <BaseDialog title={text.auth.account} maxWidth="md" closeLabel={text.close} onCancel={() => (accountOpen = false)}>
+    <BaseDialog title={i18n.t('auth.account')} maxWidth="md" closeLabel={i18n.t('close')} onCancel={() => (accountOpen = false)}>
       <div class="flex flex-col gap-4">
         <p class="truncate text-sm font-medium text-slate-100">{data.user.username}</p>
         {#if accountError}
           <p class="text-sm text-rose-400">{accountError}</p>
         {/if}
         <div class="flex flex-wrap items-center justify-end gap-3">
-          <Button variant="primary" accent="rose" pending={accountPending} onClick={() => void handleAccountLogout()}>{text.auth.signOut.label}</Button>
+          <Button variant="primary" accent="rose" pending={accountPending} onClick={() => void handleAccountLogout()}>{i18n.t('auth.signOut.label')}</Button>
         </div>
       </div>
     </BaseDialog>
@@ -973,9 +968,9 @@
 
   {#if loginOpen}
     <BaseDialog
-      title={loginMode === 'signin' ? text.auth.login : text.auth.createAccount.title}
+      title={loginMode === 'signin' ? i18n.t('auth.login') : i18n.t('auth.createAccount.title')}
       maxWidth="md"
-      closeLabel={text.close}
+      closeLabel={i18n.t('close')}
       onCancel={closeLoginDialog}>
       <UserAuthPanel embedded bind:mode={loginMode} onsuccess={closeLoginDialog} />
     </BaseDialog>
@@ -983,9 +978,9 @@
 
   {#if showSessionToast}
     <Toast
-      message={text.documents.sessionExpired}
-      closeLabel={text.close}
-      actionLabel={text.auth.login}
+      message={i18n.t('documents.sessionExpired')}
+      closeLabel={i18n.t('close')}
+      actionLabel={i18n.t('auth.login')}
       onAction={handleLoginClick}
       position="top-center"
       type="warning"

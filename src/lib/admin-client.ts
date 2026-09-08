@@ -1,4 +1,4 @@
-import type { UiText } from './ui-text'
+import type { TtsI18n } from './i18n.svelte'
 
 export class AdminAuthError extends Error {
   constructor(message = 'Admin session expired') {
@@ -22,18 +22,18 @@ export function adminErrorCode(error: unknown): string {
   return 'request_failed'
 }
 
-export function adminErrorMessage(code: string, text: UiText): string {
+export function adminErrorMessage(code: string, i18n: TtsI18n): string {
   switch (code) {
     case 'rate_limited':
-      return text.adminErrorRateLimited
+      return i18n.t('adminErrorRateLimited')
     case 'invalid_request':
-      return text.adminErrorBadRequest
+      return i18n.t('adminErrorBadRequest')
     case 'invalid_property':
-      return text.adminErrorInvalidProperty
+      return i18n.t('adminErrorInvalidProperty')
     case 'request_timeout':
-      return text.adminErrorTimeout
+      return i18n.t('adminErrorTimeout')
     default:
-      return text.adminErrorGeneric
+      return i18n.t('adminErrorGeneric')
   }
 }
 

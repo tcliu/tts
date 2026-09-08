@@ -1,5 +1,5 @@
-import { UI_TEXT } from '../ui-text'
 import { segmentLanguageName } from '../ui-text'
+import type { TtsI18n } from '../i18n.svelte'
 import { splitHighlightRanges } from '../tts-reference'
 import { trimWhitespaceRange, highlightBoundaries, activeBoundaryAt } from './boundaries'
 import { activeHighlightRange } from '../tts-reference'
@@ -33,7 +33,7 @@ export interface IsolatedContext {
   get sessionOffset(): number
   get effectiveSpeed(): number
   get cacheScopeId(): string
-  get locale(): string
+  i18n: TtsI18n
   get sessionSegmentsLength(): number
 }
 
@@ -133,7 +133,7 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
     const resolvedVoice = voice.getResolveEffectiveVoice(lang)
     if (!resolvedVoice?.edge) {
       throw new LocalizedPlaybackError(
-        `${UI_TEXT[context.locale as keyof typeof UI_TEXT].voices.notConfigured} (${segmentLanguageName(context.locale as keyof typeof UI_TEXT, lang)})`,
+        `${context.i18n.t('voices.notConfigured')} (${segmentLanguageName(context.i18n.locale, lang)})`,
       )
     }
 
@@ -208,7 +208,7 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
       state.setActiveInfoOffset(-1)
       state.setActiveInfoKind(null)
       state.setLastStatusReason('finished')
-      state.setStatusMessage(UI_TEXT[context.locale as keyof typeof UI_TEXT].playback.finished)
+      state.setStatusMessage(context.i18n.t('playback.finished'))
       state.setPlaybackElapsed(0)
       if (selFrom >= 0 && selTo >= 0) {
         state.setResumeSelection({ from: selFrom, to: selTo })
@@ -226,7 +226,7 @@ export function createIsolatedPlayer(deps: IsolatedDeps) {
       audio.clearPlaybackHighlight()
       console.error(error)
       state.setStatusMessage(
-        error instanceof LocalizedPlaybackError ? error.message : UI_TEXT[context.locale as keyof typeof UI_TEXT].playback.failed,
+        error instanceof LocalizedPlaybackError ? error.message : context.i18n.t('playback.failed'),
       )
       return true
     }

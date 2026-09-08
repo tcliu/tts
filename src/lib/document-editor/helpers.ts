@@ -1,4 +1,4 @@
-import { UI_TEXT } from '../ui-text'
+import type { TtsI18n } from '../i18n.svelte'
 import type { DocumentsHandle } from '../use-documents.svelte'
 
 export type DiscardKind = 'new' | 'open' | 'delete' | 'clone' | 'upload'
@@ -18,8 +18,8 @@ export function createDraftCacheId(): string {
   return `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-export function nextAvailableDraftName(documents: DocumentsHandle, locale: string): string {
-  const baseName = UI_TEXT[locale as keyof typeof UI_TEXT]?.documents.namePlaceholder ?? 'Untitled'
+export function nextAvailableDraftName(documents: DocumentsHandle, i18n: TtsI18n): string {
+  const baseName = i18n.t('documents.namePlaceholder')
   const existingNames = new Set(documents.documents.map(document => document.name))
   let fallbackName = baseName
   if (existingNames.has(fallbackName)) {
