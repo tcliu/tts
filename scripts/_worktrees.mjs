@@ -111,6 +111,38 @@ export function listDeleteTargets(root = process.cwd()) {
   });
 }
 
+// Every checkout except the main one, each annotated with its commit diffs
+// relative to the base branch. Mirrors `references/worktrees.mjs`
+// `listWorktrees`: `{ base, entries }` with entries `[{ name, path, branch,
+// registered, ahead, behind, lastCommitTime }]` newest-first. Uses the local
+// exported primitives (`listNestedGitDirs`, `getGitWorktrees`) so there is
+// exactly one implementation of each git query in this file.
+export function listWorktrees(root = process.cwd()) {
+  const mainRoot = path.resolve(getMainRoot(root));
+  const base = resolveBaseBranch(root);
+  const registered = new Map(
+    getGitWorktrees(root).map((worktree) => [worktree.path, worktree]),
+  );
+  const entries = [];
+  for (const item of listNestedGitDirs(root)) {
+    if (item.path === mainRoot) continue;
+    const registeredEntry = registered.get(item.path);
+    const branch = registeredEntry?.branch ?? readBranchFromGitDir(item.path);
+    const counts = getAheadBehind(root, base, branch, registeredEntry ? true : false);
+    entries.push({
+      name: item.name,
+      path: item.path,
+      branch,
+      registered: Boolean(registeredEntry),
+      ahead: counts?.ahead ?? null,
+      behind: counts?.behind ?? null,
+      lastCommitTime: getLastCommitTime(item.path),
+    });
+  }
+  entries.sort((a, b) => (b.lastCommitTime ?? -1) - (a.lastCommitTime ?? -1));
+  return { base, entries };
+}
+
 export function listRegisterTargets(root = process.cwd()) {
   const registered = new Set(
     getGitWorktrees(root).map((worktree) => worktree.path),

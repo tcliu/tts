@@ -26,13 +26,11 @@ import { StringDecoder } from "node:string_decoder";
 
 import {
   deleteBranch,
-  getAheadBehind,
   getLastCommitTime,
   getMainRoot,
-  listDeleteTargets,
+  listWorktrees,
   readBranchFromGitDir,
   removeWorktree,
-  resolveBaseBranch,
 } from "./_worktrees.mjs";
 
 import {
@@ -89,8 +87,7 @@ function writeLines(lines) {
 // ---- domain ----
 function refreshList() {
   const root = state.mainRoot;
-  const nested = listDeleteTargets(root);
-  const base = resolveBaseBranch(root);
+  const { entries } = listWorktrees(root);
   const rows = [
     {
       path: root,
@@ -102,16 +99,19 @@ function refreshList() {
       commitTime: getLastCommitTime(root),
     },
   ];
-  // Latest commits first; rows without a resolvable time sink to the bottom.
-  // Main stays pinned at the top.
-  const ordered = nested
-    .map((r) => ({
-      ...r,
-      aheadBehind: r.main ? null : getAheadBehind(root, base, r.branch, r.registered),
-      commitTime: getLastCommitTime(r.path),
-    }))
-    .sort((a, b) => (b.commitTime ?? -1) - (a.commitTime ?? -1));
-  for (const r of ordered) rows.push(r);
+  // listWorktrees returns newest-commit-first; rows without a
+  // resolvable time sink to the bottom. Main stays pinned at the top.
+  for (const e of entries) {
+    rows.push({
+      path: e.path,
+      name: e.name,
+      branch: e.branch,
+      registered: e.registered,
+      main: false,
+      aheadBehind: e.ahead === null ? null : { ahead: e.ahead, behind: e.behind },
+      commitTime: e.lastCommitTime,
+    });
+  }
   state.rows = rows;
   // Re-key background procs to fresh rows; kill procs whose worktree vanished.
   const byPath = new Map(rows.map((r) => [r.path, r]));
@@ -544,7 +544,7 @@ function draw() {
   const lines = [header, subheader];
   lines.push(border(`┌ WORKTREES ${"─".repeat(Math.max(1, boxW - 13))}┐`));
   for (let i = 0; i < listH; i++) {
-    lines.push(side(padRight(listLines[i], boxW - 4)));
+    lines.push(side(padRight(listLines[i] ?? "", boxW - 4)));
   }
   if (cmdH > 0) {
     const pane = state.pane;
