@@ -3,8 +3,7 @@
   import GlobeIcon from '$lib/icons/GlobeIcon.svelte'
   import PaletteIcon from '$lib/icons/PaletteIcon.svelte'
   import { THEME_ICONS, THEME_MENU_OPTIONS } from '$lib/page/theme'
-  import { UI_LANGUAGE_OPTIONS } from '$lib/ui-text'
-  import { getI18nContext, type Locale } from '$lib/i18n.svelte'
+  import { LOCALES, getI18nContext, type Locale } from '$lib/i18n.svelte'
   import { useSettings, type UiTheme } from '$lib/use-settings.svelte'
   import UserAuthPanel from '$lib/components/UserAuthPanel.svelte'
   import Button from '$lib/components/Button.svelte'
@@ -66,8 +65,8 @@
     </h1>
     <div class="flex items-center gap-2">
       <Menu
-        items={UI_LANGUAGE_OPTIONS}
-        itemKey={option => option.value}
+        items={LOCALES}
+        itemKey={option => option.code}
         ariaLabel={i18n.t('app.language')}
         triggerTooltip={i18n.t('app.language')}
         align="right"
@@ -76,18 +75,18 @@
         phoneSheetTitle={i18n.t('app.language')}
         closeLabel={i18n.t('close')}
         itemRole="menuitemradio"
-        itemChecked={option => option.value === settings.locale}
+        itemChecked={option => option.code === settings.locale}
         itemClass={(option, state) =>
           `flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition-none ${
             state.disabled
               ? 'cursor-not-allowed text-slate-600'
               : state.active
                 ? 'bg-slate-800 text-cyan-200'
-                : option.value === settings.locale
+                : option.code === settings.locale
                   ? 'text-cyan-200'
                   : 'text-slate-300'
           }`}
-        onSelect={index => selectLanguage(UI_LANGUAGE_OPTIONS[index].value)}>
+        onSelect={index => selectLanguage(LOCALES[index].code)}>
         {#snippet icon()}
           <GlobeIcon className="h-4 w-4" />
         {/snippet}

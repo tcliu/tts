@@ -1,12 +1,6 @@
 import { REFERENCE_LANGUAGES } from './tts-reference'
 import type { Locale } from './i18n.svelte'
 
-export const UI_LANGUAGE_OPTIONS: { value: Locale; label: string }[] = [
-  { value: 'en', label: 'English' },
-  { value: 'zh-TW', label: '繁體中文' },
-  { value: 'zh-CN', label: '简体中文' },
-]
-
 export const LANGUAGE_DISPLAY_NAMES: Record<Locale, Record<string, string>> = {
   en: { en: 'English', zh: 'Chinese', yue: 'Cantonese', ja: 'Japanese', ko: 'Korean', es: 'Spanish', fr: 'French', ru: 'Russian' },
   'zh-TW': { en: '英文', zh: '中文', yue: '粵語', ja: '日文', ko: '韓文', es: '西班牙文', fr: '法文', ru: '俄文' },
