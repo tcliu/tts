@@ -335,6 +335,7 @@ function procPushOutput(proc, chunk, decoder) {
 
 // One shared flush tick for every background proc; draws once if any arrived.
 function flushProcs() {
+  if (state.suspended) return; // shell owns the terminal; dirty flags replay on resume via fullClear
   let dirty = false;
   for (const proc of state.procs.values()) {
     if (proc.dirty) {
@@ -431,17 +432,23 @@ function paneStatusText() {
 }
 
 function openPane(row) {
-  state.mode = "run";
   let proc = state.procs.get(row.path);
   if (!proc) {
     // Evict the oldest finished proc past the background cap; running procs
-    // are never evicted.
+    // are never evicted. A map full of running procs refuses with a hint.
     if (state.procs.size >= MAX_BACKGROUND) {
+      let evicted = false;
       for (const [key, p] of state.procs) {
         if (!p.running) {
           state.procs.delete(key);
+          evicted = true;
           break;
         }
+      }
+      if (!evicted) {
+        state.status = `${c.yellow}Background slots full; stop a process first (x).${c.reset}`;
+        redraw();
+        return;
       }
     }
     proc = {
@@ -458,6 +465,7 @@ function openPane(row) {
     };
     state.procs.set(row.path, proc);
   }
+  state.mode = "run";
   state.pane = proc;
   state.cmdInput = [];
   state.cmdCaret = 0;
@@ -937,7 +945,7 @@ function onData(chunk) {
         draw();
       } else if (cmdPromptActive()) {
         // Bash-like Ctrl-C: with text on the line it clears the input; on an
-        // empty line it quits. Ctrl-D on an empty line closes the pane (EOF).
+        // empty line it quits. Ctrl-D on an empty line drops the finished proc (detaches if running).
         if (state.cmdInput.length || state.cmdCaret) {
           state.cmdInput = [];
           state.cmdCaret = 0;
