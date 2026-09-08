@@ -194,6 +194,9 @@
   // `columns` prop changes while the table is in managed mode.
   $effect(() => {
     const count = columns.length
+    // bind:this grows headerEls but never shrinks it; drop stale tail refs
+    // so a shrinking column list can't serve a detached header's width.
+    if (headerEls.length > count) headerEls = headerEls.slice(0, count)
     if (columnWidths.length === count) return
     if (count === 0) return
     if (columnWidths.length === 0) return

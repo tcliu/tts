@@ -65,11 +65,13 @@
   )
 
   // Phone viewports get a 44px minimum row height via pure CSS so in-dialog
-  // dropdowns (e.g. Settings Voices) stay thumb-friendly without switching
-  // to a bottom sheet, which must never stack inside a dialog.
+  // dropdowns stay thumb-friendly without switching to a bottom sheet,
+  // which must never stack inside a dialog.
+  // Cutoff mirrors PHONE_SHEET_MAX in dropdown-chrome (single shared value);
+  // the literal stays inline so Tailwind can see the class — keep them in sync.
   const optionRowClass = $derived(
     optionClass ??
-      `flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 text-left outline-none transition motion-reduce:transition-none max-[28rem]:min-h-11 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
+      `flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 text-left outline-none transition motion-reduce:transition-none max-[27.999rem]:min-h-11 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
   const emptyClass = $derived(`px-3 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]} text-slate-500`)
@@ -298,7 +300,7 @@
       use:positionPanel={() => ({ getTrigger: () => containerRef, getOpen: () => open, align, autoPlace })}
       class={`fixed left-0 top-0 z-40 will-change-transform ${panelClass}`}>
       {#if emptyLabel && filteredOptions.length === 0}
-        <div class={emptyClass}>{emptyLabel}</div>
+        <div role="presentation" class={emptyClass}>{emptyLabel}</div>
       {/if}
       {#each filteredOptions as option, index}
         <button

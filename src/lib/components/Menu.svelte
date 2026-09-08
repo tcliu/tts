@@ -200,11 +200,6 @@
     }
   }
 
-  function setActive(index: number) {
-    selection.set(index)
-    itemRefs[index]?.focus()
-  }
-
   function itemButtonClass(itemValue: T, state: MenuItemState): string | undefined {
     const classes = itemClass ? itemClass(itemValue, state) : ''
     return usePhoneSheet ? `${classes} min-h-11`.trim() : classes || undefined
@@ -304,7 +299,7 @@
       tabindex={index === selection.index ? 0 : -1}
       onclick={() => handleItemClick(index)}
       onfocus={() => selection.set(index)}
-      onmouseenter={() => setActive(index)}
+      onmouseenter={() => selection.set(index)}
       disabled={state.disabled}
       class={itemButtonClass(itemValue, state)}>
       {@render item(itemValue, state)}
