@@ -6,6 +6,12 @@ import { zhTW } from './locales/zh-TW'
 
 export type Locale = 'en' | 'zh-TW' | 'zh-CN'
 
+export const LOCALES: { code: Locale; label: string }[] = [
+  { code: 'en', label: 'English' },
+  { code: 'zh-TW', label: '繁體中文' },
+  { code: 'zh-CN', label: '简体中文' },
+]
+
 export type MessageKey = keyof typeof en
 
 const DEFAULT_LOCALE: Locale = 'en'
