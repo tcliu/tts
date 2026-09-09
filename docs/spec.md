@@ -285,6 +285,15 @@ speeds, text segmentation, and sequential segment playback behavior.
   of a fresh buffer. No `returnTo` query is threaded — the server cannot read
   `localStorage`.
 
+## Catalog endpoint
+
+- Unauthenticated `GET /api/catalog` returns app identity for the
+  project-catalog scanner and e2e port discovery: `id`, `name`, `icon`,
+  `summary`, `description`, `framework`, `repo`, `status`, plus `branch`.
+- `branch` resolves once per process from `VERCEL_GIT_COMMIT_REF` /
+  `GIT_BRANCH`, else the checkout's `git rev-parse --abbrev-ref HEAD`,
+  else null where git is unavailable.
+
 ## Theming
 
 - `use-settings` owns the theme preference (`dark`, `light`, `ember`, `sepia`,

@@ -127,6 +127,10 @@ Project-specific development conventions for the TTS web app.
   `sm`. Documents drawer docks at `lg` with overlay-only dismissals gated on
   docked state. Playback toolbar is a container-query ladder; recalibrate
   paired band tables together when thresholds change.
+- `/login` carries no form: unauthenticated visits redirect to the editor with
+  `?login=1`, which auto-opens the sign-in dialog once (param stripped via
+  `replaceState`, no navigation). Explicit sign-out lands on `/`; only expired
+  sessions redirect to `/login`.
 - Icon-only `Button` uses uniform padding (`p-1.5` for `sm`, `p-2.5` for `md`);
   text buttons keep `px`/`py` distinction.
 - Dropdown/menu option panels show one shared hover/keyboard highlight; the
@@ -197,3 +201,4 @@ npm run check
 npm run build
 npm test
 ```
+- Run browser e2e with `npm run e2e` (Playwright smoke over the resolved dev port; reports land in `.tmp/e2e/`).

@@ -34,6 +34,7 @@ tts/
 │   │   └── api/
 │   │       ├── admin/            # Session, login, logout, properties, synthesis-cache
 │   │       ├── auth/             # Register, login, session, logout (users + admin)
+│   │       ├── catalog/            # GET identity + branch (scanner/port discovery)
 │   │       ├── documents/        # GET/PUT/DELETE per-user documents
 │   │       └── tts/synthesize/
 │   │           └── +server.ts    # POST endpoint — validation, caching, TTS
@@ -49,6 +50,7 @@ tts/
 │       ├── data-table/           # Column resize helpers
 │       ├── actions/              # Reusable DOM actions (dropdown, drag-close, list selection)
 │       ├── locales/              # Per-locale UI strings (en, zh-TW, zh-CN)
+│       ├── i18n.svelte.ts        # Locale list, dictionary wiring, context store
 │       ├── page/                 # Page-level helpers (chips, toolbar, theme menu, page composables)
 │       └── reference-languages.json  # Written/spoken language + voice data
 ├── tts.mjs                       # Reference script (voices, speeds, segmentation)
@@ -132,10 +134,12 @@ Server endpoints (+server.ts) ──► edge-tts.ts, server/tts-cache.ts
   (settings, editor ref) as arguments to avoid circular imports.
 - **Thin routes** — `+page.svelte` is mostly declarative markup; all logic
   lives in composables and `page/` helpers.
-- **Server/client boundary** — the synthesis API is the only public network
-  boundary. The client (`tts-client.ts`) talks to `POST /api/tts/synthesize`;
-  the server (`+server.ts`) validates and delegates to Edge TTS. The admin
-  client (`admin-client.ts`) talks to `/api/admin/*` under a session cookie.
+- **Server/client boundary** — two unauthenticated network boundaries exist:
+  the synthesis API (client `tts-client.ts` → `POST /api/tts/synthesize`,
+  validated, Edge TTS) and the catalog identity endpoint
+  (`GET /api/catalog`: app identity + serving branch for the scanner and e2e
+  port discovery). The admin client (`admin-client.ts`) talks to
+  `/api/admin/*` under a session cookie.
 - **Theme system** — themes are CSS variable overrides in `src/styles.css`
   under `[data-theme='…']`. A pre-paint inline script in `app.html` applies
   the stored theme before first paint.
