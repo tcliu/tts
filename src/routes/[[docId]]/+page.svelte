@@ -369,6 +369,14 @@
     const disposeSettings = settings.hydrate()
     void adminPresence.refresh()
     documents.hydrate()
+    // /login redirects here with ?login=1: auto-open the dialog once, then
+    // strip the param with replaceState so no navigation is involved.
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('login') !== null) {
+      loginOpen = true
+      const url = new URL(window.location.href)
+      url.searchParams.delete('login')
+      window.history.replaceState(window.history.state, '', url.pathname + (url.search ? `?${url.searchParams}` : '') + url.hash)
+    }
     // Restore the document referenced by the URL (deep link / reload); this
     // also settles the history baseline before any user navigation.
     editor.handleHistoryNavigation()

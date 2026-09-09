@@ -200,15 +200,17 @@
 
 ## Login page
 
-- `/login` shows a sign-in / create-account card. A toggle switches between
-  the two modes: sign-in takes username-or-email + password + remember-me;
-  create-account takes username + email + password. It serves direct visits
-  and admin redirects; the editor's profile button and the session-expired
-  toast open the same form as an in-editor dialog instead.
+- `/login` shows no form: unauthenticated visitors are sent to the editor with
+  `?login=1`, which auto-opens the sign-in dialog once (the param is stripped
+  without navigating). It serves direct visits and admin redirects; the
+  editor's profile button and the session-expired toast open the same form as
+  an in-editor dialog.
 - On success, admins go to `/admin/properties` and users go back to the
   last-opened document (the active slug persisted in `localStorage`; `/`
   for a fresh buffer). Already-authenticated visitors are bounced away from
   `/login` to that same document.
+- Explicit sign-out lands on the editor root (`/`); only expired sessions
+  redirect to `/login`.
 
 ## Admin page
 

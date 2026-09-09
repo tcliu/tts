@@ -5,7 +5,6 @@
   import { THEME_ICONS, THEME_MENU_OPTIONS } from '$lib/page/theme'
   import { LOCALES, getI18nContext, type Locale } from '$lib/i18n.svelte'
   import { useSettings, type UiTheme } from '$lib/use-settings.svelte'
-  import UserAuthPanel from '$lib/components/UserAuthPanel.svelte'
   import Button from '$lib/components/Button.svelte'
   import DocumentIcon from '$lib/icons/DocumentIcon.svelte'
   import { goto } from '$app/navigation'
@@ -51,7 +50,11 @@
     settings.hydrate()
     if (page.data.user) {
       goToLastDoc()
+      return
     }
+    // No standalone form remains: land on the editor with the login dialog
+    // auto-opened (the doc page strips ?login on mount).
+    void goto(`${lastDocUrl()}?login=1`)
   })
 </script>
 <svelte:head>
@@ -136,6 +139,5 @@
     </div>
   </header>
   <main class="min-h-0 flex-1 overflow-y-auto @container">
-    <UserAuthPanel />
   </main>
 </div>
