@@ -35,6 +35,7 @@ import {
 
 import {
   c,
+  charWidth,
   createScreenRenderer,
   createTerminalManager,
   displayWidth,
@@ -319,6 +320,43 @@ function buildConfirm() {
 // ---- command pane ----
 
 const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[@-Z\\-_]/g;
+// Hard-wrap one pane line into visual rows of at most `width` columns.
+// Word-agnostic (character/column based) so long unbroken output (paths,
+// URLs, log blobs) still fits instead of truncating. ANSI-aware and
+// CJK-aware; empty input yields one blank visual row to preserve spacing.
+function wrapPaneLine(line, width) {
+  if (width <= 0) return [""];
+  if (displayWidth(line) <= width) return [line];
+  const rows = [];
+  let cur = "";
+  let curW = 0;
+  for (let i = 0; i < line.length;) {
+    if (line[i] === "\x1b") {
+      let j = i + 1;
+      if (line[j] === "[") {
+        while (j < line.length && line[j] !== "m") j++;
+        j++;
+      } else {
+        j = i + 2;
+      }
+      cur += line.slice(i, j);
+      i = j;
+      continue;
+    }
+    const ch = String.fromCodePoint(line.codePointAt(i));
+    const cw = charWidth(ch);
+    if (curW + cw > width) {
+      rows.push(cur);
+      cur = "";
+      curW = 0;
+    }
+    cur += ch;
+    curW += cw;
+    i += ch.length;
+  }
+  rows.push(cur);
+  return rows;
+}
 
 function procPushOutput(proc, chunk, decoder) {
   proc.pending += decoder.write(chunk);
@@ -556,14 +594,17 @@ function draw() {
     );
     const prompt = cmdPromptActive();
     const outH = prompt ? cmdH - 1 : cmdH; // last pane row hosts the prompt
-    const total = pane.lines.length;
+    const contentW = boxW - 4;
+    const wrapped = [];
+    for (const l of pane.lines) wrapped.push(...wrapPaneLine(l, contentW));
+    const total = wrapped.length;
     pane.scroll = Math.max(0, Math.min(pane.scroll, total));
     const end = total - pane.scroll;
     const start = Math.max(0, end - outH);
     for (let i = 0; i < outH; i++) {
       const idx = start + i;
-      const out = idx >= 0 && idx < total ? pane.lines[idx] : "";
-      lines.push(side(padRight(truncate(out, boxW - 4), boxW - 4)));
+      const out = idx >= 0 && idx < total ? wrapped[idx] : "";
+      lines.push(side(padRight(truncate(out, contentW), contentW)));
     }
     if (prompt) {
       const before = state.cmdInput.slice(0, state.cmdCaret).join("");
