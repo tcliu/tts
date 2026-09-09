@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { existsSync, readFileSync } from 'node:fs'
 
 // Dependency-free dotenv parser shared by CLI scripts. db-config.mjs pulls in

@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 // _interactive-shell.mjs — reusable node-graph shell core for CLI scripts.
 //
 // A Node is { message, process(ctx) -> Node }. interactiveShell(start)

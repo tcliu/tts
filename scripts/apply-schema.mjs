@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { mkdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'

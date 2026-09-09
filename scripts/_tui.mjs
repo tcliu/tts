@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 // _tui.mjs — reusable terminal TUI primitives for full-screen interactive CLIs.
 //
 // Extracts the CJK-aware width utilities, ANSI screen management, SGR mouse

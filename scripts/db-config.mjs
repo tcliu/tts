@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { Pool } from '@neondatabase/serverless'
 import { parseEnvFile } from './env-file.mjs'
 
