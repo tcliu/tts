@@ -24,7 +24,7 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col">
-  <div class={`sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 pb-3 ${className}`}>
+  <div class={`sticky top-0 z-10 flex w-full flex-wrap items-center justify-between gap-2 bg-slate-950 pb-3 pt-4 ${className}`}>
     <nav aria-label={ariaLabel} class="inline-flex rounded-xl border border-slate-700 bg-slate-950 p-1">
       {#each tabs as tab}
         {#if pathname !== undefined}

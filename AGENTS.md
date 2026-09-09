@@ -48,6 +48,7 @@ Project-specific development conventions for the TTS web app.
   path mirrors branch); create worktrees with
   `node scripts/create-worktree.mjs <branch>`, unless the user opts for the
   current worktree.
+- Dev-server probe scripts matching by `GET /api/catalog` must require a string app identity; the catalog service itself answers 200 with an identity-less envelope and otherwise surfaces as null-identity noise.
 - Z ladder: sticky content `z-10`, drawer `z-20`, overlays `z-40`, dev tag
   `z-50` — keep overlays at or below `z-40` so the tag is never covered.
 - Log server-side state-changing actions through `src/lib/server/logging` per

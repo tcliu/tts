@@ -219,7 +219,7 @@
           content: cacheContent,
         },
       ] satisfies Tab<AdminState>[]}
-      <div class="mx-auto flex h-full max-w-[96rem] flex-col gap-3 px-4 py-4">
+      <div class="mx-auto flex h-full max-w-[96rem] flex-col gap-3 px-4 pb-4">
         <Tabs
           tabs={adminTabs}
           state={{ propertiesState, cacheState }}
