@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import type { Database } from 'better-sqlite3'
 import type { Db, DbQuery, DbResult } from './db-types'
 
-export const DEFAULT_SQLITE_PATH = '.data/tts-dev.sqlite'
+export const DEFAULT_SQLITE_PATH = '.data/dev.sqlite'
 
 function isRowsReturningSql(sql: string) {
   return /^\s*(select|with\b)/i.test(sql) || /returning\b/i.test(sql)
@@ -36,7 +36,7 @@ export async function readSchemaSql() {
 }
 
 export async function createSqliteDb(
-  path = process.env.SQLITE_PATH || (process.env.VERCEL === '1' ? '/tmp/tts.sqlite' : DEFAULT_SQLITE_PATH),
+  path = process.env.SQLITE_PATH || (process.env.VERCEL === '1' ? '/tmp/dev.sqlite' : DEFAULT_SQLITE_PATH),
 ): Promise<Db> {
   const { default: Database } = await import('better-sqlite3')
   if (path !== ':memory:') {

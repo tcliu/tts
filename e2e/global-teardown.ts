@@ -4,7 +4,7 @@ import path from 'node:path';
 // Deletes this run's throwaway accounts (`e2e_smoke_<timestamp>`); documents
 // cascade via the user_documents foreign key, orphans are swept as backup.
 async function globalTeardown() {
-	const db = new Database(path.resolve('.data', 'tts-dev.sqlite'));
+	const db = new Database(path.resolve('.data', 'dev.sqlite'));
 	try {
 		db.pragma('foreign_keys = ON');
 		const removed = db

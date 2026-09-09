@@ -36,6 +36,71 @@ function errorMessage(error) {
   return String(error)
 }
 
+// Split a SQL script into statements on semicolons that are not inside a
+// string literal, quoted identifier, line comment, or block comment. The
+// naive `sql.split(';')` breaks on semicolons inside `--` comments in
+// sql/schema.sql, producing a chunk starting with bare text
+// ("version rows are removed ...") that Neon rejects with
+// `syntax error at or near "version"`.
+function splitSqlStatements(sql) {
+  const statements = []
+  let current = ''
+  let inSingleQuote = false
+  let inDoubleQuote = false
+  let inLineComment = false
+  let inBlockComment = false
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i]
+    const next = sql[i + 1]
+    if (inLineComment) {
+      current += char
+      if (char === '\n') inLineComment = false
+    } else if (inBlockComment) {
+      current += char
+      if (char === '*' && next === '/') {
+        current += next
+        i++
+        inBlockComment = false
+      }
+    } else if (inSingleQuote) {
+      current += char
+      if (char === "'" && next === "'") {
+        current += next
+        i++
+      } else if (char === "'") {
+        inSingleQuote = false
+      }
+    } else if (inDoubleQuote) {
+      current += char
+      if (char === '"' && next === '"') {
+        current += next
+        i++
+      } else if (char === '"') {
+        inDoubleQuote = false
+      }
+    } else if (char === '-' && next === '-') {
+      inLineComment = true
+      current += char
+    } else if (char === '/' && next === '*') {
+      inBlockComment = true
+      current += char
+    } else if (char === "'") {
+      inSingleQuote = true
+      current += char
+    } else if (char === '"') {
+      inDoubleQuote = true
+      current += char
+    } else if (char === ';') {
+      if (current.trim()) statements.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  if (current.trim()) statements.push(current.trim())
+  return statements
+}
+
 const profile = resolveScriptProfile()
 const sql = await readFile(new URL('../sql/schema.sql', import.meta.url), 'utf8')
 const startedAt = Date.now()
@@ -57,7 +122,6 @@ if (profile === 'dev') {
         .prepare(
           "select name from sqlite_master where type = 'table' and name in ('users', 'user_documents') order by name",
         )
-        .all()
         .map(row => row.name)
       logEvent({
         action: 'schema_apply_end',
@@ -93,10 +157,7 @@ if (profile === 'dev') {
         await client.query(`create schema if not exists ${quoteIdentifier(schemaName)}`)
         await client.query(`set search_path to ${quoteIdentifier(schemaName)}`)
       }
-      const statements = sql
-        .split(';')
-        .map(statement => statement.trim())
-        .filter(Boolean)
+      const statements = splitSqlStatements(sql)
       for (const statement of statements) {
         await client.query(statement)
       }
