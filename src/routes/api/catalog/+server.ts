@@ -9,6 +9,7 @@ import {
   CATALOG_APP_REPO,
   CATALOG_APP_STATUS,
   CATALOG_APP_SUMMARY,
+  CATALOG_APP_TAGS,
   CATALOG_APP_URL,
 } from '$lib/server/catalog-app';
 
@@ -25,6 +26,7 @@ export const GET: RequestHandler = async () => {
     repo: CATALOG_APP_REPO,
     status: CATALOG_APP_STATUS,
     url: CATALOG_APP_URL,
+    tags: CATALOG_APP_TAGS,
     branch,
   });
 };

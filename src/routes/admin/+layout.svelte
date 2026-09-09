@@ -224,6 +224,7 @@
           tabs={adminTabs}
           state={{ propertiesState, cacheState }}
           pathname={page.url.pathname === '/admin' ? PROPERTIES_PATH : page.url.pathname}
+          class="bg-slate-950 pt-4"
           ariaLabel={i18n.t('adminSections')} />
       </div>
       {@render children()}

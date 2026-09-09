@@ -189,6 +189,7 @@ Project-specific development conventions for the TTS web app.
   narratives. Keep each bullet to the rule plus the briefest rationale;
   architecture detail belongs in `ARCHITECTURE.md` and user-facing behavior in
   `docs/design.md`.
+- When the user corrects a mistake, approves a fix, or states a new convention, invoke the `learn` skill so the lesson is not repeated.
 
 ## Quality checks
 
