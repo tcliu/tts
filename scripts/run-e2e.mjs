@@ -2,7 +2,7 @@
 
 // Unified e2e entry point: `npm run e2e [-- [project] [branch] [-- <playwright args>]]`
 //
-// 1. Scan for a running dev server via find-dev-port.mjs (identity + branch).
+// 1. Scan for a running dev server via find-running-apps.mjs (identity + branch).
 // 2. If none matches, start `npm run dev` on the first free port in range and
 //    wait until its /api/catalog answers.
 // 3. Run Playwright against the resolved URL (E2E_BASE_URL), then stop the
@@ -12,7 +12,7 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import net from 'node:net';
-import { findDevPort } from './find-dev-port.mjs';
+import { findRunningApps } from './find-running-apps.mjs';
 
 const START_TIMEOUT_MS = 120_000;
 const POLL_MS = 500;
@@ -90,7 +90,15 @@ const project = ownArgs[0] ?? 'tts';
 const branch = ownArgs[1] ?? currentBranch();
 const host = '127.0.0.1';
 
-let found = await findDevPort({ project, branch, host });
+const apps = await findRunningApps({ project, branch, host });
+let found =
+	apps.length > 0
+		? {
+				port: apps[0].port,
+				url: `http://${host}:${apps[0].port}`,
+				payload: { id: project, branch: apps[0].branch }
+			}
+		: null;
 let server = null;
 if (found) {
 	console.log(`e2e: ${project}@${found.payload.branch ?? '?'} -> ${found.url} (running)`);
