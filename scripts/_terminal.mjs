@@ -18,6 +18,7 @@ const c = {
 
 export { c }
 export { displayWidth, padRight, wrapText, truncate } from './_tui.mjs'
+import { truncate as truncateToWidth } from './_tui.mjs'
 
 // Line prompt in the convert-yaml style: cyan label, yellow hint.
 // `output` carries the query so prompt drivers consumed via stdout
@@ -41,9 +42,18 @@ export async function promptYesNo(label, defaultYes, output = process.stdout) {
 
 export function createListRenderer(renderLines, stream = process.stdout) {
   let lineCount = 0
+  // Cursor-up redraw math assumes one logical line per physical row. Long
+  // rows (worktree paths + DEV_TAG) wrap on narrow terminals, so the redraw
+  // undercounts and leaves stale menu copies behind. Truncate to the stream
+  // width when known; leave piped output whole. `truncate` is ANSI-aware,
+  // so colors survive and CJK widths count correctly.
+  const width = stream?.columns ?? process.stdout?.columns
 
   return state => {
-    const lines = renderLines(state)
+    let lines = renderLines(state)
+    if (width) {
+      lines = lines.map(line => truncateToWidth(line, width))
+    }
     if (lineCount > 0) {
       stream.write(`\x1b[${lineCount}A`)
     }

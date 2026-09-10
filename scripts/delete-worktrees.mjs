@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import path from 'node:path'
 
-import { c, selectMany } from './_terminal.mjs'
+import { c } from './_terminal.mjs'
+import { interactiveShell } from './_interactive-shell.mjs'
 import { deleteBranch, listDeleteTargets, removeWorktree } from './_worktrees.mjs'
 
 function parseArgs(argv) {
@@ -18,22 +19,48 @@ function parseArgs(argv) {
   }
 }
 
-async function chooseWorktrees(worktrees) {
-  return selectMany(worktrees, {
-    render(items, state) {
-      const lines = [`${c.bold}Select worktrees to delete:${c.reset}`, '']
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        const cursor = i === state.cursor ? `${c.cyan}>${c.reset}` : ' '
-        const marker = state.selected.has(i) ? `${c.green}[x]${c.reset}` : '[ ]'
-        const branch = item.branch ?? '(detached)'
-        const suffix = item.registered === false ? ` ${c.yellow}[unregistered]${c.reset}` : ''
-        lines.push(` ${cursor} ${marker} ${item.name} ${c.gray}(${branch})${c.reset}${suffix}`)
-      }
-      lines.push('')
-      lines.push(`${c.dim}Space: toggle | Enter: confirm | q: cancel${c.reset}`)
-      return lines
+function renderWorktreePicker() {
+  return (items, state) => {
+    const lines = []
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      const cursor = i === state.cursor ? `${c.cyan}>${c.reset}` : ' '
+      const marker = state.selected.has(i) ? `${c.green}[x]${c.reset}` : '[ ]'
+      const branch = item.branch ?? '(detached)'
+      const suffix = item.registered === false ? ` ${c.yellow}[unregistered]${c.reset}` : ''
+      lines.push(` ${cursor} ${marker} ${item.name} ${c.gray}(${branch})${c.reset}${suffix}`)
+    }
+    lines.push('')
+    lines.push(`${c.dim}Space: toggle | Enter: confirm | q: cancel${c.reset}`)
+    return lines
+  }
+}
+
+// Single-question interview: pick -> exit. q/Ctrl-C (or confirming an
+// empty selection) yields no selection; the caller treats it as cancel.
+// Effect code stays outside the graph, mirroring deploy.mjs
+// (runDeployInterview collects answers, runDeployFlow acts on them).
+// The positional-args path below never enters the graph.
+function buildDeleteGraph() {
+  const graph = {
+    pick: {
+      message: 'Select worktrees to delete:',
+      async process(ctx) {
+        ctx.selected = await ctx.selectMany(ctx.worktrees, {
+          render: renderWorktreePicker(),
+        })
+        return null
+      },
     },
+  }
+  return graph
+}
+
+async function runDeleteInterview(worktrees) {
+  const graph = buildDeleteGraph()
+  return interactiveShell(graph.pick, {
+    options: { ctx: { worktrees, selected: [] } },
+    chrome: { cancelText: `${c.yellow}Cancelled.${c.reset}` },
   })
 }
 
@@ -60,7 +87,7 @@ async function main() {
       process.exit(1)
     }
   } else {
-    selected = await chooseWorktrees(worktrees)
+    selected = (await runDeleteInterview(worktrees)).selected
   }
 
   if (selected.length === 0) return

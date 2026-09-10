@@ -3,7 +3,10 @@
 //
 // Styled after the root-level tts.mjs alternate-screen TUI: raw mode, box-drawn
 // layout, diff-based line redraw, windowed cursor, centered dialog overlay, SGR
-// mouse, and exact terminal restore on quit. The worktrees frame always uses
+// mouse, and exact terminal restore on quit.
+// Mouse: left-click focuses a row, the [ ] box toggles selection, right-click
+// opens the menu, and the wheel scrolls the list, menus, and command output.
+// The worktrees frame always uses
 // the whole console and reflows on resize. Worktree data comes from the shared
 // ./_worktrees.mjs library (no duplicated git logic); delete semantics mirror
 // scripts/delete-worktrees.mjs (remove worktree, then delete its branch), with
@@ -58,7 +61,7 @@ const PRESET_COMMANDS = [
 const HELP_TEXT =
   "Arrows: move · Space: select · a: all · Tab: menu · c: cmd · s: shell · " +
   "Del: delete · x: stop bg · r: refresh · PgUp/PgDn: cmd output · " +
-  "q: quit · Ctrl-C: stop cmd/quit";
+  "q: quit · Ctrl-C: stop cmd/quit · Mouse: click focus · [ ] select · right-click menu · wheel scroll";
 
 const DEFAULT_STATUS =
   `${c.green}Ready.${c.reset} Tab: menu · Space: select · Del: delete · c: cmd · s: shell · r: refresh · q: quit.`;
@@ -75,6 +78,12 @@ const DIALOG_OPTION_START = 3; // border, tabs line, separator precede options
 const CONFIRM_NO_ROW = 4; // border, message, detail, separator precede "No"
 const CONFIRM_YES_ROW = 5;
 const LIST_TOP_ROW = 3; // header, subheader, box top border precede rows
+// List-row chrome columns (1-based): `│`(1) + space(2), then content starting
+// with the `▸`/space marker(3) + space(4) + the `[ ]`/`[x]` checkbox(5-7).
+// The marker is single-cell in practice (▸ is outside WIDE_CHAR_RE in
+// _tui.mjs), so the checkbox columns are stable.
+const CHECKBOX_FIRST_COL = 5;
+const CHECKBOX_LAST_COL = 7;
 
 // ---- screen (diff-based redraw owned by shared _tui.mjs) ----
 
@@ -637,7 +646,14 @@ function draw() {
     const pad = " ".repeat(Math.max(0, Math.floor((cols - dw) / 2)));
     for (let k = 0; k < dH; k++) {
       const r = top + k;
-      if (r < rows) lines[r] = pad + dg.lines[k];
+      if (r >= rows) continue;
+      // The dialog is narrower than the frame: re-add the outer frame
+      // borders at both edges instead of leaving blank gaps that break
+      // the frame's left/right border. Dialog content stays at the same
+      // columns, so the mouse hit test is unaffected.
+      const left = pad.slice(0, Math.max(0, pad.length - 1));
+      const right = " ".repeat(Math.max(0, cols - dw - left.length - 2));
+      lines[r] = `${border("│")}${left}${dg.lines[k]}${right}${border("│")}`;
     }
   }
 
@@ -741,21 +757,34 @@ function executeBatchDelete(rows) {
   const failedNames = [];
   for (const wt of state.rows) {
     if (!targets.has(wt.path) || wt.main) continue;
-    if (removeWorktree(state.mainRoot, wt)) {
-      // Skip branch cleanup for unregistered dirs: their branch name comes
-      // from a foreign .git and may collide with a real main-repo branch.
-      if (wt.registered !== false && wt.branch) {
-        deleteBranch(state.mainRoot, wt.branch);
+    // removeWorktree can throw before reaching its internal try (main-root
+    // lookup); count that as a failed target so one bad row never aborts
+    // the rest of the batch.
+    try {
+      if (removeWorktree(state.mainRoot, wt)) {
+        // Skip branch cleanup for unregistered dirs: their branch name comes
+        // from a foreign .git and may collide with a real main-repo branch.
+        if (wt.registered !== false && wt.branch) {
+          deleteBranch(state.mainRoot, wt.branch);
+        }
+        ok++;
+      } else {
+        failed++;
+        failedNames.push(wt.name);
       }
-      ok++;
-    } else {
+    } catch {
       failed++;
       failedNames.push(wt.name);
     }
   }
-  refreshList();
   let status = `${c.green}Deleted ${ok} worktree(s)${c.reset}`;
   if (failed) status += `${c.red} · ${failed} failed: ${failedNames.join(", ")}${c.reset}`;
+  try {
+    refreshList();
+  } catch (e) {
+    // The list stays stale but the TUI stays alive; the user retries with r.
+    status += `${c.red} · list refresh failed (${e?.message ?? e}), press r to retry${c.reset}`;
+  }
   state.status = status;
 }
 
@@ -831,6 +860,23 @@ function confirmDeleteFlow(targets) {
   });
 }
 
+// Close the confirm dialog before deleting: a failing delete must never
+// leave the overlay stuck open (or throw out of the input handler with the
+// terminal frozen on the dialog frame). Failures surface as status text.
+function resolveConfirm(confirmed) {
+  const cfm = state.confirm;
+  state.mode = "list";
+  state.confirm = null;
+  if (confirmed && cfm) {
+    try {
+      executeBatchDelete(cfm.rows);
+    } catch (e) {
+      state.status = `${c.red}Delete failed: ${e?.message ?? e}${c.reset}`;
+    }
+  }
+  redraw();
+}
+
 // ---- command execution ----
 
 async function submitCommand() {
@@ -886,8 +932,27 @@ async function suspendForCommand({ run, row, label }) {
 
 // ---- input ----
 
+function handleWheel(dir) {
+  // dir: +1 = wheel down, -1 = wheel up.
+  if (state.mode === "menu") {
+    const n = currentOptions().length;
+    state.menuCursor = Math.max(0, Math.min(n - 1, state.menuCursor + dir));
+    redraw();
+  } else if (state.mode === "run") {
+    scrollOutput(-dir * 3); // wheel up reveals older output, wheel down newer
+  }
+  // confirm: wheel is a no-op so the highlight can't drift under the cursor.
+}
+
 function handleMouse({ button, x, y, release }) {
-  if (release || button !== 0) return;
+  // SGR Cb bits: 0-1 button, 4/8/16 shift/meta/ctrl, 32 drag-motion, 64 wheel.
+  if (button & 64) {
+    handleWheel(button & 1 ? 1 : -1);
+    return;
+  }
+  if (release || button === 3 || button & 32) return; // release/drag: ignore
+  const btn = button & 3; // strip shift/meta/ctrl modifiers
+  if (btn !== 0 && btn !== 2) return; // middle button: ignore
   const { cols, rows: rr } = layout();
   const { dialogW, listH } = dialogGeometry();
 
@@ -907,13 +972,12 @@ function handleMouse({ button, x, y, release }) {
       }
       return;
     }
+    if (btn !== 0) return; // right-click inside a dialog: no-op
     if (state.mode === "confirm") {
-      if (sr === top + CONFIRM_NO_ROW) {
-        state.confirm.yes = 0;
-      } else if (sr === top + CONFIRM_YES_ROW) {
-        state.confirm.yes = 1;
-      }
-      redraw();
+      // Like the menu, a single click decides: No cancels, Yes deletes.
+      if (sr === top + CONFIRM_NO_ROW) resolveConfirm(false);
+      else if (sr === top + CONFIRM_YES_ROW) resolveConfirm(true);
+      else redraw();
       return;
     }
     if (sr - top === 1) {
@@ -937,15 +1001,38 @@ function handleMouse({ button, x, y, release }) {
     }
     return;
   }
-  // list hit test
+  // List / command-pane hit test. Dialog modes return above, so only list
+  // and run reach here.
   const { first, boxH } = listWindow();
   const sr = y - 1;
   if (sr < LIST_TOP_ROW || sr >= LIST_TOP_ROW + boxH) return;
   const idx = first + (sr - LIST_TOP_ROW);
-  if (idx >= 0 && idx < state.rows.length) {
-    state.cursor = idx;
-    redraw();
+  if (idx < 0 || idx >= state.rows.length) return;
+  const row = state.rows[idx];
+  if (btn === 2) {
+    // Right-click: context menu for the row. Ignored while a command pane
+    // owns the screen so a stray click can't pop a menu over live output.
+    if (state.mode === "list") {
+      state.cursor = idx;
+      openMenu();
+    }
+    return;
   }
+  if (state.mode === "run") {
+    // Clicking another row reattaches the pane there, like focusing + c;
+    // clicking the attached row just moves the cursor.
+    if (!state.pane || state.pane.row.path !== row.path) openPane(row);
+    else {
+      state.cursor = idx;
+      redraw();
+    }
+    return;
+  }
+  state.cursor = idx;
+  // Clicking the [ ]/[x] box toggles selection (Space parity); anywhere
+  // else on the row just moves the cursor.
+  if (x >= CHECKBOX_FIRST_COL && x <= CHECKBOX_LAST_COL) toggleCheckbox();
+  else redraw();
 }
 
 function quit() {
@@ -1077,12 +1164,12 @@ function onData(chunk) {
         continue;
       }
       if (seq4 === "\x1b[5~") {
-        if (state.mode === "run") scrollOutput(-frameSplit().cmdH + 1);
+        if (state.mode === "run") scrollOutput(frameSplit().cmdH - 1);
         i += 4;
         continue;
       }
       if (seq4 === "\x1b[6~") {
-        if (state.mode === "run") scrollOutput(frameSplit().cmdH - 1);
+        if (state.mode === "run") scrollOutput(-frameSplit().cmdH + 1);
         i += 4;
         continue;
       }
@@ -1291,10 +1378,7 @@ function handleEnter() {
   if (state.mode === "menu") {
     activateMenuItem();
   } else if (state.mode === "confirm") {
-    if (state.confirm.yes === 1) executeBatchDelete(state.confirm.rows);
-    state.mode = "list";
-    state.confirm = null;
-    redraw();
+    resolveConfirm(state.confirm ? state.confirm.yes === 1 : false);
   } else if (cmdPromptActive()) {
     submitCommand();
   } else if (state.mode === "list") {
