@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import type { RequestEvent } from '@sveltejs/kit'
 import { getDb } from './db'
+import { isProdRuntime } from './profile'
 
 export const ADMIN_SESSION_COOKIE = 'tts-admin-session'
 export const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000
@@ -39,7 +40,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 function sessionSecret(): string {
   const explicit = (process.env.SESSION_SECRET || '').trim()
   if (explicit) return explicit
-  if (process.env.VERCEL === '1') throw new Error('SESSION_SECRET must be set in production')
+  if (isProdRuntime()) throw new Error('SESSION_SECRET must be set in production')
   return 'dev-session-secret'
 }
 

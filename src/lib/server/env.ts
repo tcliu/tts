@@ -1,16 +1,13 @@
 import { logEvent } from './logging'
-import { resolveProfile } from './profile'
+import { isExplicitProdRuntime, resolveProfile } from './profile'
 
-// Prod means an explicit PROFILE=prod or a Vercel runtime. Deliberately not
-// resolveProfile(): that infers prod from NODE_ENV=production, which is also
-// set for local `vite build` — startup validation must never fail a build.
-function isProdRuntime(env: Record<string, string | undefined>): boolean {
-  return (env.PROFILE || '').trim().toLowerCase() === 'prod' || env.VERCEL === '1'
-}
+// Startup gate: explicit prod intent only. Deliberately not resolveProfile():
+// that infers prod from NODE_ENV=production, which is also set for local
+// `vite build` — startup validation must never fail a build.
 
 // Names of required keys that are missing or blank. Values are never returned.
 export function prodEnvIssues(env: Record<string, string | undefined> = process.env): string[] {
-  if (!isProdRuntime(env)) {
+  if (!isExplicitProdRuntime(env)) {
     return []
   }
   const issues: string[] = []

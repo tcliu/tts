@@ -13,7 +13,7 @@ import {
   verifyAdminCredentials,
 } from '$lib/server/admin-auth'
 import { logEvent } from '$lib/server/logging'
-import { isProdRuntime } from '$lib/server/user-auth'
+import { isProdRuntime } from '$lib/server/profile'
 
 export const POST: RequestHandler = async ({ request, cookies, getClientAddress }) => {
   const ip = getRequestIpSafe(getClientAddress)
