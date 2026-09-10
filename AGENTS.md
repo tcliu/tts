@@ -133,7 +133,8 @@ Project-specific development conventions for the TTS web app.
   `replaceState`, no navigation). Explicit sign-out lands on `/`; only expired
   sessions redirect to `/login`.
 - Icon-only `Button` uses uniform padding (`p-1.5` for `sm`, `p-2.5` for `md`);
-  text buttons keep `px`/`py` distinction.
+  text buttons keep `px`/`py` distinction. Every size carries a `before:`
+  hit-area expansion so the target reaches 44px (`-inset-2` on `sm`, `-inset-0.5` on `md`).
 - Dropdown/menu option panels show one shared hover/keyboard highlight; the
   committed value is `aria-selected`/`aria-checked` only. Panels hide only when
   their trigger is clipped or out of viewport after scroll, never on own-list
