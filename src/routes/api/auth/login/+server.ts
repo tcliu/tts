@@ -21,8 +21,8 @@ import {
   USER_SESSION_REMEMBER_TTL_MS,
   USER_SESSION_TTL_MS,
   createUserSessionToken,
-  isProdRuntime,
 } from '$lib/server/user-auth'
+import { isProdRuntime } from '$lib/server/profile'
 import { findUserByCredentials } from '$lib/server/users'
 
 function isBodyRecord(body: unknown): body is Record<string, unknown> {

@@ -12,9 +12,11 @@ export const MAX_DOCUMENT_NAME_LENGTH = 200
 export const MAX_DOCUMENT_CONTENT_LENGTH = 1_000_000
 export const MAX_DOCUMENTS_PER_USER = 500
 export class DocumentValidationError extends Error {
-  constructor(message: string) {
+  readonly code: string
+  constructor(code: string, message: string) {
     super(message)
     this.name = 'DocumentValidationError'
+    this.code = code
   }
 }
 
@@ -38,45 +40,54 @@ function toUserDocument(row: UserDocumentRow): UserDocument {
 
 export function normalizeDocumentId(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new DocumentValidationError('document id is required')
+    throw new DocumentValidationError('document_id_required', 'document id is required')
   }
   const id = value.trim()
   if (!id) {
-    throw new DocumentValidationError('document id is required')
+    throw new DocumentValidationError('document_id_required', 'document id is required')
   }
   if (id.length > MAX_DOCUMENT_ID_LENGTH) {
-    throw new DocumentValidationError(`document id must not exceed ${MAX_DOCUMENT_ID_LENGTH} characters`)
+    throw new DocumentValidationError(
+      'document_id_too_long',
+      `document id must not exceed ${MAX_DOCUMENT_ID_LENGTH} characters`,
+    )
   }
   return id
 }
 
 export function normalizeDocumentName(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new DocumentValidationError('document name is required')
+    throw new DocumentValidationError('document_name_required', 'document name is required')
   }
   const name = value.trim()
   if (!name) {
-    throw new DocumentValidationError('document name is required')
+    throw new DocumentValidationError('document_name_required', 'document name is required')
   }
   if (name.length > MAX_DOCUMENT_NAME_LENGTH) {
-    throw new DocumentValidationError(`document name must not exceed ${MAX_DOCUMENT_NAME_LENGTH} characters`)
+    throw new DocumentValidationError(
+      'document_name_too_long',
+      `document name must not exceed ${MAX_DOCUMENT_NAME_LENGTH} characters`,
+    )
   }
   return name
 }
 
 export function normalizeDocumentContent(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new DocumentValidationError('document content must be a string')
+    throw new DocumentValidationError('document_content_invalid', 'document content must be a string')
   }
   if (value.length > MAX_DOCUMENT_CONTENT_LENGTH) {
-    throw new DocumentValidationError(`document content must not exceed ${MAX_DOCUMENT_CONTENT_LENGTH} characters`)
+    throw new DocumentValidationError(
+      'document_content_too_long',
+      `document content must not exceed ${MAX_DOCUMENT_CONTENT_LENGTH} characters`,
+    )
   }
   return value
 }
 
 export function normalizeDocumentUpdatedAt(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new DocumentValidationError('document updated_at must be a valid timestamp')
+    throw new DocumentValidationError('document_updated_at_invalid', 'document updated_at must be a valid timestamp')
   }
   return Math.floor(value)
 }

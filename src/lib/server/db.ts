@@ -1,7 +1,7 @@
 import type { Db } from './db-types'
 import { createNeonDb } from './db-neon'
 import { createSqliteDb } from './db-sqlite'
-import { resolveProfile } from './profile'
+import { isProdRuntime } from './profile'
 
 let db: Db | null = null
 let dbPromise: Promise<Db> | null = null
@@ -18,7 +18,7 @@ export async function getDb(): Promise<Db> {
     // Production is Neon and never runs DDL on boot; apply sql/schema.sql
     // explicitly with `PROFILE=prod npm run schema:apply`. Dev is SQLite
     // and auto-applies the schema on boot.
-    const initialized = resolveProfile() === 'prod' ? createNeonDb() : await createSqliteDb()
+    const initialized = isProdRuntime() ? createNeonDb() : await createSqliteDb()
     db = initialized
     return initialized
   })()

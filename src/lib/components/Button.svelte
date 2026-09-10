@@ -81,13 +81,14 @@
 
   const isIconOnly = $derived(!!icon && !children)
 
-  // `relative` anchors the `before:-inset-1.5` hit-area expansion on `sm` buttons: do not remove it,
-  // and callers must not pass position utilities via `className` (`relative` outranks `absolute` in the
+  // `relative` anchors the `before:` hit-area expansion that brings every size
+  // to the 44px touch target: do not remove it, and callers must not pass
+  // position utilities via `className` (`relative` outranks `absolute` in the
   // stylesheet, so the override silently loses). Position the Button with a wrapper or in-flow layout instead.
   const baseClass = $derived.by(() => {
     const common = isIconOnly
-      ? `${size === 'sm' ? 'p-1.5 relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-[\'\']' : 'inline-flex items-center justify-center rounded-lg p-2.5'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
-      : `${size === 'sm' ? 'px-2.5 py-1.5 text-sm relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-[\'\']' : 'inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
+      ? `${size === 'sm' ? 'p-1.5 relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-2 before:content-[\'\']' : 'relative inline-flex items-center justify-center rounded-lg p-2.5 before:absolute before:-inset-0.5 before:content-[\'\']'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
+      : `${size === 'sm' ? 'px-2.5 py-1.5 text-sm relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-[\'\']' : 'relative inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold before:absolute before:-inset-0.5 before:content-[\'\']'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
     if (variant === 'primary') {
       return `${common} ${primaryClasses[accent]}`
     }

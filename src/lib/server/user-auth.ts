@@ -1,15 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { Cookies } from '@sveltejs/kit'
+import { isProdRuntime } from './profile'
 
 export const USER_SESSION_COOKIE = 'tts-user-session'
 export const USER_SESSION_TTL_MS = 24 * 60 * 60 * 1000
 export const USER_SESSION_MAX_AGE = 60 * 60 * 24
 export const USER_SESSION_REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000
 export const USER_SESSION_REMEMBER_MAX_AGE = 60 * 60 * 24 * 30
-
-export function isProdRuntime(): boolean {
-  return process.env.PROFILE === 'prod' || process.env.VERCEL === '1'
-}
 
 function sessionSecret(): string {
   const explicit = (process.env.SESSION_SECRET || '').trim()

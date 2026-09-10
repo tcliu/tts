@@ -32,7 +32,7 @@ export const POST: RequestHandler = async event => {
   const ip = getRequestIp(event)
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') {
-    return json({ error: 'Invalid request body' }, { status: 400 })
+    return json({ error: 'invalid_request' }, { status: 400 })
   }
 
   const text = typeof body.text === 'string' ? body.text.trim() : ''
@@ -40,20 +40,20 @@ export const POST: RequestHandler = async event => {
   const rate = typeof body.rate === 'number' && Number.isFinite(body.rate) ? body.rate : 1
 
   if (!text) {
-    return json({ error: 'Text must not be empty' }, { status: 400 })
+    return json({ error: 'text_required' }, { status: 400 })
   }
   const maxText = maxTextLength()
   if (text.length > maxText) {
-    return json({ error: `Text must not exceed ${maxText} characters` }, { status: 413 })
+    return json({ error: 'text_too_long', max_length: maxText }, { status: 413 })
   }
   if (!voice) {
-    return json({ error: 'Voice must not be empty' }, { status: 400 })
+    return json({ error: 'voice_required' }, { status: 400 })
   }
   if (!KNOWN_VOICES.has(voice)) {
-    return json({ error: 'Unknown voice' }, { status: 400 })
+    return json({ error: 'unknown_voice' }, { status: 400 })
   }
   if (!(SPEEDS as readonly number[]).includes(rate)) {
-    return json({ error: 'Invalid rate' }, { status: 400 })
+    return json({ error: 'invalid_rate' }, { status: 400 })
   }
 
   const synthesisRate = CANONICAL_SYNTHESIS_RATE
@@ -115,7 +115,7 @@ export const POST: RequestHandler = async event => {
         action: 'tts_synthesize_rate_limited',
         details: { voice, rate, text_length: text.length, retry_after_s: RETRY_AFTER_S, level: 'WARN' },
       })
-      return json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(RETRY_AFTER_S) } })
+      return json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': String(RETRY_AFTER_S) } })
     }
 
     const result = await synthesizeEdgeTts(text, voice, synthesisRate)
@@ -165,6 +165,6 @@ export const POST: RequestHandler = async event => {
         elapsed_ms: Date.now() - startedAt,
       },
     })
-    return json({ error: 'Synthesis failed' }, { status: 502 })
+    return json({ error: 'synthesis_failed' }, { status: 502 })
   }
 }
