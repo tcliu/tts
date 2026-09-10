@@ -212,4 +212,6 @@ export const zhCN: Record<MessageKey, string> = {
   'increment': '增加',
   'decrement': '减少',
   'noOptions': '没有选项',
+  'tagInput.suggestions': '标签建议',
+  'tagInput.remove': '移除 {name}',
 }

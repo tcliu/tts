@@ -39,7 +39,7 @@ Project-specific development conventions for the TTS web app.
   flow.
 - Component attributes stay camelCase.
 - Reuse this project's existing UI primitives and patterns when they fit,
-  especially dialog, dropdown, editor, and icon components; do not build a
+  especially dialog, form, dropdown, editor, and icon components; do not build a
   parallel design system for equivalent controls.
 - Do not read or reuse any archived web implementation under `archive/`; it is
   out of scope for this project.

@@ -210,6 +210,8 @@ export const en = {
   'increment': 'Increase',
   'decrement': 'Decrease',
   'noOptions': 'No options',
+  'tagInput.suggestions': 'Tag suggestions',
+  'tagInput.remove': 'Remove {name}',
 } as const
 
 export type MessageKey = keyof typeof en

@@ -8,8 +8,14 @@
     trigger?: HTMLElement | null
   }
 
-  let { children, align = 'center', class: extraClass = '', trigger = null }: Props = $props()
+  let { children, align = 'center', class: extraClass = '', trigger: triggerProp = null }: Props = $props()
 
+  let anchor = $state<HTMLElement | null>(null)
+  // Explicit trigger (e.g. Menu positioning) wins; otherwise fall back to the
+  // anchor span's parent, preserving existing anchor-based call sites.
+  function resolveTrigger(): HTMLElement | null {
+    return triggerProp ?? anchor?.parentElement ?? null
+  }
   let tooltipEl = $state<HTMLElement | null>(null)
   let visible = $state(false)
   let top = $state(0)
@@ -19,6 +25,7 @@
   const PLACEMENT_GAP = 8
 
   function place() {
+    const trigger = resolveTrigger()
     if (!trigger) {
       return
     }
@@ -116,6 +123,7 @@
   }
 
   $effect(() => {
+    const trigger = resolveTrigger()
     if (!trigger || !supportsHover) {
       return
     }
@@ -134,6 +142,7 @@
   })
 
   $effect(() => {
+    const trigger = resolveTrigger()
     if (!trigger) {
       return
     }
@@ -178,10 +187,10 @@
     if (!visible) {
       return
     }
-    const currentTrigger = trigger
+    const trigger = resolveTrigger()
     const reposition = () => place()
     const hideWhenAway = (event: PointerEvent) => {
-      if (!currentTrigger || (event.target instanceof Node && currentTrigger.contains(event.target))) {
+      if (!trigger || (event.target instanceof Node && trigger.contains(event.target))) {
         return
       }
       hide()
@@ -211,7 +220,9 @@
   }
 </script>
 
-  {#if visible}
+<span bind:this={anchor} class="hidden"></span>
+
+{#if visible}
   <span
     bind:this={tooltipEl}
     use:portal

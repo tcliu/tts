@@ -212,4 +212,6 @@ export const zhTW: Record<MessageKey, string> = {
   'increment': '增加',
   'decrement': '減少',
   'noOptions': '沒有選項',
+  'tagInput.suggestions': '標籤建議',
+  'tagInput.remove': '移除 {name}',
 }
