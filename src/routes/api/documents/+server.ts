@@ -8,7 +8,7 @@ function toWire(document: { id: string; name: string; content: string; updatedAt
 }
 function toErrorResponse(error: unknown): { body: { error: string }; status: number } {
   if (error instanceof DocumentValidationError) {
-    return { body: { error: error.message }, status: 400 }
+    return { body: { error: error.code }, status: 400 }
   }
   if (error instanceof DocumentQuotaError) {
     return { body: { error: 'document_quota_exceeded' }, status: 409 }
@@ -76,7 +76,7 @@ export const DELETE: RequestHandler = async event => {
     return json({ ok: true })
   } catch (error) {
     if (error instanceof DocumentValidationError) {
-      return json({ error: error.message }, { status: 400 })
+      return json({ error: error.code }, { status: 400 })
     }
     logEvent({ ip, action: 'user_document_delete_error', details: { username: user.username, level: 'ERROR' } })
     return json({ error: 'failed_to_delete_document' }, { status: 500 })

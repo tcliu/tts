@@ -137,14 +137,14 @@ async function requestSynthesis({
     const retryAfter = Number(response.headers.get('Retry-After') ?? '60')
     const data = await response.json().catch(() => ({}))
     throw new RateLimitedError(
-      typeof data.error === 'string' ? data.error : 'Too many requests',
+      typeof data.error === 'string' ? data.error : 'rate_limited',
       Number.isFinite(retryAfter) ? retryAfter : 60,
     )
   }
 
   if (!response.ok) {
     const data = await response.json().catch(() => ({}))
-    throw new Error(typeof data.error === 'string' ? data.error : 'Synthesis failed.')
+    throw new Error(typeof data.error === 'string' ? data.error : 'synthesis_failed')
   }
 
   const raw = (await response.json()) as {
