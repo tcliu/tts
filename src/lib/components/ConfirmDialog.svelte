@@ -1,6 +1,7 @@
 <script lang="ts">
   import BaseDialog from './BaseDialog.svelte'
   import Button from './Button.svelte'
+  import Buttons from './Buttons.svelte'
 
   interface Props {
     title: string
@@ -32,10 +33,10 @@
 <BaseDialog {title} {className} {maxWidth} {closeLabel} {onCancel}>
   <div class="flex flex-col gap-4">
     <p class="text-sm leading-6 text-slate-400">{message}</p>
-    <div class="flex flex-wrap items-center justify-end gap-3">
+    <Buttons align="right">
       <Button variant="primary" accent={confirmColor} {pending} onClick={onConfirm}>
         {confirmLabel}
       </Button>
-    </div>
+    </Buttons>
   </div>
 </BaseDialog>

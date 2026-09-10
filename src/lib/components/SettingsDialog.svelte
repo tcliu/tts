@@ -1,6 +1,7 @@
 <script lang="ts">
   import BaseDialog from '$lib/components/BaseDialog.svelte'
   import Button from '$lib/components/Button.svelte'
+  import Buttons from '$lib/components/Buttons.svelte'
   import SearchInput from '$lib/components/SearchInput.svelte'
   import SelectDropdown from '$lib/components/SelectDropdown.svelte'
   import NumberInput from '$lib/components/NumberInput.svelte'
@@ -195,7 +196,7 @@
             {/if}
           </p>
         </div>
-        <div class="flex flex-wrap items-center justify-end gap-2">
+        <Buttons align="right">
           <Button
             variant="secondary"
             size="sm"
@@ -218,7 +219,7 @@
             {/snippet}
             {i18n.t('cache.clearAll')}
           </Button>
-        </div>
+        </Buttons>
       </div>
     </div>
   {/snippet}

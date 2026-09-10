@@ -18,6 +18,7 @@
     ariaExpanded?: boolean
     tooltip?: string
     tooltipAlign?: 'center' | 'left' | 'right'
+    badge?: string | number
     icon?: Snippet
     children?: Snippet
     buttonEl?: HTMLButtonElement | null
@@ -39,6 +40,7 @@
     ariaExpanded,
     tooltip,
     tooltipAlign = 'center',
+    badge,
     icon,
     children,
     buttonEl = $bindable<HTMLButtonElement | null>(null),
@@ -65,6 +67,17 @@
   const iconSizeClass = $derived(size === 'sm' ? 'h-4 w-4' : 'h-5 w-5')
 
   const disabledState = $derived(disabled || pending)
+
+  const badgeClasses: Record<string, string> = {
+    cyan: 'bg-cyan-500',
+    emerald: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    violet: 'bg-violet-500',
+    rose: 'bg-rose-500',
+  }
+
+  // Count pill overhanging the button's top-right corner; omit the prop to hide it.
+  const hasBadge = $derived(badge !== undefined && badge !== null && badge !== '')
 
   const isIconOnly = $derived(!!icon && !children)
 
@@ -112,8 +125,11 @@
 {/snippet}
 
   {#snippet buttonElement()}
-    <button bind:this={buttonEl} {type} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} onclick={onClick} onkeydown={onKeyDown} onpointerdown={preventFocusSteal ? handlePreventFocusSteal : undefined} disabled={disabledState} class={`${baseClass} ${className}`}>
+    <button bind:this={buttonEl} {type} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} onclick={onClick} onkeydown={onKeyDown} onpointerdown={preventFocusSteal ? handlePreventFocusSteal : undefined} disabled={disabledState} class={`${baseClass} ${hasBadge ? 'relative' : ''} ${className}`}>
       {@render buttonInner()}
+      {#if hasBadge}
+        <span class={`absolute -top-2 -right-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold text-slate-950 ${badgeClasses[accent]}`}>{badge}</span>
+      {/if}
     </button>
   {/snippet}
 

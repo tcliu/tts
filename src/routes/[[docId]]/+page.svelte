@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte'
   import CodeEditor from '$lib/components/CodeEditor.svelte'
   import Button from '$lib/components/Button.svelte'
+  import Buttons from '$lib/components/Buttons.svelte'
   import BaseDialog from '$lib/components/BaseDialog.svelte'
   import UserAuthPanel, { type AuthPanelMode } from '$lib/components/UserAuthPanel.svelte'
   import EditableText from '$lib/components/EditableText.svelte'
@@ -916,9 +917,9 @@
     <BaseDialog title={i18n.t('dialogs.overwriteTitle')} maxWidth="md" closeLabel={i18n.t('close')} onCancel={editor.cancelOverwrite}>
       <div class="flex flex-col gap-4">
         <p class="text-sm leading-6 text-slate-400">{i18n.t('dialogs.overwriteMessage')}</p>
-        <div class="flex flex-wrap items-center justify-end gap-3">
+        <Buttons align="right">
           <Button variant="primary" accent="rose" onClick={editor.applyOverwrite}>{i18n.t('documents.save')}</Button>
-        </div>
+        </Buttons>
       </div>
     </BaseDialog>
   {/if}
@@ -927,9 +928,9 @@
     <BaseDialog title={i18n.t('dialogs.discardTitle')} maxWidth="md" closeLabel={i18n.t('close')} onCancel={editor.cancelDiscard}>
       <div class="flex flex-col gap-4">
         <p class="text-sm leading-6 text-slate-400">{i18n.t('dialogs.discardMessage')}</p>
-        <div class="flex flex-wrap items-center justify-end gap-3">
+        <Buttons align="right">
           <Button variant="primary" accent="rose" onClick={editor.confirmDiscard}>{i18n.t('dialogs.discardConfirm')}</Button>
-        </div>
+        </Buttons>
       </div>
     </BaseDialog>
   {/if}
@@ -941,9 +942,9 @@
           <p class="truncate text-sm font-medium text-slate-100">{editor.deleteTargetName}</p>
           <p class="text-sm leading-6 text-slate-400">{i18n.t('dialogs.deleteConfirmMessage')}</p>
         </div>
-        <div class="flex flex-wrap items-center justify-end gap-3">
+        <Buttons align="right">
           <Button variant="primary" accent="rose" onClick={editor.confirmDelete}>{i18n.t('documents.delete')}</Button>
-        </div>
+        </Buttons>
       </div>
     </BaseDialog>
   {/if}
@@ -952,9 +953,9 @@
     <BaseDialog title={i18n.t('dialogs.stopPlaybackTitle')} maxWidth="md" closeLabel={i18n.t('close')} onCancel={editor.cancelPlayback}>
       <div class="flex flex-col gap-4">
         <p class="text-sm leading-6 text-slate-400">{i18n.t('dialogs.stopPlaybackMessage')}</p>
-        <div class="flex flex-wrap items-center justify-end gap-3">
+        <Buttons align="right">
           <Button variant="primary" accent="rose" onClick={editor.confirmPlayback}>{i18n.t('dialogs.stopPlaybackConfirm')}</Button>
-        </div>
+        </Buttons>
       </div>
     </BaseDialog>
   {/if}
@@ -966,9 +967,9 @@
         {#if accountError}
           <p class="text-sm text-rose-400">{accountError}</p>
         {/if}
-        <div class="flex flex-wrap items-center justify-end gap-3">
+        <Buttons align="right">
           <Button variant="primary" accent="rose" pending={accountPending} onClick={() => void handleAccountLogout()}>{i18n.t('auth.signOut.label')}</Button>
-        </div>
+        </Buttons>
       </div>
     </BaseDialog>
   {/if}
