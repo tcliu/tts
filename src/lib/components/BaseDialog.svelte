@@ -166,7 +166,7 @@
       tabindex="-1"
       class={fullscreen
         ? `relative flex h-full w-full flex-col overflow-y-auto bg-slate-900 p-4 outline-none ${className}`
-        : `relative flex max-h-[90vh] flex-col overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/95 p-4 shadow-2xl shadow-slate-950/60 outline-none backdrop-blur @max-md:h-dvh @max-md:max-h-full @max-md:w-full @max-md:max-w-none @max-md:rounded-none @max-md:border-x-0 ${sizeClass} ${className}`}>
+        : `relative flex max-h-[90vh] flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/95 shadow-2xl shadow-slate-950/60 outline-none backdrop-blur @max-md:h-dvh @max-md:max-h-full @max-md:w-full @max-md:max-w-none @max-md:rounded-none @max-md:border-x-0 ${sizeClass} ${className}`}>
       <button
         type="button"
         aria-label={closeLabel}
@@ -176,11 +176,11 @@
         <CloseIcon className="h-3.5 w-3.5" />
       </button>
       {#if header}
-        {@render header()}
+        <div class="px-4 pt-4">{@render header()}</div>
       {:else if title}
-        <h2 id={titleId} class="pr-8 text-lg font-semibold tracking-tight text-slate-100 {titleClass}">{title}</h2>
+        <h2 id={titleId} class="pl-4 pr-12 pt-4 text-lg font-semibold tracking-tight text-slate-100 {titleClass}">{title}</h2>
       {/if}
-      <div tabindex="-1" class="mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto outline-none">
+      <div tabindex="-1" class="mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 outline-none">
         {@render children?.()}
       </div>
     </div>
