@@ -7,6 +7,8 @@
 
   interface Props {
     value: string
+    showLabel?: string
+    hideLabel?: string
     id?: string
     name?: string
     placeholder?: string
@@ -19,6 +21,8 @@
 
   let {
     value = $bindable(),
+    showLabel,
+    hideLabel,
     id,
     name,
     placeholder,
@@ -30,6 +34,8 @@
   }: Props = $props()
 
   const i18n = getI18nContext()
+  const resolvedShowLabel = $derived(showLabel ?? i18n.t('adminPasswordShow'))
+  const resolvedHideLabel = $derived(hideLabel ?? i18n.t('adminPasswordHide'))
 
   let visible = $state(false)
   let input = $state<HTMLInputElement>()
@@ -62,7 +68,7 @@
   <button
     bind:this={toggleBtn}
     onclick={toggleVisibility}
-    aria-label={visible ? i18n.t('adminPasswordHide') : i18n.t('adminPasswordShow')}
+    aria-label={visible ? resolvedHideLabel : resolvedShowLabel}
     type="button"
     {disabled}
     class="absolute inset-y-0 right-1 my-1 inline-flex w-9 items-center justify-center rounded-md text-slate-400 outline-none transition hover:bg-slate-800 hover:text-cyan-300 focus:bg-slate-800 focus:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
@@ -71,6 +77,6 @@
     {:else}
       <EyeIcon className="h-5 w-5" />
     {/if}
-    <Tooltip trigger={toggleBtn}>{visible ? i18n.t('adminPasswordHide') : i18n.t('adminPasswordShow')}</Tooltip>
+    <Tooltip trigger={toggleBtn}>{visible ? resolvedHideLabel : resolvedShowLabel}</Tooltip>
   </button>
 </div>

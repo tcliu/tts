@@ -37,6 +37,7 @@
     searchValue?: string
     searchAriaLabel: string
     searchPlaceholder?: string
+    showSearch?: boolean
     searchKeys?: string[]
     onSearchInput?: (event: Event) => void
     onSearchKeydown?: (event: KeyboardEvent) => void
@@ -83,6 +84,7 @@
     searchValue = $bindable(''),
     searchAriaLabel,
     searchPlaceholder,
+    showSearch = true,
     searchKeys = $bindable([] as string[]),
     onSearchInput,
     onSearchKeydown,
@@ -228,13 +230,15 @@
 <svelte:window onmouseup={resize.handleResizeMouseUp} onmousemove={resize.handleResizeMouseMove} />
 
 <div class="flex flex-col gap-2 {fillHeight ? 'min-h-0 flex-1' : ''}">
-  <SearchInput
-    bind:value={searchValue}
-    oninput={onSearchInput}
-    onkeydown={onSearchKeydown}
-    ariaLabel={searchAriaLabel}
-    placeholder={resolvedSearchPlaceholder}
-    wrapperClass={fillHeight ? 'shrink-0' : ''} />
+  {#if showSearch}
+    <SearchInput
+      bind:value={searchValue}
+      oninput={onSearchInput}
+      onkeydown={onSearchKeydown}
+      ariaLabel={searchAriaLabel}
+      placeholder={resolvedSearchPlaceholder}
+      wrapperClass={fillHeight ? 'shrink-0' : ''} />
+  {/if}
 
   <div tabindex="-1" class={`${fillHeight ? FILL_CONTAINER_CLASS : containerClass} outline-none`} bind:this={tableContainer}>
     <table
@@ -271,6 +275,7 @@
               bind:this={headerEls[i]}
               class="sticky top-0 z-10 border-b border-slate-800 bg-slate-900/95 px-3 py-2 backdrop-blur {column.sortable ? 'group' : ''} {managedWidths ? '' : column.widthClass} {managedWidths ? '' : column.minWidthClass}"
               style={managedWidths ? '' : [column.widthStyle, column.minWidthStyle].filter(Boolean).join('; ')}
+              data-col-index={i}
               aria-sort={isActive ? (isAsc ? 'ascending' : 'descending') : undefined}>
               {#if column.sortable}
                 <span class="flex w-full items-center gap-2 text-left">

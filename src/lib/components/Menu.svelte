@@ -9,6 +9,9 @@
 </script>
 
 <script lang="ts" generics="T">
+  // Menu owns the icon-trigger dropdown (desktop popover, phone bottom sheet).
+  // Phase 2: cut SelectOverlay over to Menu + positionPanel so all dropdown
+  // chrome converges here instead of a parallel overlay.
   import { onMount, flushSync, tick } from 'svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
   import { createFocusoutClose } from '$lib/actions/use-focusout-close'
@@ -73,6 +76,7 @@
   const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
   let triggerRef = $state<HTMLButtonElement | null>(null)
+  let tooltipTriggerEl = $state<HTMLElement | null>(null)
   let overlayRef = $state<HTMLDivElement | null>(null)
   let panelRef = $state<HTMLDivElement | null>(null)
   let dialogRef = $state<HTMLDivElement | null>(null)
@@ -81,6 +85,10 @@
   let sheetDragOffset = $state(0)
   let sheetDragging = $state(false)
   let reduceMotion = $state(false)
+
+  // isPhoneViewport only resolves via matchMedia after mount, so phones first
+  // paint the popover branch before swapping to the sheet — accepted flash,
+  // the cheapest stable option (no SSR viewport guess, no forced sheet).
   const usePhoneSheet = $derived(phoneSheetTitle !== undefined && isPhoneViewport)
 
   onMount(() => {
@@ -198,6 +206,11 @@
     }
   }
 
+  function setActive(index: number) {
+    selection.set(index)
+    itemRefs[index]?.focus()
+  }
+
   function itemButtonClass(itemValue: T, state: MenuItemState): string | undefined {
     const classes = itemClass ? itemClass(itemValue, state) : ''
     return usePhoneSheet ? `${classes} min-h-11`.trim() : classes || undefined
@@ -246,6 +259,9 @@
   })
 
   $effect(() => {
+    // bind:this grows itemRefs but never shrinks it; drop stale tail refs
+    // so a shrinking item list can't focus a detached button.
+    if (itemRefs.length > items.length) itemRefs = itemRefs.slice(0, items.length)
     if (!open) return
     selection.clamp(items.length)
   })
@@ -297,7 +313,7 @@
       tabindex={index === selection.index ? 0 : -1}
       onclick={() => handleItemClick(index)}
       onfocus={() => selection.set(index)}
-      onmouseenter={() => selection.set(index)}
+      onmouseenter={() => setActive(index)}
       disabled={state.disabled}
       class={itemButtonClass(itemValue, state)}>
       {@render item(itemValue, state)}
@@ -310,9 +326,13 @@
   bind:this={containerRef}
   data-escape-capture={open ? '' : null}
   onfocusout={handleFocusOut}>
-  {@render triggerButton()}
   {#if triggerTooltip}
-    <Tooltip align={triggerTooltipAlign} trigger={triggerRef}>{triggerTooltip}</Tooltip>
+    <span bind:this={tooltipTriggerEl} class="group relative inline-flex">
+      {@render triggerButton()}
+      <Tooltip align={triggerTooltipAlign} trigger={tooltipTriggerEl}>{triggerTooltip}</Tooltip>
+    </span>
+  {:else}
+    {@render triggerButton()}
   {/if}
   {#if open}
     {#if usePhoneSheet}

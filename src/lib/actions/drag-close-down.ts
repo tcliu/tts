@@ -1,6 +1,12 @@
 import type { ActionReturn } from 'svelte/action'
 
 export interface DragCloseDownOptions {
+  /**
+   * The drag handle MUST disable vertical touch scrolling (e.g. Tailwind
+   * `touch-pan-x`), otherwise the browser claims the gesture for scroll and
+   * `pointermove` never fires. Deliberately not set here: touch-action is
+   * layout intent the caller owns.
+   */
   isEnabled: () => boolean
   onDragUpdate: (offset: number, dragging: boolean) => void
   onClose: () => void
