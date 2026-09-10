@@ -101,7 +101,7 @@
     currentPage,
     onPageChange,
     onPageSizeChange,
-    containerClass = 'max-h-[min(50vh,32rem)] overflow-auto rounded-xl border border-slate-800 bg-slate-950/50 contain-layout',
+    containerClass = 'max-h-[min(70vh,44rem)] overflow-auto rounded-xl border border-slate-800 bg-slate-950/50 contain-layout',
     tableClass = 'min-w-[60rem]',
     fillHeight = false,
     sortKey = $bindable(null as string | null),
