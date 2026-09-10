@@ -70,15 +70,28 @@ export function listNestedGitDirs(root = process.cwd()) {
   const results = [];
 
   function scan(dir) {
-    for (const entry of readdirSync(dir)) {
+    let entries;
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
       if (
         entry === "node_modules" ||
         entry === ".vercel" ||
-        entry === ".svelte-kit"
+        entry === ".svelte-kit" ||
+        entry.startsWith(".fuse_hidden")
       )
         continue;
       const full = path.join(dir, entry);
-      if (!statSync(full).isDirectory()) continue;
+      let stat;
+      try {
+        stat = statSync(full);
+      } catch {
+        continue;
+      }
+      if (!stat.isDirectory()) continue;
       if (hasGitEntry(full)) {
         results.push({
           path: path.resolve(full),
@@ -313,12 +326,16 @@ export function setDevTag(worktreeRoot, tag) {
 }
 
 export function copyDevFiles(sourceRoot, targetRoot) {
-  copyEnvFile(path.join(sourceRoot, '.env'), path.join(targetRoot, '.env'));
-  copyEnvFile(
-    path.join(sourceRoot, '.env.local'),
-    path.join(targetRoot, '.env.local'),
-  );
+  // Returns the worktree-relative names of what was actually copied, so
+  // callers can report it (skipped files are omitted, not listed).
+  const copied = [];
+  for (const file of ['.env', '.env.local']) {
+    if (copyEnvFile(path.join(sourceRoot, file), path.join(targetRoot, file))) {
+      copied.push(file);
+    }
+  }
   migrateLegacyDevTag(sourceRoot, targetRoot);
+  return copied;
 }
 
 // `.env.dev` used to carry DEV_TAG before it merged into `.env.local`.
@@ -340,10 +357,14 @@ function migrateLegacyDevTag(sourceRoot, targetRoot) {
   }
 }
 
+// Copies only when the source exists and the target is missing (never
+// overwrites). Returns true when a copy happened.
 function copyEnvFile(sourceEnv, targetEnv) {
   if (existsSync(sourceEnv) && !existsSync(targetEnv)) {
     copyFileSync(sourceEnv, targetEnv);
+    return true;
   }
+  return false;
 }
 
 export function readDevTag(worktreeRoot) {

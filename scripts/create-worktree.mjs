@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { stdin as input, stdout as output } from "node:process";
-import { createInterface } from "node:readline";
 
 import { c } from "./_terminal.mjs";
+import { interactiveShell } from "./_interactive-shell.mjs";
 import {
   copyDevFiles,
   deleteBranch,
@@ -37,29 +36,66 @@ function parseArgs(argv) {
   };
 }
 
-async function promptBranchName(root) {
-  const rl = createInterface({ input, output });
-  const prompt = `${c.cyan}Branch name${c.reset} (${c.dim}leave empty to cancel${c.reset}): `;
-  process.stdout.write(prompt);
+// Single-question interview: branch name -> exit. An empty answer cancels;
+// invalid or taken names re-prompt, mirroring the old promptBranchName loop.
+// Effect code stays outside the graph, mirroring deploy.mjs
+// (runDeployInterview collects answers, runDeployFlow acts on them).
+function buildBranchGraph(root) {
+  const graph = {
+    branch: {
+      message: "Create a new worktree:",
+      async process(ctx) {
+        const prompt =
+          `${c.cyan}Branch name${c.reset} (${c.dim}leave empty to cancel${c.reset}): `;
+        for (;;) {
+          const raw = await askBranchName(ctx, prompt);
+          // EOF (Ctrl-D / exhausted pipe) cancels, matching the old
+          // for-await readline loop which ended on stream close.
+          if (raw === null) {
+            return null;
+          }
+          const answer = raw.trim();
+          if (!answer) {
+            return null;
+          }
+          if (!isValidBranchName(answer)) {
+            console.error(`${c.red}Invalid branch name:${c.reset} ${answer}`);
+          } else if (existsSync(path.join(getWorktreesRoot(root), answer))) {
+            console.error(`${c.red}Worktree already exists:${c.reset} ${answer}`);
+          } else {
+            ctx.branchName = answer;
+            return null;
+          }
+        }
+      },
+    },
+  };
+  return graph;
+}
 
-  for await (const line of rl) {
-    const answer = line.trim();
-    if (!answer) {
-      rl.close();
-      return null;
-    }
-    if (!isValidBranchName(answer)) {
-      console.error(`${c.red}Invalid branch name:${c.reset} ${answer}`);
-    } else if (existsSync(path.join(getWorktreesRoot(root), answer))) {
-      console.error(`${c.red}Worktree already exists:${c.reset} ${answer}`);
-    } else {
-      rl.close();
-      return answer;
-    }
-    process.stdout.write(prompt);
+// ctx.ask never settles once stdin is closed (readline drops the pending
+// question), so race it against stream end and map EOF to cancel. Without
+// this the process would exit silently instead of printing `Cancelled.`.
+function askBranchName(ctx, prompt) {
+  if (process.stdin.readableEnded) {
+    return Promise.resolve(null);
   }
-  rl.close();
-  return null;
+  let onEnd;
+  const eof = new Promise((resolve) => {
+    onEnd = () => resolve(null);
+    process.stdin.once("end", onEnd);
+  });
+  return Promise.race([ctx.ask(prompt), eof]).finally(() => {
+    process.stdin.removeListener("end", onEnd);
+  });
+}
+
+async function runBranchInterview(root) {
+  const graph = buildBranchGraph(root);
+  return interactiveShell(graph.branch, {
+    options: { ctx: { branchName: "" } },
+    chrome: { cancelText: `${c.yellow}Cancelled.${c.reset}` },
+  });
 }
 
 async function main() {
@@ -75,7 +111,7 @@ async function main() {
 
   let branchName = branch;
   if (interactive) {
-    branchName = await promptBranchName(root);
+    branchName = (await runBranchInterview(root)).branchName;
     if (!branchName) {
       console.log(`${c.yellow}Cancelled.${c.reset}`);
       return;
