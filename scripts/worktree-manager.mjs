@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // worktree-manager — full-screen TUI for git worktree management.
 //
-// Styled after the root-level tts.mjs alternate-screen TUI: raw mode, box-drawn
+// Styled after the established alternate-screen TUI convention: raw mode, box-drawn
 // layout, diff-based line redraw, windowed cursor, centered dialog overlay, SGR
 // mouse, and exact terminal restore on quit.
 // Mouse: left-click focuses a row, the [ ] box toggles selection, right-click

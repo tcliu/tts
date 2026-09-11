@@ -150,7 +150,7 @@ if (profile === 'dev') {
     // One client for the whole apply so `set search_path` covers the DDL and
     // the verification query. The app reads through the same search_path (see
     // src/lib/server/db-neon.ts), so DDL must land in SCHEMA_NAME — without
-    // this the tables are created in public while the app looks in tts.
+    // this the tables are created in public while the app looks in SCHEMA_NAME.
     const client = await pool.connect()
     try {
       if (schemaName) {
