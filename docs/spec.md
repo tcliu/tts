@@ -289,10 +289,12 @@ speeds, text segmentation, and sequential segment playback behavior.
 
 - Unauthenticated `GET /api/catalog` returns app identity for the
   project-catalog scanner and e2e port discovery: `id`, `name`, `icon`,
-  `summary`, `description`, `framework`, `repo`, `status`, plus `branch`.
+  `summary`, `description`, `framework`, `repo`, `status`, plus `branch` and
+  `profile`.
 - `branch` resolves once per process from `VERCEL_GIT_COMMIT_REF` /
   `GIT_BRANCH`, else the checkout's `git rev-parse --abbrev-ref HEAD`,
-  else null where git is unavailable.
+  else null where git is unavailable. `profile` is the runtime
+  `PROFILE=dev|prod` value with `NODE_ENV` fallback.
 
 ## Theming
 

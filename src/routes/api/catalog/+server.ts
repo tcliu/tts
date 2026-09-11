@@ -11,10 +11,12 @@ import {
   CATALOG_APP_TAGS,
   CATALOG_APP_URL,
 } from '$lib/server/catalog-app';
+import { resolveProfile } from '$lib/server/profile';
 
 export const GET: RequestHandler = async () => {
   // Runtime branch, not a static prop: worktree tag in dev, commit ref on Vercel.
   const branch = (process.env.DEV_TAG || process.env.VERCEL_GIT_COMMIT_REF || '').trim() || null;
+  const profile = resolveProfile();
   return json({
     id: CATALOG_APP_ID,
     name: CATALOG_APP_NAME,
@@ -25,5 +27,6 @@ export const GET: RequestHandler = async () => {
     url: CATALOG_APP_URL,
     tags: [...CATALOG_APP_TAGS, CATALOG_APP_FRAMEWORK],
     branch,
+    profile,
   });
 };
