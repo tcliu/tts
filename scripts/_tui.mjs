@@ -2,9 +2,9 @@
 
 // _tui.mjs — reusable terminal TUI primitives for full-screen interactive CLIs.
 //
-// Extracts the CJK-aware width utilities, ANSI screen management, SGR mouse
-// parsing, and raw-mode terminal lifecycle from tts.mjs so that other scripts
-// can build full-screen TUIs without reimplementing terminal plumbing.
+// Provides the CJK-aware width utilities, ANSI screen management, SGR mouse
+// parsing, and raw-mode terminal lifecycle shared by full-screen TUIs, so
+// other scripts can build them without reimplementing terminal plumbing.
 //
 // Depends on: ./_terminal.mjs (palette, line prompts).
 
