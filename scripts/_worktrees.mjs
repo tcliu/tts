@@ -127,11 +127,13 @@ export function listDeleteTargets(root = process.cwd()) {
 }
 
 // Every checkout except the main one, each annotated with its commit diffs
-// relative to the base branch. Mirrors `references/worktrees.mjs`
-// `listWorktrees`: `{ base, entries }` with entries `[{ name, path, branch,
-// registered, ahead, behind, lastCommitTime }]` newest-first. Uses the local
-// exported primitives (`listNestedGitDirs`, `getGitWorktrees`) so there is
-// exactly one implementation of each git query in this file.
+// relative to the base branch. This is the single implementation of the
+// worktree inventory — `~/.agents/references/worktrees.mjs` is a CLI wrapper
+// over it, so the harness and every scaffolded project share one contract:
+// `{ base, entries }` with entries `[{ name, path, branch, registered, ahead,
+// behind, lastCommitTime }]` newest-first. Uses the local exported primitives
+// (`listNestedGitDirs`, `getGitWorktrees`) so there is exactly one
+// implementation of each git query in this file.
 export function listWorktrees(root = process.cwd()) {
   const mainRoot = path.resolve(getMainRoot(root));
   const base = resolveBaseBranch(root);
@@ -334,27 +336,7 @@ export function copyDevFiles(sourceRoot, targetRoot) {
       copied.push(file);
     }
   }
-  migrateLegacyDevTag(sourceRoot, targetRoot);
   return copied;
-}
-
-// `.env.dev` used to carry DEV_TAG before it merged into `.env.local`.
-// One-way forward migration so old worktrees keep their tag block.
-function migrateLegacyDevTag(sourceRoot, targetRoot) {
-  if (readDevTag(targetRoot)) return;
-  const legacyPath = path.join(sourceRoot, '.env.dev');
-  if (!existsSync(legacyPath)) return;
-  const content = readFileSync(legacyPath, 'utf8');
-  for (const line of content.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const separatorIndex = trimmed.indexOf('=');
-    if (separatorIndex === -1) continue;
-    if (trimmed.slice(0, separatorIndex).trim() === 'DEV_TAG') {
-      setDevTag(targetRoot, trimmed.slice(separatorIndex + 1).trim());
-      return;
-    }
-  }
 }
 
 // Copies only when the source exists and the target is missing (never
@@ -368,18 +350,16 @@ function copyEnvFile(sourceEnv, targetEnv) {
 }
 
 export function readDevTag(worktreeRoot) {
-  for (const file of ['.env.local', '.env.dev']) {
-    const envPath = path.join(worktreeRoot, file);
-    if (!existsSync(envPath)) continue;
-    const content = readFileSync(envPath, 'utf8');
-    for (const line of content.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const separatorIndex = trimmed.indexOf('=');
-      if (separatorIndex === -1) continue;
-      if (trimmed.slice(0, separatorIndex).trim() === 'DEV_TAG') {
-        return trimmed.slice(separatorIndex + 1).trim();
-      }
+  const envPath = path.join(worktreeRoot, '.env.local');
+  if (!existsSync(envPath)) return null;
+  const content = readFileSync(envPath, 'utf8');
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const separatorIndex = trimmed.indexOf('=');
+    if (separatorIndex === -1) continue;
+    if (trimmed.slice(0, separatorIndex).trim() === 'DEV_TAG') {
+      return trimmed.slice(separatorIndex + 1).trim();
     }
   }
   return null;
