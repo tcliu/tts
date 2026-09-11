@@ -3,7 +3,7 @@ Project-specific development conventions for the TTS web app.
 
 ## Agent progress
 
-- For non-trivial tasks, apply the `agent-progress` skill alongside the primary skill; trivial single-step edits skip it.
+- For non-trivial tasks, follow `~/.agents/references/agent-progress.md` alongside the primary skill; trivial single-step edits skip it.
 
 ## Skill routing
 
@@ -19,14 +19,14 @@ Project-specific development conventions for the TTS web app.
 
 ## Read first
 - Read the shared references applicable to the files being edited before
-  editing, keeping pre-edit investigation within the `agent-progress` read cap.
+  editing, keeping pre-edit investigation within the read cap in `~/.agents/references/agent-progress.md`.
 - Before `read` on a path not seen in prior tool output or a directory
   listing, run `glob` to confirm the path instead of guessing file names or
   worktree paths.
 - If a `~/.agents/references/...` path does not exist, the config root is
   unconfigured on this machine (fresh clone): ask the user for the config-root
   path once and use it for the session instead of guessing.
-- When reviewing completed work, follow the `code-review` skill and report
+- When reviewing completed work, follow the `review` skill and report
   findings with severity, location, rule, and fix.
 - When a task is ambiguous about what to change or how to approach it, ask the
   user to clarify or present up to three concrete options before editing, to
