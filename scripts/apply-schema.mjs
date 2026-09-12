@@ -13,28 +13,7 @@ import {
   resolveScriptProfile,
   toSqliteSql,
 } from './db-config.mjs'
-
-// Structured log line matching src/lib/server/logging:
-// `<ISO timestamp> <LEVEL> ip=<ip> action=<action> <key>=<JSON value> ...`.
-// Scripts run without a request context, so ip is always unknown. Never log
-// connection strings, secrets, or document contents — only host/db identifiers.
-function logEvent({ action, details = {} }) {
-  const timestamp = new Date().toISOString()
-  const defaultLevel = action.endsWith('_error') ? 'ERROR' : 'INFO'
-  const { level, ...rest } = details
-  const resolvedLevel = level === 'INFO' || level === 'WARN' || level === 'ERROR' ? level : defaultLevel
-  const serializedDetails = Object.entries(rest)
-    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
-    .join(' ')
-  console.log(
-    `${timestamp} ${resolvedLevel} ip=unknown action=${action}${serializedDetails ? ` ${serializedDetails}` : ''}`,
-  )
-}
-function errorMessage(error) {
-  if (error instanceof Error && error.message) return error.message
-  if (error && typeof error.message === 'string' && error.message) return error.message
-  return String(error)
-}
+import { errorMessage, logEvent } from './log-event.mjs'
 
 // Split a SQL script into statements on semicolons that are not inside a
 // string literal, quoted identifier, line comment, or block comment. The

@@ -1,4 +1,15 @@
 #!/usr/bin/env node
+// Syncs the keys in SOURCE_FILES (.env.vercel) to the Vercel production env.
+// An empty local value is skipped so the remote value survives — blank a key
+// in the Vercel dashboard instead. Pass --prune to remove remote keys that
+// are absent from .env.vercel.
+//
+// Trade-off: values are passed with `--value`, so they appear in the process
+// argv while the command runs. `vercel env add` also accepts the value on
+// stdin, but the CLI always stores secrets encrypted, so that form cannot be
+// verified to preserve the value byte-for-byte (a trailing newline would
+// silently break password/session secrets). Keep --value; this script runs
+// interactively on the operator's machine, not in CI.
 
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -22,9 +33,7 @@ function parseEnvFile(filePath) {
 
     const key = trimmed.slice(0, separatorIndex).trim()
     let value = trimmed.slice(separatorIndex + 1).trim()
-    const quoted =
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
+    const quoted = (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))
     if (quoted) {
       value = value.slice(1, -1)
     } else {
@@ -38,10 +47,7 @@ function parseEnvFile(filePath) {
 }
 
 function loadDesiredEnv() {
-  return SOURCE_FILES.reduce(
-    (merged, file) => ({ ...merged, ...parseEnvFile(join(process.cwd(), file)) }),
-    {},
-  )
+  return SOURCE_FILES.reduce((merged, file) => ({ ...merged, ...parseEnvFile(join(process.cwd(), file)) }), {})
 }
 
 function spawnVercelBin(bin, args) {
@@ -55,15 +61,15 @@ function spawnVercelBin(bin, args) {
     let stdout = ''
     let stderr = ''
 
-    child.stdout.on('data', (chunk) => {
+    child.stdout.on('data', chunk => {
       stdout += chunk
     })
-    child.stderr.on('data', (chunk) => {
+    child.stderr.on('data', chunk => {
       stderr += chunk
     })
 
     child.on('error', reject)
-    child.on('close', (code) => {
+    child.on('close', code => {
       if (code === 0) {
         resolve(stdout)
       } else {
@@ -89,7 +95,7 @@ async function runVercelCommand(args) {
 async function listVercelEnvKeys() {
   const output = await runVercelCommand(['env', 'ls', TARGET, '--format', 'json'])
   const parsed = JSON.parse(output)
-  return new Set((parsed.envs || []).map((entry) => entry.key))
+  return new Set((parsed.envs || []).map(entry => entry.key))
 }
 
 async function upsertVercelEnv(key, value) {
@@ -105,12 +111,20 @@ async function main() {
   const desiredKeys = new Set(Object.keys(desiredEnv))
   const existingKeys = await listVercelEnvKeys()
 
+  let syncedCount = 0
   for (const [key, value] of Object.entries(desiredEnv)) {
+    // Empty local values never blank the remote: fill the key in
+    // .env.vercel and re-run the sync.
+    if (!value) {
+      console.log(`skipped ${key} (empty in .env.vercel; remote value kept)`)
+      continue
+    }
     await upsertVercelEnv(key, value)
     console.log(`synced ${key}`)
+    syncedCount += 1
   }
 
-  const orphans = [...existingKeys].filter((key) => !desiredKeys.has(key))
+  const orphans = [...existingKeys].filter(key => !desiredKeys.has(key))
 
   if (process.argv.includes('--prune')) {
     for (const key of orphans) {
@@ -124,10 +138,10 @@ async function main() {
     )
   }
 
-  console.log(`Synced ${desiredKeys.size} env vars to Vercel ${TARGET}`)
+  console.log(`Synced ${syncedCount} of ${desiredKeys.size} env vars to Vercel ${TARGET}`)
 }
 
-main().catch((error) => {
+main().catch(error => {
   console.error(error?.message || error)
   process.exit(1)
 })

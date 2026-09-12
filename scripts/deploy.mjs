@@ -197,7 +197,9 @@ function sleep(ms) {
 
 async function waitForReadyDeployment(deploymentUrl) {
   console.log('-> Waiting for Vercel deployment to become ready...')
-  console.log(`-> Vercel deployment log command: vercel inspect ${deploymentUrl} --logs --wait --timeout ${DEPLOY_WAIT_TIMEOUT}`)
+  console.log(
+    `-> Vercel deployment log command: vercel inspect ${deploymentUrl} --logs --wait --timeout ${DEPLOY_WAIT_TIMEOUT}`,
+  )
   let inspectOutput = ''
   let inspectStatus = 0
   let logStatus = 0
@@ -252,11 +254,15 @@ async function runDeployWithRetry(appVersion) {
 
   for (let attempt = 1; attempt <= DEPLOY_MAX_ATTEMPTS; attempt++) {
     const bin = vercelBin()
-    const result = spawnSync(bin ?? 'npx', [...(bin ? [] : ['vercel@latest']), 'deploy', '--prod', '--yes', '--no-wait', '--format', 'json'], {
-      cwd: ROOT_DIR,
-      encoding: 'utf8',
-      env: { ...process.env, APP_VERSION: appVersion },
-    })
+    const result = spawnSync(
+      bin ?? 'npx',
+      [...(bin ? [] : ['vercel@latest']), 'deploy', '--prod', '--yes', '--no-wait', '--format', 'json'],
+      {
+        cwd: ROOT_DIR,
+        encoding: 'utf8',
+        env: { ...process.env, APP_VERSION: appVersion },
+      },
+    )
     status = result.status ?? 1
     output = `${result.stdout ?? ''}${result.stderr ?? ''}`
     process.stderr.write(output)
@@ -266,7 +272,9 @@ async function runDeployWithRetry(appVersion) {
     }
 
     if (attempt < DEPLOY_MAX_ATTEMPTS) {
-      console.error(`-> Deploy attempt ${attempt}/${DEPLOY_MAX_ATTEMPTS} failed (exit ${status}). Retrying in ${DEPLOY_RETRY_DELAY_MS / 1000}s...`)
+      console.error(
+        `-> Deploy attempt ${attempt}/${DEPLOY_MAX_ATTEMPTS} failed (exit ${status}). Retrying in ${DEPLOY_RETRY_DELAY_MS / 1000}s...`,
+      )
       await sleep(DEPLOY_RETRY_DELAY_MS)
     }
   }
@@ -515,7 +523,6 @@ function resolveProdConfirmSync(profile, flag, skipNotice) {
   return 'no'
 }
 
-
 function parseArgs(argv) {
   const options = { profileFlag: '', targetFlag: '', syncEnvFlag: '', applySchemaFlag: '' }
   for (let i = 0; i < argv.length; i++) {
@@ -569,7 +576,6 @@ async function main() {
   await deployVercelWithTarget(options)
 }
 
-
 async function deployVercelWithTarget(options) {
   const target = options.targetFlag || 'vercel'
   if (target !== 'vercel') {
@@ -584,7 +590,11 @@ async function deployVercelWithTarget(options) {
     fail('PROFILE is mandatory: pass --profile dev|prod, set $PROFILE, or run interactively.')
   }
   const seededProfile = options.profileFlag || process.env.PROFILE || ''
-  if (process.stdin.isTTY && seededProfile !== 'dev' && (seededProfile === '' || !options.syncEnvFlag || !options.applySchemaFlag)) {
+  if (
+    process.stdin.isTTY &&
+    seededProfile !== 'dev' &&
+    (seededProfile === '' || !options.syncEnvFlag || !options.applySchemaFlag)
+  ) {
     const answers = await runDeployInterview(options)
     await runDeployFlow(answers.profile, answers.syncEnv, answers.applySchema)
     return

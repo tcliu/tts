@@ -10,8 +10,10 @@
 
 import { stdin, stdout } from 'node:process'
 
+import { c } from './_terminal.mjs'
+
 // Re-export the palette so tui consumers don't import _terminal directly.
-export { c } from './_terminal.mjs'
+export { c }
 
 // ---- Display width (CJK-aware, ANSI-escape transparent) ----
 
@@ -35,7 +37,6 @@ export function displayWidth(s) {
   }
   return w
 }
-
 
 /** Return displayed width of a single character (1 or 2). */
 export function charWidth(ch) {
@@ -87,6 +88,63 @@ export function truncate(s, width) {
     out += ch
   }
   return out
+}
+
+// Counterpart of `truncate`: keep the trailing `width` visible columns,
+// carrying the SGR style that was active at the cut so the kept segment does
+// not inherit whatever colour the caller printed before it. Used to render
+// overlays (dialogs) over an existing row without blanking its sides.
+export function takeRight(s, width) {
+  if (width <= 0) return ''
+  const total = displayWidth(s)
+  if (total <= width) return s
+
+  const skip = total - width
+  const tokens = []
+  let esc = ''
+  let inEsc = false
+  for (const ch of s) {
+    if (inEsc) {
+      esc += ch
+      if (ch === 'm') {
+        inEsc = false
+        tokens.push({ text: esc, width: 0 })
+        esc = ''
+      }
+      continue
+    }
+    if (ch === '\x1b') {
+      inEsc = true
+      esc = ch
+      continue
+    }
+    tokens.push({ text: ch, width: charWidth(ch) })
+  }
+  if (esc) tokens.push({ text: esc, width: 0 })
+
+  let seen = 0
+  let activeStyle = ''
+  let out = ''
+  let started = false
+  for (const token of tokens) {
+    if (token.width === 0) {
+      if (started) out += token.text
+      else activeStyle = token.text
+      continue
+    }
+    if (!started) {
+      const before = seen
+      seen += token.width
+      // Fully before the cut, or a wide char straddling it (dropped, as
+      // `truncate` does), so the kept region starts on a clean boundary.
+      if (seen <= skip || before < skip) continue
+      started = true
+      out = activeStyle + token.text
+      continue
+    }
+    out += token.text
+  }
+  return started ? out : activeStyle
 }
 
 // ---- Screen rendering (differential full-screen redraw) ----
@@ -178,6 +236,72 @@ export function parseSgrMouse(s, i) {
   return { button: nums[0], x: nums[1], y: nums[2], release: endChar === 'm', len: j - i }
 }
 
+// ---- Bordered option box (popup dialogs) ----
+
+// Columns of the `│ ` frame before a dialog's content on every row. Callers
+// that hit-test dialog content (tabs, options) must offset by this much.
+export const DIALOG_SIDE_PAD_COLS = 2
+
+/**
+ * Build a bordered option box as render-ready lines: accent frame, optional
+ * header lines (title extras such as tabs), a separator, `listH` option rows
+ * with a selection marker and scroll arrows, and a closing frame row.
+ *
+ * Pure — content, geometry, and selection arrive through the spec — so every
+ * dialog in a full-screen TUI shares one box implementation and stays
+ * unit-testable.
+ *
+ * @param {object} spec
+ * @param {string} spec.title — header label (e.g. "MENU")
+ * @param {number} spec.dialogW — total box width in columns
+ * @param {number} spec.listH — option rows to render
+ * @param {string[]} spec.options — pre-styled option labels
+ * @param {number} spec.selectedIndex — highlighted option
+ * @param {string[]} [spec.headerLines] — pre-styled rows under the title
+ * @param {string} [spec.accent] — ANSI prefix for the frame
+ * @param {string} [spec.markerAccent] — ANSI prefix for the selection marker
+ * @returns {{ lines: string[], start: number, total: number }}
+ */
+export function buildDialogBox({
+  title,
+  dialogW,
+  listH,
+  options,
+  selectedIndex,
+  headerLines = [],
+  accent = c.cyan,
+  markerAccent = accent,
+}) {
+  const inner = dialogW - 2
+  const content = inner - 2
+  const border = s => `${accent}${s}${c.reset}`
+  const side = t => `${accent}│${c.reset} ${t}${accent} │${c.reset}`
+  const lines = [border(`┌ ${title} ${'─'.repeat(Math.max(1, inner - title.length - 2))}┐`)]
+  for (const header of headerLines) {
+    lines.push(side(padRight(truncate(header, content), content)))
+  }
+  lines.push(side('─'.repeat(content)))
+
+  let start = 0
+  if (options.length > listH) {
+    start = Math.max(0, Math.min(selectedIndex - Math.floor(listH / 2), options.length - listH))
+  }
+  for (let i = 0; i < listH; i++) {
+    const index = start + i
+    let line = ''
+    if (index < options.length) {
+      const isSelected = index === selectedIndex
+      const marker = isSelected ? `${markerAccent}▸${c.reset} ` : '  '
+      line = `${marker}${isSelected ? c.reverse : ''}${options[index]}${c.reset}`
+      if (i === 0 && start > 0) line += ` ${c.dim}▲${c.reset}`
+      if (i === listH - 1 && start + listH < options.length) line += ` ${c.dim}▼${c.reset}`
+    }
+    lines.push(side(padRight(truncate(line, content), content)))
+  }
+  lines.push(border(`└${'─'.repeat(inner)}┘`))
+  return { lines, start, total: options.length }
+}
+
 // ---- Terminal lifecycle / raw mode ----
 
 /**
@@ -206,12 +330,12 @@ export function createTerminalManager(opts = {}) {
     stream.write('\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h')
   }
 
-  const onResize = (handler) => {
+  const onResize = handler => {
     resizeHandler = handler
     stream.on('resize', handler)
   }
 
-  const onData = (handler) => {
+  const onData = handler => {
     dataHandler = handler
     termStream.on('data', handler)
   }
