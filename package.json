@@ -8,6 +8,7 @@
     "build": "svelte-kit sync && vite build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
+    "format": "prettier --write '**/*.{js,ts,svelte}'",
     "e2e": "node scripts/run-e2e.mjs",
     "deploy": "node scripts/deploy.mjs",
     "env:sync:vercel": "node ./scripts/sync-vercel-env.mjs",

@@ -67,10 +67,37 @@ export function createListRenderer(renderLines, stream = process.stdout) {
   }
 }
 
+// ALL-sentinel invariant for multi-select menus: `allIndex` is selected
+// exactly when every other row is, and never when it is the only row.
+// Extracted so batch-menu callers derive the same state when preselecting.
+export function syncAllSelection(selected, count, allIndex) {
+  if (allIndex < 0) {
+    return selected
+  }
+  let everyOtherSelected = count > 1
+  for (let index = 0; index < count && everyOtherSelected; index++) {
+    if (index !== allIndex && !selected.has(index)) {
+      everyOtherSelected = false
+    }
+  }
+  if (everyOtherSelected) {
+    selected.add(allIndex)
+  } else {
+    selected.delete(allIndex)
+  }
+  return selected
+}
+
 export async function selectMany(items, options) {
   if (items.length === 0) return []
 
-  const state = { cursor: 0, selected: new Set() }
+  // options.initialSelected preselects rows by index; options.syncAll
+  // treats row 0 as an ALL sentinel kept checked exactly when every other
+  // row is checked (init-tabs batch-menu pattern). Both default off, so
+  // existing single-purpose callers behave as before.
+  const allIndex = options.syncAll ? 0 : -1
+  const state = { cursor: 0, selected: new Set(options.initialSelected ?? []) }
+  syncAllSelection(state.selected, items.length, allIndex)
   const render = createListRenderer(() => options.render(items, state))
 
   if (process.stdin.isTTY) {
@@ -111,10 +138,21 @@ export async function selectMany(items, options) {
       }
 
       if (key === ' ') {
-        if (state.selected.has(state.cursor)) {
-          state.selected.delete(state.cursor)
+        if (state.cursor === allIndex) {
+          if (state.selected.has(allIndex)) {
+            state.selected.clear()
+          } else {
+            for (let index = 0; index < items.length; index++) {
+              state.selected.add(index)
+            }
+          }
         } else {
-          state.selected.add(state.cursor)
+          if (state.selected.has(state.cursor)) {
+            state.selected.delete(state.cursor)
+          } else {
+            state.selected.add(state.cursor)
+          }
+          syncAllSelection(state.selected, items.length, allIndex)
         }
         render()
         return
@@ -139,9 +177,7 @@ export async function selectOne(items, options) {
 
   const output = options.output ?? process.stdout
   const defaultCursor =
-    options.defaultValue === undefined
-      ? 0
-      : items.findIndex(item => (item.value ?? item) === options.defaultValue)
+    options.defaultValue === undefined ? 0 : items.findIndex(item => (item.value ?? item) === options.defaultValue)
   const state = { cursor: Math.max(0, defaultCursor) }
   const render = createListRenderer(() => options.render(items, state), output)
 

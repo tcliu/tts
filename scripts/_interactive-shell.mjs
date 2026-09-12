@@ -16,7 +16,7 @@ import { ask as askLine, c, selectMany as selectManyLine, selectOne as selectOne
 export { c }
 
 // Default chrome: bold node header; yellow "Cancelled." line.
-const defaultFrame = (message) => `${c.bold}${message}${c.reset}`
+const defaultFrame = message => `${c.bold}${message}${c.reset}`
 const defaultCancelText = `${c.yellow}Cancelled.${c.reset}`
 
 /**
@@ -42,7 +42,7 @@ export async function interactiveShell(start, config = {}) {
   const ctx = {
     ...seed,
     // Prompt helpers + palette, so nodes never import terminal internals.
-    ask: (query) => askLine(query, output),
+    ask: query => askLine(query, output),
     selectOne: (items, opts = {}, out = output) =>
       selectOneLine(items, {
         cancelMessage: cancelText,
@@ -50,7 +50,7 @@ export async function interactiveShell(start, config = {}) {
         output: opts.output ?? out,
       }),
     selectMany: (items, opts = {}) => selectManyLine(items, { cancelMessage: cancelText, ...opts }),
-    say: (line) => output.write(`${line}\n`),
+    say: line => output.write(`${line}\n`),
     c,
   }
 

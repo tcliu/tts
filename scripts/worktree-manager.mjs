@@ -22,10 +22,10 @@
 // focused row's proc, Ctrl-C stops the attached command, PgUp/PgDn scrolls,
 // quit stops everything. The interactive shell keeps the fullscreen
 // suspend/resume flow because it needs a real TTY.
-import { spawn } from "node:child_process";
-import path from "node:path";
-import { stdin, stdout } from "node:process";
-import { StringDecoder } from "node:string_decoder";
+import { spawn } from 'node:child_process'
+import path from 'node:path'
+import { stdin, stdout } from 'node:process'
+import { StringDecoder } from 'node:string_decoder'
 
 import {
   deleteBranch,
@@ -34,81 +34,99 @@ import {
   listWorktrees,
   readBranchFromGitDir,
   removeWorktree,
-} from "./_worktrees.mjs";
+} from './_worktrees.mjs'
 
 import {
+  DIALOG_SIDE_PAD_COLS,
   c,
-  charWidth,
   createScreenRenderer,
   createTerminalManager,
   displayWidth,
   padRight,
-  parseSgrMouse,
   truncate,
-  wrapText,
-} from "./_tui.mjs";
+} from './_tui.mjs'
 
-const PRESET_COMMANDS = [
-  { label: "npm install", value: "npm install" },
-  { label: "npm run dev", value: "npm run dev" },
-  { label: "npm run check", value: "npm run check" },
-  { label: "npm test", value: "npm test" },
-  { label: "git status", value: "git status" },
-  { label: "git log --oneline -15", value: "git log --oneline -15" },
-  { label: "git branch --show-current", value: "git branch --show-current" },
-];
+// Pure layout/menu model lives in _worktree-tui/layout.mjs; the adapters below
+// bind terminal size and live state to it, so that module stays testable.
+import { createInputParser } from './_worktree-tui/input.mjs'
+import {
+  CHECKBOX_FIRST_COL,
+  CHECKBOX_LAST_COL,
+  CONFIRM_NO_ROW,
+  CONFIRM_YES_ROW,
+  DIALOG_OPTION_START,
+  LIST_TOP_ROW,
+  PRESET_COMMANDS,
+  currentOptions,
+  dialogColumns,
+  dialogGeometry,
+  formatRelativeTime,
+  frameSplit,
+  layout,
+  listWindow,
+  buildDeleteConfirmDialog,
+  buildMenuDialog,
+  overlayRow,
+  renderRows,
+  tabHitColumns,
+  wrapPaneLine,
+} from './_worktree-tui/layout.mjs'
 
-const HELP_TEXT =
-  "Arrows: move · Space: select · a: all · Tab: menu · c: cmd · s: shell · " +
-  "Del: delete · x: stop bg · r: refresh · PgUp/PgDn: cmd output · " +
-  "q: quit · Ctrl-C: stop cmd/quit · Mouse: click focus · [ ] select · right-click menu · wheel scroll";
+const DEFAULT_STATUS = `${c.green}Ready.${c.reset} Tab: menu · Space: select · Del: delete · c: cmd · s: shell · r: refresh · q: quit.`
 
-const DEFAULT_STATUS =
-  `${c.green}Ready.${c.reset} Tab: menu · Space: select · Del: delete · c: cmd · s: shell · r: refresh · q: quit.`;
+const OUTPUT_MAX_LINES = 2000
+const KILL_ESCALATE_MS = 2000
+const MAX_BACKGROUND = 8 // oldest finished proc evicted past this
 
-const MODES = ["Actions", "Command"];
+function currentLayout() {
+  return layout({ termRows: stdout.rows, termCols: stdout.columns })
+}
 
-const OUTPUT_MAX_LINES = 2000;
-const KILL_ESCALATE_MS = 2000;
-const MAX_BACKGROUND = 8; // oldest finished proc evicted past this
+function currentDialogGeometry() {
+  const { cols, rows } = currentLayout()
+  return dialogGeometry({ cols, rows })
+}
 
-// Row offsets shared by the renderers and the mouse hit test so the two can
-// never drift apart.
-const DIALOG_OPTION_START = 3; // border, tabs line, separator precede options
-const CONFIRM_NO_ROW = 4; // border, message, detail, separator precede "No"
-const CONFIRM_YES_ROW = 5;
-const LIST_TOP_ROW = 3; // header, subheader, box top border precede rows
-// List-row chrome columns (1-based): `│`(1) + space(2), then content starting
-// with the `▸`/space marker(3) + space(4) + the `[ ]`/`[x]` checkbox(5-7).
-// The marker is single-cell in practice (▸ is outside WIDE_CHAR_RE in
-// _tui.mjs), so the checkbox columns are stable.
-const CHECKBOX_FIRST_COL = 5;
-const CHECKBOX_LAST_COL = 7;
+function currentFrameSplit(paneOpen = state.mode === 'run' && Boolean(state.pane)) {
+  return frameSplit({ boxH: currentLayout().boxH, paneOpen })
+}
+
+function currentListWindow() {
+  return listWindow({
+    count: state.rows.length,
+    cursor: state.cursor,
+    listH: currentFrameSplit().listH,
+  })
+}
+
+function currentMenuOptions() {
+  return currentOptions({ menuTab: state.menuTab, checkedCount: state.checked.size })
+}
 
 // ---- screen (diff-based redraw owned by shared _tui.mjs) ----
 
-const screen = createScreenRenderer();
-const term = createTerminalManager();
+const screen = createScreenRenderer()
+const term = createTerminalManager()
 
 function writeLines(lines) {
-  screen.render(lines, { fullClear: state.fullClear });
-  state.fullClear = false;
+  screen.render(lines, { fullClear: state.fullClear })
+  state.fullClear = false
 }
 // ---- domain ----
 function refreshList() {
-  const root = state.mainRoot;
-  const { entries } = listWorktrees(root);
+  const root = state.mainRoot
+  const { entries } = listWorktrees(root)
   const rows = [
     {
       path: root,
-      name: "(main)",
-      branch: readBranchFromGitDir(root) ?? "HEAD",
+      name: '(main)',
+      branch: readBranchFromGitDir(root) ?? 'HEAD',
       registered: true,
       main: true,
       aheadBehind: null,
       commitTime: getLastCommitTime(root),
     },
-  ];
+  ]
   // listWorktrees returns newest-commit-first; rows without a
   // resolvable time sink to the bottom. Main stays pinned at the top.
   for (const e of entries) {
@@ -120,643 +138,453 @@ function refreshList() {
       main: false,
       aheadBehind: e.ahead === null ? null : { ahead: e.ahead, behind: e.behind },
       commitTime: e.lastCommitTime,
-    });
+    })
   }
-  state.rows = rows;
+  state.rows = rows
   // Re-key background procs to fresh rows; kill procs whose worktree vanished.
-  const byPath = new Map(rows.map((r) => [r.path, r]));
+  const byPath = new Map(rows.map(r => [r.path, r]))
   for (const [key, proc] of state.procs) {
-    const row = byPath.get(key);
+    const row = byPath.get(key)
     if (!row) {
-      paneKillChild(proc);
-      clearTimeout(proc.escalate);
-      state.procs.delete(key);
+      paneKillChild(proc)
+      clearTimeout(proc.escalate)
+      state.procs.delete(key)
     } else {
-      proc.row = row;
+      proc.row = row
     }
   }
   // Keep surviving selections across refreshes; only vanished paths drop.
-  state.checked = new Set([...state.checked].filter((p) => byPath.has(p)));
+  state.checked = new Set([...state.checked].filter(p => byPath.has(p)))
   if (state.cursor >= state.rows.length) {
-    state.cursor = Math.max(0, state.rows.length - 1);
+    state.cursor = Math.max(0, state.rows.length - 1)
   }
 }
 
 // ---- layout ----
 
-function layout() {
-  const rows = Math.max(20, stdout.rows || 24);
-  const cols = Math.max(60, stdout.columns || 80);
-  const helpLines = wrapText(HELP_TEXT, cols).slice(0, 3);
-  // header + subheader + box + status + blank + help
-  const boxH = Math.max(3, rows - 4 - helpLines.length);
-  const boxW = cols; // the frame always uses the entire console width
-  return { rows, cols, boxH, helpLines, boxW };
-}
-
 // When a command pane is open the frame splits: list on top, divider, then the
 // command output pane. Returns the row budget for each part.
-function frameSplit() {
-  const { boxH } = layout();
-  if (state.mode !== "run" || !state.pane) return { listH: boxH, cmdH: 0 };
-  const cmdH = Math.max(5, Math.min(Math.floor(boxH / 3), boxH - 9));
-  return { listH: boxH - cmdH - 1, cmdH };
-}
-
-function listWindow() {
-  const { listH } = frameSplit();
-  const count = state.rows.length;
-  if (count === 0) return { first: 0, last: -1, boxH: 0 };
-  let first = Math.max(0, state.cursor - Math.floor(listH / 2));
-  first = Math.min(first, Math.max(0, count - listH));
-  const last = Math.min(count - 1, first + listH - 1);
-  return { first, last, boxH: listH };
-}
-
-function formatRelativeTime(epochSec) {
-  if (epochSec == null) return "";
-  const s = Math.max(0, Date.now() / 1000 - epochSec);
-  if (s < 60) return `${Math.floor(s)}s ago`;
-  const m = s / 60;
-  if (m < 60) return `${Math.floor(m)}m ago`;
-  const h = m / 60;
-  if (h < 24) return `${Math.floor(h)}h ago`;
-  const d = h / 24;
-  if (d < 7) return `${Math.floor(d)}d ago`;
-  const w = d / 7;
-  if (w < 5) return `${Math.floor(w)}w ago`;
-  const mo = d / 30;
-  if (mo < 12) return `${Math.floor(mo)}mo ago`;
-  return `${Math.floor(d / 365)}y ago`;
-}
-
 function renderListRows() {
-  const { boxW } = layout();
-  const contentW = boxW - 4;
-  const { first, last, boxH } = listWindow();
-  const lines = [];
-  for (let i = first; i <= last; i++) {
-    const r = state.rows[i];
-    const cursor = i === state.cursor;
-    const marker = cursor ? `${c.cyan}▸${c.reset}` : " ";
-    const checked = state.checked.has(r.path);
-    const box = checked ? `${c.green}[x]${c.reset}` : "[ ]";
-    const branch = r.branch
-      ? `${c.gray}(${r.branch})${c.reset}`
-      : `${c.gray}(detached)${c.reset}`;
-    const unregistered =
-      r.registered === false ? ` ${c.yellow}[unregistered]${c.reset}` : "";
-    const mainTag = r.main ? ` ${c.yellow}[main]${c.reset}` : "";
-    const ab = r.aheadBehind;
-    const parts = [];
-    const proc = state.procs.get(r.path);
-    if (proc?.running) parts.push(`${c.green}▶ ${proc.cmd || "running"}${c.reset}`);
-    else if (proc?.cmd && !proc.running && proc.exit !== 0)
-      parts.push(`${c.dim}exit ${proc.exit ?? "signal"}${c.reset}`);
-    if (ab?.ahead > 0) parts.push(`${c.green}+${ab.ahead}${c.reset}`);
-    if (ab?.behind > 0) parts.push(`${c.yellow}-${ab.behind}${c.reset}`);
-    const age = formatRelativeTime(r.commitTime);
-    if (age) {
-      const fresh = Date.now() / 1000 - r.commitTime < 3600;
-      parts.push(`${fresh ? c.cyan : c.dim}${age}${c.reset}`);
-    }
-    const meta = parts.length ? ` ${c.dim}·${c.reset} ${parts.join(" ")}` : "";
-    let cells = `${marker} ${box} ${r.name} ${branch}${unregistered}${mainTag}${meta}`;
-    if (!cursor) cells = c.dim + cells + c.reset;
-    // Last two content columns are reserved for the scroll edge marker.
-    let row = padRight(truncate(cells, contentW - 2), contentW - 2);
-    if (i === first && first > 0) row += ` ${c.dim}▲${c.reset}`;
-    else if (i === last && last < state.rows.length - 1) row += ` ${c.dim}▼${c.reset}`;
-    else row += "  ";
-    lines.push(row);
-  }
-  while (lines.length < boxH) lines.push("");
-  return { lines };
-}
-
-function dialogGeometry() {
-  const { cols, rows } = layout();
-  const dialogW = Math.min(cols - 2, 96);
-  const listH = Math.max(3, Math.min(10, rows - 8));
-  return { dialogW, listH, rows, cols };
-}
-
-function currentOptions() {
-  if (state.menuTab === 0) {
-    return [
-      "Run command…",
-      "Interactive shell",
-      `Delete checked (${state.checked.size})`,
-      "Delete focused",
-      "Stop background process",
-      "Select all",
-      "Clear selection",
-      "Refresh",
-      "Quit",
-    ];
-  }
-  return [...PRESET_COMMANDS.map((p) => p.label), "Custom command…"];
-}
-
-function tabLine() {
-  const parts = MODES.map((t, i) =>
-    i === state.menuTab
-      ? `${c.cyan}${c.bold}${c.reverse}${t}${c.reset}`
-      : `${c.gray}${t}${c.reset}`,
-  );
-  return `Tabs:  ${parts.join("  ")}`;
+  const { boxW } = currentLayout()
+  return renderRows({
+    rows: state.rows,
+    cursor: state.cursor,
+    checked: state.checked,
+    procs: state.procs,
+    boxW,
+    ...currentListWindow(),
+  })
 }
 
 function buildDialog() {
-  const { dialogW, listH } = dialogGeometry();
-  const inner = dialogW - 2;
-  const content = inner - 2;
-  const border = (s) => `${c.cyan}${s}${c.reset}`;
-  const side = (t) => `${c.cyan}│${c.reset} ${t}${c.cyan} │${c.reset}`;
-  const out = [
-    border(`┌ MENU ${"─".repeat(Math.max(1, inner - 6))}┐`),
-    side(padRight(truncate(tabLine(), content), content)),
-    side("─".repeat(content)),
-  ];
-  const opts = currentOptions();
-  const sel = state.menuCursor;
-  let start = 0;
-  if (opts.length > listH) {
-    start = Math.max(0, Math.min(sel - Math.floor(listH / 2), opts.length - listH));
-  }
-  for (let i = 0; i < listH; i++) {
-    const idx = start + i;
-    let line;
-    if (idx < opts.length) {
-      const isSel = idx === sel;
-      const marker = isSel ? `${c.cyan}▸${c.reset} ` : "  ";
-      line = `${marker}${isSel ? c.reverse : ""}${opts[idx]}${c.reset}`;
-      if (i === 0 && start > 0) line += ` ${c.dim}▲${c.reset}`;
-      if (i === listH - 1 && start + listH < opts.length) line += ` ${c.dim}▼${c.reset}`;
-    } else {
-      line = "";
-    }
-    out.push(side(padRight(truncate(line, content), content)));
-  }
-  out.push(border(`└${"─".repeat(inner)}┘`));
-  return { lines: out, start, total: opts.length };
+  const { dialogW, listH } = currentDialogGeometry()
+  return buildMenuDialog({
+    menuTab: state.menuTab,
+    selectedIndex: state.menuCursor,
+    checkedCount: state.checked.size,
+    dialogW,
+    listH,
+  })
 }
 
 function buildConfirm() {
-  const { dialogW, listH } = dialogGeometry();
-  const inner = dialogW - 2;
-  const content = inner - 2;
-  const border = (s) => `${c.red}${s}${c.reset}`;
-  const side = (t) => `${c.red}│${c.reset} ${t}${c.red} │${c.reset}`;
-  const out = [
-    border(`┌ DELETE ${"─".repeat(Math.max(1, inner - 8))}┐`),
-    side(padRight(truncate(state.confirm.message, content), content)),
-    side(padRight(truncate(state.confirm.detail, content), content)),
-    side("─".repeat(content)),
-  ];
-  const opts = ["No", "Yes"];
-  for (let i = 0; i < Math.min(listH, opts.length); i++) {
-    const isSel = i === state.confirm.yes;
-    const marker = `${c.cyan}${isSel ? "▸" : " "}${c.reset}`;
-    let row = `${marker} ${c.bold}${opts[i]}${c.reset}`;
-    if (isSel) row = `${c.bold}${c.reverse}${row}${c.reset}`;
-    out.push(side(padRight(truncate(row, content), content)));
-  }
-  out.push(border(`└${"─".repeat(inner)}┘`));
-  return { lines: out };
+  const { dialogW, listH } = currentDialogGeometry()
+  return buildDeleteConfirmDialog({
+    message: state.confirm.message,
+    detail: state.confirm.detail,
+    yes: state.confirm.yes,
+    dialogW,
+    listH,
+  })
 }
 
 // ---- command pane ----
 
-const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[@-Z\\-_]/g;
+const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[@-Z\\-_]/g
 // Hard-wrap one pane line into visual rows of at most `width` columns.
 // Word-agnostic (character/column based) so long unbroken output (paths,
 // URLs, log blobs) still fits instead of truncating. ANSI-aware and
 // CJK-aware; empty input yields one blank visual row to preserve spacing.
-function wrapPaneLine(line, width) {
-  if (width <= 0) return [""];
-  if (displayWidth(line) <= width) return [line];
-  const rows = [];
-  let cur = "";
-  let curW = 0;
-  for (let i = 0; i < line.length;) {
-    if (line[i] === "\x1b") {
-      let j = i + 1;
-      if (line[j] === "[") {
-        while (j < line.length && line[j] !== "m") j++;
-        j++;
-      } else {
-        j = i + 2;
-      }
-      cur += line.slice(i, j);
-      i = j;
-      continue;
-    }
-    const ch = String.fromCodePoint(line.codePointAt(i));
-    const cw = charWidth(ch);
-    if (curW + cw > width) {
-      rows.push(cur);
-      cur = "";
-      curW = 0;
-    }
-    cur += ch;
-    curW += cw;
-    i += ch.length;
-  }
-  rows.push(cur);
-  return rows;
-}
-
 function procPushOutput(proc, chunk, decoder) {
-  proc.pending += decoder.write(chunk);
-  const parts = proc.pending.split(/[\r\n]/);
-  proc.pending = parts.pop() ?? "";
+  proc.pending += decoder.write(chunk)
+  const parts = proc.pending.split(/[\r\n]/)
+  proc.pending = parts.pop() ?? ''
   for (const raw of parts) {
-    proc.lines.push(raw.replace(ANSI_RE, ""));
+    proc.lines.push(raw.replace(ANSI_RE, ''))
   }
   if (proc.lines.length > OUTPUT_MAX_LINES) {
-    proc.lines.splice(0, proc.lines.length - OUTPUT_MAX_LINES);
+    proc.lines.splice(0, proc.lines.length - OUTPUT_MAX_LINES)
   }
-  proc.dirty = true;
+  proc.dirty = true
 }
 
 // One shared flush tick for every background proc; draws once if any arrived.
 function flushProcs() {
-  if (state.suspended) return; // shell owns the terminal; dirty flags replay on resume via fullClear
-  let dirty = false;
+  if (state.suspended) return // shell owns the terminal; dirty flags replay on resume via fullClear
+  let dirty = false
   for (const proc of state.procs.values()) {
     if (proc.dirty) {
-      proc.dirty = false;
-      dirty = true;
+      proc.dirty = false
+      dirty = true
     }
   }
-  if (dirty) draw();
+  if (dirty) draw()
 }
 
 function paneKillChild(pane = state.pane) {
-  if (!pane || !pane.running) return;
+  if (!pane || !pane.running) return
   try {
-    process.kill(-pane.child.pid, "SIGTERM");
+    process.kill(-pane.child.pid, 'SIGTERM')
   } catch {}
   pane.escalate = setTimeout(() => {
     if (pane.running) {
       try {
-        process.kill(-pane.child.pid, "SIGKILL");
+        process.kill(-pane.child.pid, 'SIGKILL')
       } catch {}
     }
-  }, KILL_ESCALATE_MS);
+  }, KILL_ESCALATE_MS)
 }
 
 // Detach the pane, leaving its process running in the background. Reattach
 // by focusing the row and pressing c.
 function paneDetach() {
-  if (!state.pane) return;
-  state.pane = null;
-  state.mode = "list";
-  state.fullClear = true;
-  redraw();
+  if (!state.pane) return
+  state.pane = null
+  state.mode = 'list'
+  state.fullClear = true
+  redraw()
 }
 
 // Drop the attached pane's proc entirely. A running proc detaches instead.
 function dropPane() {
-  const pane = state.pane;
-  if (!pane) return;
+  const pane = state.pane
+  if (!pane) return
   if (pane.running) {
-    paneDetach();
-    return;
+    paneDetach()
+    return
   }
-  clearTimeout(pane.escalate);
-  state.procs.delete(pane.row.path);
-  state.pane = null;
-  state.mode = "list";
-  state.fullClear = true;
-  redraw();
+  clearTimeout(pane.escalate)
+  state.procs.delete(pane.row.path)
+  state.pane = null
+  state.mode = 'list'
+  state.fullClear = true
+  redraw()
 }
 
 function killFocusedProc() {
-  const r = state.rows[state.cursor];
-  const proc = r && state.procs.get(r.path);
+  const r = state.rows[state.cursor]
+  const proc = r && state.procs.get(r.path)
   if (!proc || !proc.cmd) {
-    state.status = `${c.yellow}No background process on this row.${c.reset}`;
-    redraw();
-    return;
+    state.status = `${c.yellow}No background process on this row.${c.reset}`
+    redraw()
+    return
   }
   if (proc.running) {
-    paneKillChild(proc);
-    state.status = `${c.yellow}Stopping ${proc.cmd} in ${r.name}…${c.reset}`;
+    paneKillChild(proc)
+    state.status = `${c.yellow}Stopping ${proc.cmd} in ${r.name}…${c.reset}`
   } else {
-    clearTimeout(proc.escalate);
-    state.procs.delete(r.path);
+    clearTimeout(proc.escalate)
+    state.procs.delete(r.path)
     if (state.pane === proc) {
-      state.pane = null;
-      state.mode = "list";
-      state.fullClear = true;
+      state.pane = null
+      state.mode = 'list'
+      state.fullClear = true
     }
-    state.status = DEFAULT_STATUS;
+    state.status = DEFAULT_STATUS
   }
-  redraw();
+  redraw()
 }
 
 function cmdPromptActive() {
-  return state.mode === "run" && !!state.pane && !state.pane.running;
+  return state.mode === 'run' && !!state.pane && !state.pane.running
 }
 
 function paneStatusText() {
-  const pane = state.pane;
+  const pane = state.pane
   if (pane.running) {
-    return `${c.yellow}Running in ${c.gray}${pane.row.name}${c.reset}${c.yellow} · Ctrl-C stops · PgUp/PgDn scroll${c.reset}`;
+    return `${c.yellow}Running in ${c.gray}${pane.row.name}${c.reset}${c.yellow} · Ctrl-C stops · PgUp/PgDn scroll${c.reset}`
   }
   const exitTag =
-    pane.cmd === ""
-      ? ""
+    pane.cmd === ''
+      ? ''
       : pane.exit === 0
         ? `${c.green}exit 0${c.reset} · `
-        : `${c.red}exit ${pane.exit ?? "signal"}${c.reset} · `;
+        : `${c.red}exit ${pane.exit ?? 'signal'}${c.reset} · `
   return (
     `${exitTag}${c.gray}${pane.row.name}${c.reset}` +
     `${c.dim} · Enter runs · ↑ history · Ctrl-C kills · Esc detaches${c.reset}`
-  );
+  )
 }
 
 function openPane(row) {
-  let proc = state.procs.get(row.path);
+  let proc = state.procs.get(row.path)
   if (!proc) {
     // Evict the oldest finished proc past the background cap; running procs
     // are never evicted. A map full of running procs refuses with a hint.
     if (state.procs.size >= MAX_BACKGROUND) {
-      let evicted = false;
+      let evicted = false
       for (const [key, p] of state.procs) {
         if (!p.running) {
-          state.procs.delete(key);
-          evicted = true;
-          break;
+          state.procs.delete(key)
+          evicted = true
+          break
         }
       }
       if (!evicted) {
-        state.status = `${c.yellow}Background slots full; stop a process first (x).${c.reset}`;
-        redraw();
-        return;
+        state.status = `${c.yellow}Background slots full; stop a process first (x).${c.reset}`
+        redraw()
+        return
       }
     }
     proc = {
       row,
-      cmd: "",
+      cmd: '',
       child: null,
       lines: [],
-      pending: "",
+      pending: '',
       scroll: 0,
       running: false,
       exit: null,
       dirty: true,
       escalate: null,
-    };
-    state.procs.set(row.path, proc);
+    }
+    state.procs.set(row.path, proc)
   }
-  state.mode = "run";
-  state.pane = proc;
-  state.cmdInput = [];
-  state.cmdCaret = 0;
-  state.cmdHistIndex = -1;
-  redraw();
+  state.mode = 'run'
+  state.pane = proc
+  state.cmdInput = []
+  state.cmdCaret = 0
+  state.cmdHistIndex = -1
+  redraw()
 }
 
 function runInWorktree(cmd, row) {
   if (!row) {
-    state.status = `${c.red}No worktree selected.${c.reset}`;
-    redraw();
-    return;
+    state.status = `${c.red}No worktree selected.${c.reset}`
+    redraw()
+    return
   }
-  if (state.pane?.row.path !== row.path) openPane(row);
-  const pane = state.pane;
-  if (pane.running) return;
-  if (pane.lines.length) pane.lines.push("");
-  pane.lines.push(`$ ${cmd}`);
+  if (state.pane?.row.path !== row.path) openPane(row)
+  const pane = state.pane
+  if (pane.running) return
+  if (pane.lines.length) pane.lines.push('')
+  pane.lines.push(`$ ${cmd}`)
   if (pane.lines.length > OUTPUT_MAX_LINES) {
-    pane.lines.splice(0, pane.lines.length - OUTPUT_MAX_LINES);
+    pane.lines.splice(0, pane.lines.length - OUTPUT_MAX_LINES)
   }
-  pane.pending = "";
-  pane.scroll = 0;
-  pane.exit = null;
-  pane.cmd = cmd;
-  const decoder = new StringDecoder("utf8");
+  pane.pending = ''
+  pane.scroll = 0
+  pane.exit = null
+  pane.cmd = cmd
+  const decoder = new StringDecoder('utf8')
   const child = spawn(cmd, {
     shell: true,
     cwd: pane.row.path,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ['ignore', 'pipe', 'pipe'],
     detached: true, // own process group so Ctrl-C can kill the whole tree
-  });
-  pane.child = child;
-  pane.running = true;
-  pane.dirty = true;
-  child.stdout.on("data", (chunk) => procPushOutput(pane, chunk, decoder));
-  child.stderr.on("data", (chunk) => procPushOutput(pane, chunk, decoder));
-  child.on("error", (err) => {
+  })
+  pane.child = child
+  pane.running = true
+  pane.dirty = true
+  child.stdout.on('data', chunk => procPushOutput(pane, chunk, decoder))
+  child.stderr.on('data', chunk => procPushOutput(pane, chunk, decoder))
+  child.on('error', err => {
     if (state.pane?.child === child) {
-      state.pane.lines.push(`${err.message}`);
-      state.pane.dirty = true;
+      state.pane.lines.push(`${err.message}`)
+      state.pane.dirty = true
     }
-  });
-  child.on("close", (code) => {
-    const p = state.pane;
-    if (!p || p.child !== child) return;
-    p.running = false;
-    p.exit = code;
+  })
+  child.on('close', code => {
+    const p = state.pane
+    if (!p || p.child !== child) return
+    p.running = false
+    p.exit = code
     if (p.escalate) {
-      clearTimeout(p.escalate);
-      p.escalate = null;
+      clearTimeout(p.escalate)
+      p.escalate = null
     }
-    p.dirty = true;
-    draw();
-  });
-  redraw();
+    p.dirty = true
+    draw()
+  })
+  redraw()
 }
 
 // ---- draw ----
 
 function draw() {
-  const { rows, cols, boxW, helpLines } = layout();
-  const { lines: listLines } = renderListRows();
-  const { listH, cmdH } = frameSplit();
-  const border = (s) => `${c.cyan}${s}${c.reset}`;
-  const side = (t) => `${c.cyan}│${c.reset} ${t}${c.cyan} │${c.reset}`;
+  const { rows, cols, boxW, helpLines } = currentLayout()
+  const { lines: listLines } = renderListRows()
+  const { listH, cmdH } = currentFrameSplit()
+  const border = s => `${c.cyan}${s}${c.reset}`
+  const side = t => `${c.cyan}│${c.reset} ${t}${c.cyan} │${c.reset}`
 
   const header =
-    `${c.bold}WORKTREE${c.reset} ${c.dim}· ${state.mainRoot.split("/").pop()}` +
-    ` · ${state.rows.length} worktree(s)${c.reset}`;
-  const focused = state.rows[state.cursor];
+    `${c.bold}WORKTREE${c.reset} ${c.dim}· ${path.basename(state.mainRoot)}` +
+    ` · ${state.rows.length} worktree(s)${c.reset}`
+  const focused = state.rows[state.cursor]
   const subheader =
-    `${c.dim}Focused:${c.reset} ${c.dim}${focused ? focused.path : ""}${c.reset}` +
-    `  ${c.gray}checked: ${state.checked.size} · Ln ${state.cursor + 1}/${state.rows.length}${c.reset}`;
+    `${c.dim}Focused:${c.reset} ${c.dim}${focused ? focused.path : ''}${c.reset}` +
+    `  ${c.gray}checked: ${state.checked.size} · Ln ${state.cursor + 1}/${state.rows.length}${c.reset}`
 
-  const lines = [header, subheader];
-  lines.push(border(`┌ WORKTREES ${"─".repeat(Math.max(1, boxW - 13))}┐`));
+  const lines = [header, subheader]
+  lines.push(border(`┌ WORKTREES ${'─'.repeat(Math.max(1, boxW - 13))}┐`))
   for (let i = 0; i < listH; i++) {
-    lines.push(side(padRight(listLines[i] ?? "", boxW - 4)));
+    lines.push(side(padRight(listLines[i] ?? '', boxW - 4)))
   }
   if (cmdH > 0) {
-    const pane = state.pane;
-    const dividerColor = pane.running ? c.cyan : c.gray;
-    const title = pane.cmd ? `─ COMMAND · ${pane.cmd} ` : "─ COMMAND ";
-    const fill = Math.max(1, boxW - 2 - displayWidth(title));
-    lines.push(
-      `${dividerColor}├${title}${"─".repeat(fill)}┤${c.reset}`,
-    );
-    const prompt = cmdPromptActive();
-    const outH = prompt ? cmdH - 1 : cmdH; // last pane row hosts the prompt
-    const contentW = boxW - 4;
-    const wrapped = [];
-    for (const l of pane.lines) wrapped.push(...wrapPaneLine(l, contentW));
-    const total = wrapped.length;
-    pane.scroll = Math.max(0, Math.min(pane.scroll, total));
-    const end = total - pane.scroll;
-    const start = Math.max(0, end - outH);
+    const pane = state.pane
+    const dividerColor = pane.running ? c.cyan : c.gray
+    const title = pane.cmd ? `─ COMMAND · ${pane.cmd} ` : '─ COMMAND '
+    const fill = Math.max(1, boxW - 2 - displayWidth(title))
+    lines.push(`${dividerColor}├${title}${'─'.repeat(fill)}┤${c.reset}`)
+    const prompt = cmdPromptActive()
+    const outH = prompt ? cmdH - 1 : cmdH // last pane row hosts the prompt
+    const contentW = boxW - 4
+    const wrapped = []
+    for (const l of pane.lines) wrapped.push(...wrapPaneLine(l, contentW))
+    const total = wrapped.length
+    pane.scroll = Math.max(0, Math.min(pane.scroll, total))
+    const end = total - pane.scroll
+    const start = Math.max(0, end - outH)
     for (let i = 0; i < outH; i++) {
-      const idx = start + i;
-      const out = idx >= 0 && idx < total ? wrapped[idx] : "";
-      lines.push(side(padRight(truncate(out, contentW), contentW)));
+      const idx = start + i
+      const out = idx >= 0 && idx < total ? wrapped[idx] : ''
+      lines.push(side(padRight(truncate(out, contentW), contentW)))
     }
     if (prompt) {
-      const before = state.cmdInput.slice(0, state.cmdCaret).join("");
-      const after = state.cmdInput.slice(state.cmdCaret).join("");
+      const before = state.cmdInput.slice(0, state.cmdCaret).join('')
+      const after = state.cmdInput.slice(state.cmdCaret).join('')
       const line =
-        `${c.gray}${pane.row.name}${c.reset}${c.cyan}$ ${c.reset}` +
-        `${before}${c.reverse} ${c.reset}${after}`;
-      lines.push(side(padRight(truncate(line, boxW - 4), boxW - 4)));
+        `${c.gray}${pane.row.name}${c.reset}${c.cyan}$ ${c.reset}` + `${before}${c.reverse} ${c.reset}${after}`
+      lines.push(side(padRight(truncate(line, boxW - 4), boxW - 4)))
     }
   }
-  lines.push(border(`└${"─".repeat(boxW - 2)}┘`));
+  lines.push(border(`└${'─'.repeat(boxW - 2)}┘`))
 
-  let status;
-  if (state.mode === "run" && state.pane) {
-    status = truncate(paneStatusText(), cols);
+  let status
+  if (state.mode === 'run' && state.pane) {
+    status = truncate(paneStatusText(), cols)
   } else {
-    status = truncate(state.status, cols);
+    status = truncate(state.status, cols)
   }
-  lines.push(status);
-  lines.push("");
-  for (const hl of helpLines) lines.push(`${c.dim}${hl}${c.reset}`);
-  while (lines.length < rows) lines.push("");
-  if (lines.length > rows) lines.length = rows;
+  lines.push(status)
+  lines.push('')
+  for (const hl of helpLines) lines.push(`${c.dim}${hl}${c.reset}`)
+  while (lines.length < rows) lines.push('')
+  if (lines.length > rows) lines.length = rows
 
-  if (state.mode === "menu" || state.mode === "confirm") {
-    const { dialogW: dw } = dialogGeometry();
-    const dg = state.mode === "confirm" ? buildConfirm() : buildDialog();
-    const dH = dg.lines.length;
-    const top = Math.max(0, Math.floor((rows - dH) / 2));
-    const pad = " ".repeat(Math.max(0, Math.floor((cols - dw) / 2)));
+  if (state.mode === 'menu' || state.mode === 'confirm') {
+    const { dialogW: dw } = currentDialogGeometry()
+    const dg = state.mode === 'confirm' ? buildConfirm() : buildDialog()
+    const dH = dg.lines.length
+    const top = Math.max(0, Math.floor((rows - dH) / 2))
+    const { padLeft, rightLen } = dialogColumns({ cols, dialogW: dw })
     for (let k = 0; k < dH; k++) {
-      const r = top + k;
-      if (r >= rows) continue;
-      // The dialog is narrower than the frame: re-add the outer frame
-      // borders at both edges instead of leaving blank gaps that break
-      // the frame's left/right border. Dialog content stays at the same
-      // columns, so the mouse hit test is unaffected.
-      const left = pad.slice(0, Math.max(0, pad.length - 1));
-      const right = " ".repeat(Math.max(0, cols - dw - left.length - 2));
-      lines[r] = `${border("│")}${left}${dg.lines[k]}${right}${border("│")}`;
+      const r = top + k
+      if (r >= rows) continue
+      // Overlay, never replace: the covered row keeps its frame and list text
+      // on both sides of the menu frame.
+      lines[r] = overlayRow({ base: lines[r] ?? '', dialogLine: dg.lines[k], padLeft, rightLen })
     }
   }
 
-  writeLines(lines);
+  writeLines(lines)
 }
 
 function redraw() {
-  draw();
+  draw()
 }
 
 // ---- modal navigation ----
 
 function moveCursor(delta) {
-  if (state.rows.length === 0) return;
-  state.cursor = (state.cursor + delta + state.rows.length) % state.rows.length;
-  redraw();
+  if (state.rows.length === 0) return
+  state.cursor = (state.cursor + delta + state.rows.length) % state.rows.length
+  redraw()
 }
 
 function toggleCheckbox() {
-  const r = state.rows[state.cursor];
+  const r = state.rows[state.cursor]
   if (r && !r.main) {
-    if (state.checked.has(r.path)) state.checked.delete(r.path);
-    else state.checked.add(r.path);
+    if (state.checked.has(r.path)) state.checked.delete(r.path)
+    else state.checked.add(r.path)
   }
-  redraw();
+  redraw()
 }
 
 function selectAll() {
-  state.checked = new Set(state.rows.filter((r) => !r.main).map((r) => r.path));
-  redraw();
+  state.checked = new Set(state.rows.filter(r => !r.main).map(r => r.path))
+  redraw()
 }
 
 function clearSelection() {
-  state.checked = new Set();
-  redraw();
+  state.checked = new Set()
+  redraw()
 }
 
 function openMenu(tab = 0) {
-  state.mode = "menu";
-  state.menuTab = tab;
-  state.menuCursor = 0;
-  redraw();
+  state.mode = 'menu'
+  state.menuTab = tab
+  state.menuCursor = 0
+  redraw()
 }
 
 function closeMenu() {
-  state.mode = "list";
-  redraw();
+  state.mode = 'list'
+  redraw()
 }
 
 function startCommandInput() {
-  const row = state.rows[state.cursor];
-  if (row) openPane(row);
+  const row = state.rows[state.cursor]
+  if (row) openPane(row)
 }
 
 function moveCmdCaret(delta) {
-  state.cmdCaret = Math.max(0, Math.min(state.cmdInput.length, state.cmdCaret + delta));
-  redraw();
+  state.cmdCaret = Math.max(0, Math.min(state.cmdInput.length, state.cmdCaret + delta))
+  redraw()
 }
 
 function historyUp() {
-  const h = state.cmdHistory;
-  if (!h.length) return;
-  const idx =
-    state.cmdHistIndex === -1
-      ? h.length - 1
-      : Math.max(0, state.cmdHistIndex - 1);
-  state.cmdHistIndex = idx;
-  const val = h[idx];
-  state.cmdInput = [...val];
-  state.cmdCaret = val.length;
-  redraw();
+  const h = state.cmdHistory
+  if (!h.length) return
+  const idx = state.cmdHistIndex === -1 ? h.length - 1 : Math.max(0, state.cmdHistIndex - 1)
+  state.cmdHistIndex = idx
+  const val = h[idx]
+  state.cmdInput = [...val]
+  state.cmdCaret = val.length
+  redraw()
 }
 
 function historyDown() {
-  const h = state.cmdHistory;
-  if (!h.length) return;
+  const h = state.cmdHistory
+  if (!h.length) return
   if (state.cmdHistIndex === -1) {
-    state.cmdInput = [];
-    state.cmdCaret = 0;
-    redraw();
-    return;
+    state.cmdInput = []
+    state.cmdCaret = 0
+    redraw()
+    return
   }
-  const idx = Math.min(h.length - 1, state.cmdHistIndex + 1);
-  state.cmdHistIndex = idx;
-  const val = h[idx];
-  state.cmdInput = [...val];
-  state.cmdCaret = val.length;
-  redraw();
+  const idx = Math.min(h.length - 1, state.cmdHistIndex + 1)
+  state.cmdHistIndex = idx
+  const val = h[idx]
+  state.cmdInput = [...val]
+  state.cmdCaret = val.length
+  redraw()
 }
 
 function startConfirm({ rows, message, detail }) {
-  state.mode = "confirm";
-  state.confirm = { rows, message, detail, yes: 0 };
-  redraw();
+  state.mode = 'confirm'
+  state.confirm = { rows, message, detail, yes: 0 }
+  redraw()
 }
 
 function executeBatchDelete(rows) {
-  const targets = new Set(rows.map((r) => r.path));
-  let ok = 0;
-  let failed = 0;
-  const failedNames = [];
+  const targets = new Set(rows.map(r => r.path))
+  let ok = 0
+  let failed = 0
+  const failedNames = []
   for (const wt of state.rows) {
-    if (!targets.has(wt.path) || wt.main) continue;
+    if (!targets.has(wt.path) || wt.main) continue
     // removeWorktree can throw before reaching its internal try (main-root
     // lookup); count that as a failed target so one bad row never aborts
     // the rest of the batch.
@@ -765,90 +593,90 @@ function executeBatchDelete(rows) {
         // Skip branch cleanup for unregistered dirs: their branch name comes
         // from a foreign .git and may collide with a real main-repo branch.
         if (wt.registered !== false && wt.branch) {
-          deleteBranch(state.mainRoot, wt.branch);
+          deleteBranch(state.mainRoot, wt.branch)
         }
-        ok++;
+        ok++
       } else {
-        failed++;
-        failedNames.push(wt.name);
+        failed++
+        failedNames.push(wt.name)
       }
     } catch {
-      failed++;
-      failedNames.push(wt.name);
+      failed++
+      failedNames.push(wt.name)
     }
   }
-  let status = `${c.green}Deleted ${ok} worktree(s)${c.reset}`;
-  if (failed) status += `${c.red} · ${failed} failed: ${failedNames.join(", ")}${c.reset}`;
+  let status = `${c.green}Deleted ${ok} worktree(s)${c.reset}`
+  if (failed) status += `${c.red} · ${failed} failed: ${failedNames.join(', ')}${c.reset}`
   try {
-    refreshList();
+    refreshList()
   } catch (e) {
     // The list stays stale but the TUI stays alive; the user retries with r.
-    status += `${c.red} · list refresh failed (${e?.message ?? e}), press r to retry${c.reset}`;
+    status += `${c.red} · list refresh failed (${e?.message ?? e}), press r to retry${c.reset}`
   }
-  state.status = status;
+  state.status = status
 }
 
 function activateMenuItem() {
-  const idx = state.menuCursor;
+  const idx = state.menuCursor
   if (state.menuTab === 0) {
     switch (idx) {
       case 0:
-        startCommandInput();
-        return;
+        startCommandInput()
+        return
       case 1:
-        closeMenu();
-        launchShell(state.rows[state.cursor]);
-        return;
+        closeMenu()
+        launchShell(state.rows[state.cursor])
+        return
       case 2: {
         if (state.checked.size === 0) {
-          state.status = `${c.yellow}No worktrees selected.${c.reset}`;
-          redraw();
-          return;
+          state.status = `${c.yellow}No worktrees selected.${c.reset}`
+          redraw()
+          return
         }
-        confirmDeleteFlow(state.rows.filter((r) => state.checked.has(r.path) && !r.main));
-        return;
+        confirmDeleteFlow(state.rows.filter(r => state.checked.has(r.path) && !r.main))
+        return
       }
       case 3: {
-        const r = state.rows[state.cursor];
+        const r = state.rows[state.cursor]
         if (!r || r.main) {
-          state.status = `${c.yellow}Cannot delete the main root.${c.reset}`;
-          redraw();
-          return;
+          state.status = `${c.yellow}Cannot delete the main root.${c.reset}`
+          redraw()
+          return
         }
-        confirmDeleteFlow([r]);
-        return;
+        confirmDeleteFlow([r])
+        return
       }
       case 4:
-        killFocusedProc();
-        closeMenu();
-        return;
+        killFocusedProc()
+        closeMenu()
+        return
       case 5:
-        selectAll();
-        closeMenu();
-        return;
+        selectAll()
+        closeMenu()
+        return
       case 6:
-        clearSelection();
-        closeMenu();
-        return;
+        clearSelection()
+        closeMenu()
+        return
       case 7:
-        refreshList();
-        closeMenu();
-        return;
+        refreshList()
+        closeMenu()
+        return
       case 8:
-        quit();
-        return;
+        quit()
+        return
       default:
-        closeMenu();
-        return;
+        closeMenu()
+        return
     }
   }
   if (idx < PRESET_COMMANDS.length) {
-    closeMenu();
-    runInWorktree(PRESET_COMMANDS[idx].value, state.rows[state.cursor]);
+    closeMenu()
+    runInWorktree(PRESET_COMMANDS[idx].value, state.rows[state.cursor])
   } else if (idx === PRESET_COMMANDS.length) {
-    startCommandInput();
+    startCommandInput()
   } else {
-    closeMenu();
+    closeMenu()
   }
 }
 
@@ -856,90 +684,89 @@ function confirmDeleteFlow(targets) {
   startConfirm({
     rows: targets,
     message: `Delete ${targets.length} worktree(s)?`,
-    detail: "force removes files, branches will be deleted",
-  });
+    detail: 'force removes files, branches will be deleted',
+  })
 }
 
 // Close the confirm dialog before deleting: a failing delete must never
 // leave the overlay stuck open (or throw out of the input handler with the
 // terminal frozen on the dialog frame). Failures surface as status text.
 function resolveConfirm(confirmed) {
-  const cfm = state.confirm;
-  state.mode = "list";
-  state.confirm = null;
+  const cfm = state.confirm
+  state.mode = 'list'
+  state.confirm = null
   if (confirmed && cfm) {
     try {
-      executeBatchDelete(cfm.rows);
+      executeBatchDelete(cfm.rows)
     } catch (e) {
-      state.status = `${c.red}Delete failed: ${e?.message ?? e}${c.reset}`;
+      state.status = `${c.red}Delete failed: ${e?.message ?? e}${c.reset}`
     }
   }
-  redraw();
+  redraw()
 }
 
 // ---- command execution ----
 
 async function submitCommand() {
-  const cmd = state.cmdInput.join("");
-  state.cmdInput = [];
-  state.cmdCaret = 0;
-  state.cmdHistIndex = -1;
+  const cmd = state.cmdInput.join('')
+  state.cmdInput = []
+  state.cmdCaret = 0
+  state.cmdHistIndex = -1
   if (!cmd) {
-    redraw();
-    return;
+    redraw()
+    return
   }
-  if (!state.cmdHistory.includes(cmd)) state.cmdHistory.push(cmd);
-  if (state.cmdHistory.length > 50) state.cmdHistory.shift();
-  runInWorktree(cmd, state.pane ? state.pane.row : state.rows[state.cursor]);
+  if (!state.cmdHistory.includes(cmd)) state.cmdHistory.push(cmd)
+  if (state.cmdHistory.length > 50) state.cmdHistory.shift()
+  runInWorktree(cmd, state.pane ? state.pane.row : state.rows[state.cursor])
 }
 
 function launchShell(row) {
   if (!row) {
-    state.status = `${c.red}No worktree selected.${c.reset}`;
-    redraw();
-    return;
+    state.status = `${c.red}No worktree selected.${c.reset}`
+    redraw()
+    return
   }
-  const shell = process.env.SHELL || "/bin/bash";
+  const shell = process.env.SHELL || '/bin/bash'
   return suspendForCommand({
     run: () =>
-      new Promise((resolve) => {
-        const child = spawn(shell, { cwd: row.path, stdio: "inherit" });
-        child.on("close", resolve);
+      new Promise(resolve => {
+        const child = spawn(shell, { cwd: row.path, stdio: 'inherit' })
+        child.on('close', resolve)
       }),
     row,
     label: shell,
-  });
+  })
 }
 
 async function suspendForCommand({ run, row, label }) {
-  state.status = `${c.yellow}Running: ${label}${c.reset}`;
-  draw();
-  state.suspended = true;
-  process.stdout.write("\x1b[?1049l\x1b[?25h\x1b[?1002l\x1b[?1006l");
-  stdin.setRawMode(false);
-  stdin.pause();
-  const code = await run();
-  state.suspended = false;
-  stdin.setRawMode(true);
-  stdin.resume();
-  process.stdout.write("\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h");
-  state.fullClear = true;
-  state.status =
-    `${c.green}exit ${code ?? "sig"}${c.reset} · ${c.gray}${label}${c.reset} in ${c.gray}${row.name}${c.reset}`;
-  refreshList();
-  redraw();
+  state.status = `${c.yellow}Running: ${label}${c.reset}`
+  draw()
+  state.suspended = true
+  process.stdout.write('\x1b[?1049l\x1b[?25h\x1b[?1002l\x1b[?1006l')
+  stdin.setRawMode(false)
+  stdin.pause()
+  const code = await run()
+  state.suspended = false
+  stdin.setRawMode(true)
+  stdin.resume()
+  process.stdout.write('\x1b[?1049h\x1b[?25l\x1b[?1002h\x1b[?1006h')
+  state.fullClear = true
+  state.status = `${c.green}exit ${code ?? 'sig'}${c.reset} · ${c.gray}${label}${c.reset} in ${c.gray}${row.name}${c.reset}`
+  refreshList()
+  redraw()
 }
 
 // ---- input ----
 
 function handleWheel(dir) {
   // dir: +1 = wheel down, -1 = wheel up.
-  if (state.mode === "menu") {
-    const n = currentOptions().length;
-    state.menuCursor = Math.max(0, Math.min(n - 1, state.menuCursor + dir));
-    redraw();
-  } else if (state.mode === "run") {
-    scrollOutput(-dir * 3); // wheel up reveals older output, wheel down newer
+  if (state.mode === 'menu') {
+    const n = currentMenuOptions().length
+    state.menuCursor = Math.max(0, Math.min(n - 1, state.menuCursor + dir))
+    redraw()
+  } else if (state.mode === 'run') {
+    scrollOutput(-dir * 3) // wheel up reveals older output, wheel down newer
   }
   // confirm: wheel is a no-op so the highlight can't drift under the cursor.
 }
@@ -947,482 +774,412 @@ function handleWheel(dir) {
 function handleMouse({ button, x, y, release }) {
   // SGR Cb bits: 0-1 button, 4/8/16 shift/meta/ctrl, 32 drag-motion, 64 wheel.
   if (button & 64) {
-    handleWheel(button & 1 ? 1 : -1);
-    return;
+    handleWheel(button & 1 ? 1 : -1)
+    return
   }
-  if (release || button === 3 || button & 32) return; // release/drag: ignore
-  const btn = button & 3; // strip shift/meta/ctrl modifiers
-  if (btn !== 0 && btn !== 2) return; // middle button: ignore
-  const { cols, rows: rr } = layout();
-  const { dialogW, listH } = dialogGeometry();
+  if (release || button === 3 || button & 32) return // release/drag: ignore
+  const btn = button & 3 // strip shift/meta/ctrl modifiers
+  if (btn !== 0 && btn !== 2) return // middle button: ignore
+  const { cols, rows: rr } = currentLayout()
+  const { dialogW, listH } = currentDialogGeometry()
 
-  if (state.mode === "menu" || state.mode === "confirm") {
-    const dg = state.mode === "confirm" ? buildConfirm() : buildDialog();
-    const top = Math.max(0, Math.floor((rr - dg.lines.length) / 2));
-    const left = Math.max(0, Math.floor((cols - dialogW) / 2));
-    const sr = y - 1;
-    const sc = x - 1;
+  if (state.mode === 'menu' || state.mode === 'confirm') {
+    const dg = state.mode === 'confirm' ? buildConfirm() : buildDialog()
+    const top = Math.max(0, Math.floor((rr - dg.lines.length) / 2))
+    const left = dialogColumns({ cols, dialogW }).padLeft
+    const sr = y - 1
+    const sc = x - 1
     if (sc < left || sr < top || sr >= top + dg.lines.length) {
-      if (state.mode === "menu") {
-        closeMenu();
+      if (state.mode === 'menu') {
+        closeMenu()
       } else {
-        state.mode = "list";
-        state.confirm = null;
-        redraw();
+        state.mode = 'list'
+        state.confirm = null
+        redraw()
       }
-      return;
+      return
     }
-    if (btn !== 0) return; // right-click inside a dialog: no-op
-    if (state.mode === "confirm") {
+    if (btn !== 0) return // right-click inside a dialog: no-op
+    if (state.mode === 'confirm') {
       // Like the menu, a single click decides: No cancels, Yes deletes.
-      if (sr === top + CONFIRM_NO_ROW) resolveConfirm(false);
-      else if (sr === top + CONFIRM_YES_ROW) resolveConfirm(true);
-      else redraw();
-      return;
+      if (sr === top + CONFIRM_NO_ROW) resolveConfirm(false)
+      else if (sr === top + CONFIRM_YES_ROW) resolveConfirm(true)
+      else redraw()
+      return
     }
     if (sr - top === 1) {
-      const prefix = "Tabs:  ";
-      let cx = left + prefix.length;
-      for (let t = 0; t < MODES.length; t++) {
-        if (sc >= cx && sc < cx + MODES[t].length) {
-          state.menuTab = t;
-          state.menuCursor = 0;
-          redraw();
-          return;
-        }
-        cx += MODES[t].length + 2;
+      const contentColumn = sc - (left + DIALOG_SIDE_PAD_COLS)
+      const hit = tabHitColumns().find(({ start, end }) => contentColumn >= start && contentColumn <= end)
+      if (hit) {
+        state.menuTab = hit.tab
+        state.menuCursor = 0
+        redraw()
+        return
       }
     }
-    const rel = sr - top - DIALOG_OPTION_START;
-    const idx = dg.start + rel;
+    const rel = sr - top - DIALOG_OPTION_START
+    const idx = dg.start + rel
     if (rel >= 0 && rel < listH && idx >= 0 && idx < dg.total) {
-      state.menuCursor = idx;
-      activateMenuItem();
+      state.menuCursor = idx
+      activateMenuItem()
     }
-    return;
+    return
   }
   // List / command-pane hit test. Dialog modes return above, so only list
   // and run reach here.
-  const { first, boxH } = listWindow();
-  const sr = y - 1;
-  if (sr < LIST_TOP_ROW || sr >= LIST_TOP_ROW + boxH) return;
-  const idx = first + (sr - LIST_TOP_ROW);
-  if (idx < 0 || idx >= state.rows.length) return;
-  const row = state.rows[idx];
+  const { first, boxH } = currentListWindow()
+  const sr = y - 1
+  if (sr < LIST_TOP_ROW || sr >= LIST_TOP_ROW + boxH) return
+  const idx = first + (sr - LIST_TOP_ROW)
+  if (idx < 0 || idx >= state.rows.length) return
+  const row = state.rows[idx]
   if (btn === 2) {
     // Right-click: context menu for the row. Ignored while a command pane
     // owns the screen so a stray click can't pop a menu over live output.
-    if (state.mode === "list") {
-      state.cursor = idx;
-      openMenu();
+    if (state.mode === 'list') {
+      state.cursor = idx
+      openMenu()
     }
-    return;
+    return
   }
-  if (state.mode === "run") {
+  if (state.mode === 'run') {
     // Clicking another row reattaches the pane there, like focusing + c;
     // clicking the attached row just moves the cursor.
-    if (!state.pane || state.pane.row.path !== row.path) openPane(row);
+    if (!state.pane || state.pane.row.path !== row.path) openPane(row)
     else {
-      state.cursor = idx;
-      redraw();
+      state.cursor = idx
+      redraw()
     }
-    return;
+    return
   }
-  state.cursor = idx;
+  state.cursor = idx
   // Clicking the [ ]/[x] box toggles selection (Space parity); anywhere
   // else on the row just moves the cursor.
-  if (x >= CHECKBOX_FIRST_COL && x <= CHECKBOX_LAST_COL) toggleCheckbox();
-  else redraw();
+  if (x >= CHECKBOX_FIRST_COL && x <= CHECKBOX_LAST_COL) toggleCheckbox()
+  else redraw()
 }
 
 function quit() {
   for (const proc of state.procs.values()) {
-    paneKillChild(proc);
-    clearTimeout(proc.escalate);
+    paneKillChild(proc)
+    clearTimeout(proc.escalate)
   }
-  state.procs.clear();
-  clearInterval(flushTimer);
-  term.exit();
-  console.log(`\nBye. ${state.rows.length} worktree(s) on disk.`);
-  process.exit(0);
+  state.procs.clear()
+  clearInterval(flushTimer)
+  term.exit()
+  console.log(`\nBye. ${state.rows.length} worktree(s) on disk.`)
+  process.exit(0)
 }
 
-let pending = "";
-let flushTimer = null;
+const parseInput = createInputParser()
+let flushTimer = null
 
 function scrollOutput(delta) {
-  const pane = state.pane;
-  if (!pane) return;
-  pane.scroll = Math.max(0, pane.scroll + delta);
-  redraw();
+  const pane = state.pane
+  if (!pane) return
+  pane.scroll = Math.max(0, pane.scroll + delta)
+  redraw()
 }
 
 function onData(chunk) {
-  const s = pending + chunk;
-  pending = "";
-  let i = 0;
-  while (i < s.length) {
-    const ch = s[i];
+  for (const event of parseInput(chunk)) {
+    applyInputEvent(event)
+  }
+}
 
-    if (ch === "\x03" || ch === "\x04" || ch === "\x11") {
-      // While a command pane is running, Ctrl-C stops the command instead of
-      // quitting the TUI.
-      if (state.mode === "run" && state.pane?.running) {
-        paneKillChild();
-        state.pane.dirty = true;
-        draw();
-      } else if (cmdPromptActive()) {
-        // Bash-like Ctrl-C: with text on the line it clears the input; on an
-        // empty line it quits. Ctrl-D on an empty line drops the finished proc (detaches if running).
-        if (state.cmdInput.length || state.cmdCaret) {
-          state.cmdInput = [];
-          state.cmdCaret = 0;
-          state.cmdHistIndex = -1;
-          redraw();
-        } else if (ch === "\x04") {
-          dropPane();
-        } else {
-          quit();
-        }
-      } else {
-        quit();
-      }
-      return;
-    }
+// Mode gating lives here; the parser only classifies bytes.
+function applyInputEvent(event) {
+  if (event.type === 'mouse') {
+    handleMouse(event.mouse)
+    return
+  }
+  if (event.type === 'text') {
+    handleTextInput(event.value)
+    return
+  }
+  if (event.type === 'control') {
+    handleControlKey(event.key)
+    return
+  }
+  switch (event.name) {
+    case 'up':
+      handleArrowUp()
+      return
+    case 'down':
+      handleArrowDown()
+      return
+    case 'left':
+      handleArrowLeft()
+      return
+    case 'right':
+      handleArrowRight()
+      return
+    case 'home':
+      handleHome()
+      return
+    case 'end':
+      handleEnd()
+      return
+    case 'shift-arrow':
+      handleShiftArrow(event.dir)
+      return
+    case 'pageup':
+      if (state.mode === 'run') scrollOutput(currentFrameSplit().cmdH - 1)
+      return
+    case 'pagedown':
+      if (state.mode === 'run') scrollOutput(-currentFrameSplit().cmdH + 1)
+      return
+    case 'delete':
+      handleDeleteKey()
+      return
+    case 'escape':
+      handleEscape()
+      return
+    case 'tab':
+      if (state.mode === 'list') openMenu()
+      return
+    case 'enter':
+      handleEnter()
+      return
+    case 'backspace':
+      handleBackspace()
+      return
+    case 'ctrl-a':
+      if (cmdPromptActive()) moveCmdCaret(-state.cmdCaret)
+      else handleHome()
+      return
+    case 'ctrl-e':
+      if (cmdPromptActive()) moveCmdCaret(state.cmdInput.length - state.cmdCaret)
+      else handleEnd()
+      return
+    case 'ctrl-p':
+      if (cmdPromptActive()) historyUp()
+      else handleArrowUp()
+      return
+    case 'ctrl-n':
+      if (cmdPromptActive()) historyDown()
+      else handleArrowDown()
+      return
+    default:
+      return
+  }
+}
 
-    if (ch === "\x1b") {
-      if (s[i + 1] === "[" && s[i + 2] === "<") {
-        const m = parseSgrMouse(s, i);
-        if (!m) {
-          pending = s.slice(i);
-          break;
-        }
-        handleMouse(m);
-        i += m.len;
-        continue;
-      }
-      if (s.length - i < 2) {
-        handleEscape();
-        i += 1;
-        continue;
-      }
-      const nxt = s[i + 1];
-      if (nxt !== "[") {
-        handleEscape();
-        i += 2;
-        continue;
-      }
-      if (s.length - i >= 6 && s.slice(i, i + 4) === "\x1b[1;") {
-        handleShiftArrow(s[i + 5]);
-        i += 6;
-        continue;
-      }
-      if (s.length - i < 3) {
-        pending = s.slice(i);
-        break;
-      }
-      const seq3 = s.slice(i, i + 3);
-      if (seq3 === "\x1b[A") {
-        handleArrowUp();
-        i += 3;
-        continue;
-      }
-      if (seq3 === "\x1b[B") {
-        handleArrowDown();
-        i += 3;
-        continue;
-      }
-      if (seq3 === "\x1b[C") {
-        handleArrowRight();
-        i += 3;
-        continue;
-      }
-      if (seq3 === "\x1b[D") {
-        handleArrowLeft();
-        i += 3;
-        continue;
-      }
-      if (seq3 === "\x1b[H" || seq3 === "\x1bOH") {
-        handleHome();
-        i += 3;
-        continue;
-      }
-      if (seq3 === "\x1b[F" || seq3 === "\x1bOF") {
-        handleEnd();
-        i += 3;
-        continue;
-      }
-      const seq4 = s.slice(i, i + 4);
-      if (seq4 === "\x1b[1~") {
-        handleHome();
-        i += 4;
-        continue;
-      }
-      if (seq4 === "\x1b[4~") {
-        handleEnd();
-        i += 4;
-        continue;
-      }
-      if (seq4 === "\x1b[5~") {
-        if (state.mode === "run") scrollOutput(frameSplit().cmdH - 1);
-        i += 4;
-        continue;
-      }
-      if (seq4 === "\x1b[6~") {
-        if (state.mode === "run") scrollOutput(-frameSplit().cmdH + 1);
-        i += 4;
-        continue;
-      }
-      if (seq4 === "\x1b[3~") {
-        if (state.mode === "list") {
-          if (state.checked.size > 1) {
-            confirmDeleteFlow(
-              state.rows.filter((rr) => state.checked.has(rr.path) && !rr.main),
-            );
-          } else {
-            const r = state.rows[state.cursor];
-            if (!r || r.main) {
-              state.status = `${c.yellow}Cannot delete the main root.${c.reset}`;
-              redraw();
-            } else {
-              confirmDeleteFlow([r]);
-            }
-          }
-        }
-        i += 4;
-        continue;
-      }
-      handleEscape();
-      i += 1;
-      continue;
+// Ctrl-C/D/Q: while a command runs Ctrl-C stops it; in the command prompt
+// Ctrl-C clears the line, Ctrl-D drops the finished proc; otherwise quit.
+function handleControlKey(key) {
+  if (state.mode === 'run' && state.pane?.running) {
+    paneKillChild()
+    state.pane.dirty = true
+    draw()
+    return
+  }
+  if (cmdPromptActive()) {
+    if (state.cmdInput.length || state.cmdCaret) {
+      state.cmdInput = []
+      state.cmdCaret = 0
+      state.cmdHistIndex = -1
+      redraw()
+    } else if (key === 'd') {
+      dropPane()
+    } else {
+      quit()
     }
+    return
+  }
+  quit()
+}
 
-    if (ch === "\t") {
-      if (state.mode === "list") {
-        openMenu();
-      }
-      i += 1;
-      continue;
-    }
+// The delete key mirrors the Del menu entry: batch confirm when several rows
+// are checked, otherwise confirm the focused row; the main root never deletes.
+function handleDeleteKey() {
+  if (state.mode !== 'list') return
+  if (state.checked.size > 1) {
+    confirmDeleteFlow(state.rows.filter(row => state.checked.has(row.path) && !row.main))
+    return
+  }
+  const row = state.rows[state.cursor]
+  if (!row || row.main) {
+    state.status = `${c.yellow}Cannot delete the main root.${c.reset}`
+    redraw()
+    return
+  }
+  confirmDeleteFlow([row])
+}
 
-    if (ch === "\r" || ch === "\n") {
-      handleEnter();
-      i += 1;
-      continue;
+// Printable input: single-key list commands, command-prompt insertion, and
+// stray keys in the other modes (ignored).
+function handleTextInput(value) {
+  if (state.mode === 'list') {
+    if (value === 'q') {
+      quit()
+    } else if (value === ' ') {
+      toggleCheckbox()
+    } else if (value === 'a') {
+      if (state.checked.size === 0) selectAll()
+      else clearSelection()
+    } else if (value === 'r') {
+      refreshList()
+      redraw()
+    } else if (value === 's') {
+      launchShell(state.rows[state.cursor])
+    } else if (value === 'c') {
+      startCommandInput()
+    } else if (value === 'x') {
+      killFocusedProc()
     }
-
-    if (ch === "\x7f" || ch === "\x08") {
-      handleBackspace();
-      i += 1;
-      continue;
+    return
+  }
+  if (cmdPromptActive()) {
+    // Ignore control characters (e.g. Ctrl-L) so they never end up inside the
+    // executed command string.
+    if (value.codePointAt(0) >= 0x20) {
+      state.cmdInput.splice(state.cmdCaret, 0, value)
+      state.cmdCaret += value.length
+      redraw()
     }
-
-    if (ch === "\x01") {
-      if (cmdPromptActive()) moveCmdCaret(-state.cmdCaret);
-      else handleHome();
-      i += 1;
-      continue;
-    }
-    if (ch === "\x05") {
-      if (cmdPromptActive()) moveCmdCaret(state.cmdInput.length - state.cmdCaret);
-      else handleEnd();
-      i += 1;
-      continue;
-    }
-    if (ch === "\x10") {
-      if (cmdPromptActive()) historyUp();
-      else handleArrowUp();
-      i += 1;
-      continue;
-    }
-    if (ch === "\x0e") {
-      if (cmdPromptActive()) historyDown();
-      else handleArrowDown();
-      i += 1;
-      continue;
-    }
-
-    // mode-gated printable keys
-    if (state.mode === "list") {
-      if (ch === "q") {
-        quit();
-        return;
-      } else if (ch === " ") {
-        toggleCheckbox();
-      } else if (ch === "a") {
-        if (state.checked.size === 0) selectAll();
-        else clearSelection();
-      } else if (ch === "r") {
-        refreshList();
-        redraw();
-      } else if (ch === "s") {
-        launchShell(state.rows[state.cursor]);
-      } else if (ch === "c") {
-        startCommandInput();
-      } else if (ch === "x") {
-        killFocusedProc();
-      }
-      i += 1;
-      continue;
-    }
-
-    if (cmdPromptActive()) {
-      const cp = String.fromCodePoint(s.codePointAt(i));
-      // Ignore control characters that reached this point (e.g. Ctrl-L) so
-      // they never end up inside the executed command string.
-      if (cp.codePointAt(0) >= 0x20) {
-        state.cmdInput.splice(state.cmdCaret, 0, cp);
-        state.cmdCaret += cp.length;
-        redraw();
-      }
-      i += cp.length;
-      continue;
-    }
-
-    // run / menu / confirm: ignore stray printable
-    i += 1;
   }
 }
 
 function handleArrowUp() {
   if (cmdPromptActive()) {
-    historyUp();
-  } else if (state.mode === "menu") {
-    state.menuCursor = Math.max(0, state.menuCursor - 1);
-    redraw();
-  } else if (state.mode === "confirm") {
-    state.confirm.yes = 0;
-    redraw();
+    historyUp()
+  } else if (state.mode === 'menu') {
+    state.menuCursor = Math.max(0, state.menuCursor - 1)
+    redraw()
+  } else if (state.mode === 'confirm') {
+    state.confirm.yes = 0
+    redraw()
   } else {
-    moveCursor(-1);
+    moveCursor(-1)
   }
 }
 
 function handleArrowDown() {
   if (cmdPromptActive()) {
-    historyDown();
-  } else if (state.mode === "menu") {
-    state.menuCursor = Math.min(currentOptions().length - 1, state.menuCursor + 1);
-    redraw();
-  } else if (state.mode === "confirm") {
-    state.confirm.yes = 1;
-    redraw();
+    historyDown()
+  } else if (state.mode === 'menu') {
+    state.menuCursor = Math.min(currentMenuOptions().length - 1, state.menuCursor + 1)
+    redraw()
+  } else if (state.mode === 'confirm') {
+    state.confirm.yes = 1
+    redraw()
   } else {
-    moveCursor(1);
+    moveCursor(1)
   }
 }
 
 function handleArrowLeft() {
-  if (state.mode === "menu") {
-    state.menuTab = 0;
-    state.menuCursor = 0;
-    redraw();
-  } else if (state.mode === "confirm") {
-    state.confirm.yes = 0;
-    redraw();
+  if (state.mode === 'menu') {
+    state.menuTab = 0
+    state.menuCursor = 0
+    redraw()
+  } else if (state.mode === 'confirm') {
+    state.confirm.yes = 0
+    redraw()
   } else if (cmdPromptActive()) {
-    moveCmdCaret(-1);
+    moveCmdCaret(-1)
   }
 }
 
 function handleArrowRight() {
-  if (state.mode === "menu") {
-    state.menuTab = 1;
-    state.menuCursor = 0;
-    redraw();
-  } else if (state.mode === "confirm") {
-    state.confirm.yes = 1;
-    redraw();
+  if (state.mode === 'menu') {
+    state.menuTab = 1
+    state.menuCursor = 0
+    redraw()
+  } else if (state.mode === 'confirm') {
+    state.confirm.yes = 1
+    redraw()
   } else if (cmdPromptActive()) {
-    moveCmdCaret(1);
+    moveCmdCaret(1)
   }
 }
 
 function handleHome() {
-  if (cmdPromptActive()) moveCmdCaret(-state.cmdCaret);
-  else if (state.mode === "list") {
-    state.cursor = 0;
-    redraw();
+  if (cmdPromptActive()) moveCmdCaret(-state.cmdCaret)
+  else if (state.mode === 'list') {
+    state.cursor = 0
+    redraw()
   }
 }
 
 function handleEnd() {
-  if (cmdPromptActive()) moveCmdCaret(state.cmdInput.length - state.cmdCaret);
-  else if (state.mode === "list") {
-    state.cursor = Math.max(0, state.rows.length - 1);
-    redraw();
+  if (cmdPromptActive()) moveCmdCaret(state.cmdInput.length - state.cmdCaret)
+  else if (state.mode === 'list') {
+    state.cursor = Math.max(0, state.rows.length - 1)
+    redraw()
   }
 }
 
 function handleShiftArrow(dir) {
-  if (state.mode === "menu") {
-    if (dir === "C") {
-      state.menuTab = 1;
-      state.menuCursor = 0;
-    } else if (dir === "D") {
-      state.menuTab = 0;
-      state.menuCursor = 0;
-    } else if (dir === "A") handleArrowUp();
-    else if (dir === "B") handleArrowDown();
-    redraw();
+  if (state.mode === 'menu') {
+    if (dir === 'C') {
+      state.menuTab = 1
+      state.menuCursor = 0
+    } else if (dir === 'D') {
+      state.menuTab = 0
+      state.menuCursor = 0
+    } else if (dir === 'A') handleArrowUp()
+    else if (dir === 'B') handleArrowDown()
+    redraw()
   } else if (cmdPromptActive()) {
-    if (dir === "C") moveCmdCaret(1);
-    else if (dir === "D") moveCmdCaret(-1);
-  } else if (state.mode === "confirm") {
-    state.confirm.yes = dir === "C" ? 1 : 0;
-    redraw();
+    if (dir === 'C') moveCmdCaret(1)
+    else if (dir === 'D') moveCmdCaret(-1)
+  } else if (state.mode === 'confirm') {
+    state.confirm.yes = dir === 'C' ? 1 : 0
+    redraw()
   }
 }
 
 function handleEnter() {
-  if (state.mode === "menu") {
-    activateMenuItem();
-  } else if (state.mode === "confirm") {
-    resolveConfirm(state.confirm ? state.confirm.yes === 1 : false);
+  if (state.mode === 'menu') {
+    activateMenuItem()
+  } else if (state.mode === 'confirm') {
+    resolveConfirm(state.confirm ? state.confirm.yes === 1 : false)
   } else if (cmdPromptActive()) {
-    submitCommand();
-  } else if (state.mode === "list") {
-    openMenu();
+    submitCommand()
+  } else if (state.mode === 'list') {
+    openMenu()
   }
 }
 
 function handleBackspace() {
   if (cmdPromptActive() && state.cmdCaret > 0) {
-    state.cmdInput.splice(--state.cmdCaret, 1);
-    redraw();
+    state.cmdInput.splice(--state.cmdCaret, 1)
+    redraw()
   }
 }
 
 function handleEscape() {
-  if (state.mode === "run") {
+  if (state.mode === 'run') {
     // Esc detaches: the child keeps running in the background. Ctrl-C kills.
-    state.status = `${c.dim}Detached; command keeps running. Focus row + c to reattach.${c.reset}`;
-    paneDetach();
-  } else if (state.mode === "confirm") {
-    state.mode = "list";
-    state.confirm = null;
-    state.status = DEFAULT_STATUS;
-    redraw();
-  } else if (state.mode === "menu") {
-    state.status = DEFAULT_STATUS;
-    closeMenu();
-  } else if (state.mode === "list") {
+    state.status = `${c.dim}Detached; command keeps running. Focus row + c to reattach.${c.reset}`
+    paneDetach()
+  } else if (state.mode === 'confirm') {
+    state.mode = 'list'
+    state.confirm = null
+    state.status = DEFAULT_STATUS
+    redraw()
+  } else if (state.mode === 'menu') {
+    state.status = DEFAULT_STATUS
+    closeMenu()
+  } else if (state.mode === 'list') {
     // Esc clears any transient result message back to the default hint line.
-    state.status = DEFAULT_STATUS;
-    redraw();
+    state.status = DEFAULT_STATUS
+    redraw()
   }
 }
 
 // ---- state ----
 
 const state = {
-  mainRoot: "",
+  mainRoot: '',
   rows: [],
   cursor: 0,
   checked: new Set(),
   menuTab: 0,
   menuCursor: 0,
-  mode: "list",
+  mode: 'list',
   confirm: null,
   pane: null,
   procs: new Map(),
@@ -1433,33 +1190,52 @@ const state = {
   suspended: false,
   status: DEFAULT_STATUS,
   fullClear: true,
-};
-
-async function main() {
-  if (process.argv[2] === "--help" || process.argv[2] === "-h") {
-    console.log("Usage: worktree-manager [dir]\n\nManage git worktrees rooted at the repository containing [dir] (default: current directory).");
-    return;
-  }
-  if (!stdin.isTTY || !stdout.isTTY) {
-    console.error("worktree-manager requires an interactive terminal.");
-    process.exitCode = 1;
-    return;
-  }
-  const startDir = path.resolve(process.argv[2] ?? ".");
-  state.mainRoot = getMainRoot(startDir);
-  refreshList();
-  term.onResize(() => {
-    if (state.suspended) return;
-    state.fullClear = true;
-    redraw();
-  });
-  term.enter();
-  flushTimer = setInterval(flushProcs, 120);
-  draw();
-  term.onData(onData);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exitCode = 1;
-});
+async function main() {
+  if (process.argv[2] === '--help' || process.argv[2] === '-h') {
+    console.log(
+      'Usage: worktree-manager [dir]\n\nManage git worktrees rooted at the repository containing [dir] (default: current directory).',
+    )
+    return
+  }
+  if (!stdin.isTTY || !stdout.isTTY) {
+    console.error('worktree-manager requires an interactive terminal.')
+    process.exitCode = 1
+    return
+  }
+  const startDir = path.resolve(process.argv[2] ?? '.')
+  state.mainRoot = getMainRoot(startDir)
+  refreshList()
+  term.onResize(() => {
+    if (state.suspended) return
+    state.fullClear = true
+    redraw()
+  })
+  term.enter()
+  try {
+    flushTimer = setInterval(flushProcs, 120)
+    draw()
+    term.onData(onData)
+  } catch (error) {
+    // A throw after enter() would otherwise leave the terminal in raw mode
+    // on the alternate screen. exit() is idempotent.
+    clearInterval(flushTimer)
+    term.exit()
+    throw error
+  }
+  // Ctrl-C arrives as raw input while attached (see onData), but an external
+  // kill -INT/-TERM must still restore the terminal before exiting.
+  const restoreAndExit = () => {
+    clearInterval(flushTimer)
+    term.exit()
+    process.exit(0)
+  }
+  process.once('SIGINT', restoreAndExit)
+  process.once('SIGTERM', restoreAndExit)
+}
+
+main().catch(e => {
+  console.error(e)
+  process.exitCode = 1
+})

@@ -5,14 +5,17 @@ import { copyDevFiles, listCopyTargets, readDevTag } from './_worktrees.mjs'
 
 export { copyDevFiles }
 
-function renderWorktreePicker() {
+// DEV_TAG is read once per target and captured in the renderer: the picker
+// redraws on every keystroke, and re-reading .env.local per row per redraw
+// is needless filesystem work.
+function renderWorktreePicker(devTags) {
   return (items, state) => {
     const lines = []
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       const cursor = i === state.cursor ? `${c.cyan}>${c.reset}` : ' '
       const marker = state.selected.has(i) ? `${c.green}[x]${c.reset}` : '[ ]'
-      const devTag = readDevTag(item.path)
+      const devTag = devTags.get(item.path)
       const suffix = devTag ? ` DEV_TAG=${devTag}` : ''
       lines.push(` ${cursor} ${marker} ${item.name} ${c.gray}(${item.path}${suffix})${c.reset}`)
     }
@@ -22,17 +25,21 @@ function renderWorktreePicker() {
   }
 }
 
+function collectDevTags(worktrees) {
+  return new Map(worktrees.map(item => [item.path, readDevTag(item.path)]))
+}
+
 // Single-question interview: pick -> exit. q/Ctrl-C (or confirming an
 // empty selection) yields no selection; the caller treats it as cancel.
 // Effect code stays outside the graph, mirroring deploy.mjs
 // (runDeployInterview collects answers, runDeployFlow acts on them).
-function buildCopyGraph() {
+function buildCopyGraph(devTags) {
   const graph = {
     pick: {
       message: 'Select worktrees to copy config to:',
       async process(ctx) {
         ctx.selected = await ctx.selectMany(ctx.worktrees, {
-          render: renderWorktreePicker(),
+          render: renderWorktreePicker(devTags),
         })
         return null
       },
@@ -42,7 +49,7 @@ function buildCopyGraph() {
 }
 
 async function runCopyInterview(worktrees) {
-  const graph = buildCopyGraph()
+  const graph = buildCopyGraph(collectDevTags(worktrees))
   return interactiveShell(graph.pick, {
     options: { ctx: { worktrees, selected: [] } },
     chrome: { cancelText: `${c.yellow}Cancelled.${c.reset}` },
