@@ -6,13 +6,10 @@ import { parseArgs as parseCliArgs } from 'node:util'
 import { c } from './_terminal.mjs'
 import { interactiveShell } from './_interactive-shell.mjs'
 import {
-  copyDevFiles,
-  deleteBranch,
   getWorktreesRoot,
   isValidBranchName,
-  registerWorktree,
-  removeWorktree,
-  setDevTag,
+  removeWorktreeAndBranch,
+  setupWorktree,
 } from './_worktrees.mjs'
 
 function printUsage() {
@@ -138,33 +135,35 @@ async function main() {
     process.exit(1)
   }
 
+  let carried
   try {
-    registerWorktree(root, worktreeDir, branchName)
+    carried = setupWorktree({ root, worktreePath: worktreeDir, branch: branchName }).carried
   } catch (error) {
-    console.error(`${c.red}Failed to create worktree:${c.reset} ${error.message}`)
+    if (error.phase === 'register') {
+      console.error(`${c.red}Failed to create worktree:${c.reset} ${error.message}`)
+    } else {
+      console.error(`${c.red}Failed to set up worktree:${c.reset} ${error.message}`)
+      const cleanup = removeWorktreeAndBranch(root, worktreeDir, branchName)
+      if (!cleanup.removed) {
+        console.error(`${c.red}Failed to remove incomplete worktree:${c.reset} ${worktreeDir}`)
+      }
+      if (!cleanup.branchDeleted) {
+        console.error(`${c.red}Failed to delete branch:${c.reset} ${branchName}`)
+      }
+    }
     process.exit(1)
   }
-
-  try {
-    copyDevFiles(root, worktreeDir)
-    setDevTag(worktreeDir, branchName)
-  } catch (error) {
-    console.error(`${c.red}Failed to set up worktree:${c.reset} ${error.message}`)
-    cleanupWorktree(root, worktreeDir, branchName)
-    process.exit(1)
+  for (const note of carried.notes) {
+    console.warn(`${c.yellow}Uncommitted work not fully carried:${c.reset} ${note}`)
+  }
+  if (carried.patched || carried.copied.length > 0) {
+    console.log(
+      `${c.green}Carried uncommitted changes${c.reset} into ${worktreeDir}${carried.patched ? ' (tracked diff)' : ''}${carried.copied.length > 0 ? ` (untracked: ${carried.copied.join(', ')})` : ''}`,
+    )
   }
 
   console.log(`\n${c.green}Worktree created:${c.reset} ${worktreeDir}`)
   console.log(`${c.green}DEV_TAG=${branchName}${c.reset} set in ${path.join(worktreeDir, '.env.local')}`)
-}
-
-function cleanupWorktree(root, worktreeDir, branchName) {
-  if (!removeWorktree(root, { path: worktreeDir })) {
-    console.error(`${c.red}Failed to remove incomplete worktree:${c.reset} ${worktreeDir}`)
-  }
-  if (!deleteBranch(root, branchName)) {
-    console.error(`${c.red}Failed to delete branch:${c.reset} ${branchName}`)
-  }
 }
 
 main().catch(error => {

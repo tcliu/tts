@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process'
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -234,6 +235,78 @@ export function getLastCommitTime(worktreePath) {
   }
 }
 
+// SHA of a worktree's HEAD, resolved inside its own path (correct for
+// detached HEAD and unregistered dirs too). Null when unresolvable.
+export function getWorktreeHead(worktreePath) {
+  try {
+    const out = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: worktreePath,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    }).trim()
+    if (/^[0-9a-f]{4,40}$/i.test(out)) {
+      return out
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+// True when the worktree's HEAD is already contained in the base branch, so
+// the worktree is deprecated (removable modulo dirty files). False when it
+// holds commits the base lacks; null when unresolvable. A checkout tracking
+// the base itself is never deprecated. SHA-based (`merge-base --is-ancestor`)
+// so detached HEAD and unregistered dirs resolve too, unlike ahead/behind
+// which needs a registered branch name.
+export function isMergedToBase(options) {
+  const { root, base, worktreePath, branch } = options
+  if (!root || !base || !worktreePath) {
+    return null
+  }
+  if (!branch || branch === base) {
+    return false
+  }
+  const head = getWorktreeHead(worktreePath)
+  if (!head) {
+    return null
+  }
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', head, base], {
+      cwd: root,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    })
+    return true
+  } catch (error) {
+    if (error && error.status === 1) {
+      return false
+    }
+    return null
+  }
+}
+
+// Read-only scan for deprecated worktrees: every non-main checkout whose HEAD
+// is already contained in the base branch. Entries mirror `listWorktrees`
+// (newest-first) plus `merged: true` and the `dirty` file count so callers
+// can skip worktrees with uncommitted work. Never throws for unresolvable
+// rows; they are omitted.
+export function listDeprecatedWorktrees(root = process.cwd()) {
+  const { base, entries } = listWorktrees(root)
+  const deprecated = []
+  for (const entry of entries) {
+    if (!entry.branch || entry.branch === base) {
+      continue
+    }
+    const merged = isMergedToBase({ root, base, worktreePath: entry.path, branch: entry.branch })
+    if (merged !== true) {
+      continue
+    }
+    deprecated.push({ ...entry, merged: true, dirty: countDirtyFiles(entry.path) })
+  }
+  return { base, entries: deprecated }
+}
+
 // Number of entries `git status --porcelain` reports for a worktree (0 =
 // clean), or null when git cannot answer. Delete flows surface this before
 // acting because `git worktree remove --force` discards uncommitted work.
@@ -294,6 +367,39 @@ export function deleteBranch(root, branch) {
   }
 }
 
+// Create a worktree and run the standard post-create setup shared by
+// scripts/create-worktree.mjs and the worktree-manager TUI: register the
+// branch, copy gitignored dev files, write DEV_TAG, and carry the main
+// checkout's uncommitted work. Throws with `phase: 'register' | 'setup'` so
+// callers can report the failing step; a setup failure leaves the partial
+// worktree for the caller to roll back via `removeWorktreeAndBranch`, since
+// only the caller knows how to surface the rollback.
+export function setupWorktree({ root, worktreePath, branch }) {
+  try {
+    registerWorktree(root, worktreePath, branch)
+  } catch (error) {
+    throw Object.assign(error, { phase: 'register' })
+  }
+  try {
+    copyDevFiles(root, worktreePath)
+    setDevTag(worktreePath, branch)
+    return { carried: copyUncommittedChanges(root, worktreePath) }
+  } catch (error) {
+    throw Object.assign(error, { phase: 'setup' })
+  }
+}
+
+// Best-effort rollback for a failed `setupWorktree`: remove the worktree and
+// its branch, reporting which half succeeded so callers surface cleanup
+// failures instead of assuming the rollback was complete. Both steps run even
+// when the first fails, matching the CLI's previous behavior.
+export function removeWorktreeAndBranch(root, worktreePath, branch) {
+  return {
+    removed: removeWorktree(root, { path: worktreePath }),
+    branchDeleted: deleteBranch(root, branch),
+  }
+}
+
 // Mirrors the `git check-ref-format --branch` rules that matter before the
 // branch exists: charset first, then the separator/dot/`.lock` rules that git
 // would otherwise reject only after `git worktree add` has already run.
@@ -351,6 +457,68 @@ function copyEnvFile(sourceEnv, targetEnv) {
     return true
   }
   return false
+}
+
+// Carries uncommitted work from the source checkout into a fresh worktree: a
+// single `git diff HEAD` patch (staged + unstaged tracked changes together,
+// so split patches can never disagree) plus untracked non-ignored files
+// (copied). Returns { patched, copied } so callers can report it. Never
+// touches the source checkout.
+export function copyUncommittedChanges(sourceRoot, targetRoot) {
+  const copied = []
+  const notes = []
+  const describe = (error) => (error instanceof Error ? error.message : String(error))
+  let patched = false
+  // A failure here means the source checkpoint could not be read, so the caller
+  // must be told the carry-over is incomplete rather than silently reporting none.
+  let patch = ''
+  try {
+    patch = execFileSync('git', ['diff', 'HEAD', '--binary'], {
+      cwd: sourceRoot,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      maxBuffer: 256 * 1024 * 1024,
+    })
+  } catch (error) {
+    notes.push(`could not read the tracked diff (${describe(error)})`)
+  }
+  if (patch.trim()) {
+    try {
+      execFileSync('git', ['apply', '--whitespace=nowarn', '-'], {
+        cwd: targetRoot,
+        input: patch,
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      })
+      patched = true
+    } catch (error) {
+      notes.push(`could not apply the tracked diff (${describe(error)})`)
+    }
+  }
+  // `-z` keeps paths NUL-delimited and unquoted, so untracked names that contain
+  // non-ASCII or escaped characters are carried instead of silently skipped.
+  let status = ''
+  try {
+    status = execFileSync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
+      cwd: sourceRoot,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    })
+  } catch (error) {
+    notes.push(`could not list untracked files (${describe(error)})`)
+  }
+  for (const record of status.split('\0')) {
+    if (!record.startsWith('?? ')) continue
+    const rel = record.slice(3)
+    if (!rel) continue
+    const source = path.join(sourceRoot, rel)
+    const target = path.join(targetRoot, rel)
+    if (existsSync(target) || !existsSync(source)) continue
+    mkdirSync(path.dirname(target), { recursive: true })
+    cpSync(source, target, { recursive: true })
+    copied.push(rel)
+  }
+  return { patched, copied, notes }
 }
 
 export function readDevTag(worktreeRoot) {

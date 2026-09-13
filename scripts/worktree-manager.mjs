@@ -6,6 +6,9 @@
 // mouse, and exact terminal restore on quit.
 // Mouse: left-click focuses a row, the [ ] box toggles selection, right-click
 // opens the menu, and the wheel scrolls the list, menus, and command output.
+// Keys n opens a branch-name prompt that creates a worktree (same setup as
+// scripts/create-worktree.mjs); d checks every row already merged into the
+// base branch ([merged] badge) so Del reviews them as one batch.
 // The worktrees frame always uses
 // the whole console and reflows on resize. Worktree data comes from the shared
 // ./_worktrees.mjs library (no duplicated git logic); delete semantics mirror
@@ -23,17 +26,24 @@
 // quit stops everything. The interactive shell keeps the fullscreen
 // suspend/resume flow because it needs a real TTY.
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { stdin, stdout } from 'node:process'
 import { StringDecoder } from 'node:string_decoder'
 
 import {
+  countDirtyFiles,
   deleteBranch,
   getLastCommitTime,
   getMainRoot,
+  getWorktreesRoot,
+  isMergedToBase,
+  isValidBranchName,
   listWorktrees,
   readBranchFromGitDir,
   removeWorktree,
+  removeWorktreeAndBranch,
+  setupWorktree,
 } from './_worktrees.mjs'
 
 import {
@@ -64,6 +74,7 @@ import {
   frameSplit,
   layout,
   listWindow,
+  buildCreateDialog,
   buildDeleteConfirmDialog,
   buildMenuDialog,
   overlayRow,
@@ -72,7 +83,7 @@ import {
   wrapPaneLine,
 } from './_worktree-tui/layout.mjs'
 
-const DEFAULT_STATUS = `${c.green}Ready.${c.reset} Tab: menu · Space: select · Del: delete · c: cmd · s: shell · r: refresh · q: quit.`
+const DEFAULT_STATUS = `${c.green}Ready.${c.reset} Tab: menu · Space: select · Del: delete · c: cmd · s: shell · n: new · d: deprecated · r: refresh · q: quit.`
 
 const OUTPUT_MAX_LINES = 2000
 const KILL_ESCALATE_MS = 2000
@@ -115,7 +126,7 @@ function writeLines(lines) {
 // ---- domain ----
 function refreshList() {
   const root = state.mainRoot
-  const { entries } = listWorktrees(root)
+  const { base, entries } = listWorktrees(root)
   const rows = [
     {
       path: root,
@@ -136,6 +147,7 @@ function refreshList() {
       branch: e.branch,
       registered: e.registered,
       main: false,
+      merged: isMergedToBase({ root, base, worktreePath: e.path, branch: e.branch }),
       aheadBehind: e.ahead === null ? null : { ahead: e.ahead, behind: e.behind },
       commitTime: e.lastCommitTime,
     })
@@ -173,6 +185,16 @@ function renderListRows() {
     procs: state.procs,
     boxW,
     ...currentListWindow(),
+  })
+}
+
+function buildCreate() {
+  const { dialogW } = currentDialogGeometry()
+  return buildCreateDialog({
+    name: state.create.input,
+    caret: state.create.caret,
+    error: state.create.error,
+    dialogW,
   })
 }
 
@@ -299,6 +321,16 @@ function cmdPromptActive() {
   return state.mode === 'run' && !!state.pane && !state.pane.running
 }
 
+// Delete the word before the caret (readline Ctrl-W), shared by the create
+// prompt and the command prompt. Mutates `chars` and returns the new caret.
+function deleteWordBack(chars, caret) {
+  let i = caret
+  while (i > 0 && chars[i - 1] === ' ') i--
+  while (i > 0 && chars[i - 1] !== ' ') i--
+  chars.splice(i, caret - i)
+  return i
+}
+
 function paneStatusText() {
   const pane = state.pane
   if (pane.running) {
@@ -419,7 +451,7 @@ function draw() {
   const side = t => `${c.cyan}│${c.reset} ${t}${c.cyan} │${c.reset}`
 
   const header =
-    `${c.bold}WORKTREE${c.reset} ${c.dim}· ${path.basename(state.mainRoot)}` +
+    `${c.bold}WORKTREE MANAGER${c.reset} ${c.dim}· ${path.basename(state.mainRoot)}` +
     ` · ${state.rows.length} worktree(s)${c.reset}`
   const focused = state.rows[state.cursor]
   const subheader =
@@ -473,9 +505,9 @@ function draw() {
   while (lines.length < rows) lines.push('')
   if (lines.length > rows) lines.length = rows
 
-  if (state.mode === 'menu' || state.mode === 'confirm') {
+  if (state.mode === 'menu' || state.mode === 'confirm' || state.mode === 'create') {
     const { dialogW: dw } = currentDialogGeometry()
-    const dg = state.mode === 'confirm' ? buildConfirm() : buildDialog()
+    const dg = state.mode === 'confirm' ? buildConfirm() : state.mode === 'create' ? buildCreate() : buildDialog()
     const dH = dg.lines.length
     const top = Math.max(0, Math.floor((rows - dH) / 2))
     const { padLeft, rightLen } = dialogColumns({ cols, dialogW: dw })
@@ -663,6 +695,14 @@ function activateMenuItem() {
         closeMenu()
         return
       case 8:
+        closeMenu()
+        openCreate()
+        return
+      case 9:
+        closeMenu()
+        scanDeprecated()
+        return
+      case 10:
         quit()
         return
       default:
@@ -686,6 +726,83 @@ function confirmDeleteFlow(targets) {
     message: `Delete ${targets.length} worktree(s)?`,
     detail: 'force removes files, branches will be deleted',
   })
+}
+
+// ---- create + deprecated scan ----
+
+function openCreate() {
+  state.mode = 'create'
+  state.create = { input: [], caret: 0, error: null }
+  redraw()
+}
+
+function cancelCreate() {
+  state.mode = 'list'
+  state.create = null
+  state.status = DEFAULT_STATUS
+  redraw()
+}
+
+// Mirrors scripts/create-worktree.mjs: register, copy dev files, tag, carry
+// the main checkout's uncommitted changes. Validation failures keep the
+// dialog open with an error; setup failures clean up and report status.
+function submitCreate() {
+  const branchName = state.create.input.join('').trim()
+  if (!branchName) {
+    cancelCreate()
+    return
+  }
+  if (!isValidBranchName(branchName)) {
+    state.create.error = `Invalid branch name: ${branchName}`
+    redraw()
+    return
+  }
+  const dir = path.join(getWorktreesRoot(state.mainRoot), branchName)
+  if (existsSync(dir)) {
+    state.create.error = `Worktree already exists: ${branchName}`
+    redraw()
+    return
+  }
+  try {
+    const { carried } = setupWorktree({ root: state.mainRoot, worktreePath: dir, branch: branchName })
+    state.mode = 'list'
+    state.create = null
+    refreshList()
+    const notes = carried.notes.length ? ` ${c.yellow}· ${carried.notes.join('; ')}${c.reset}` : ''
+    state.status = `${c.green}Worktree created:${c.reset} ${c.gray}${branchName}${c.reset}${notes}`
+  } catch (e) {
+    if (e?.phase === 'register') {
+      state.create.error = `Could not create worktree (${e?.message ?? e})`
+      redraw()
+      return
+    }
+    const cleanup = removeWorktreeAndBranch(state.mainRoot, dir, branchName)
+    state.mode = 'list'
+    state.create = null
+    state.status = cleanup.removed
+      ? `${c.red}Worktree setup failed, cleaned up (${e?.message ?? e})${c.reset}`
+      : `${c.red}Worktree setup failed and rollback failed (${e?.message ?? e})${c.reset}`
+  }
+  redraw()
+}
+
+// Check every row already merged into the base branch so Del reviews them
+// as a batch. Dirty counts surface before the destructive confirm.
+function scanDeprecated() {
+  const merged = state.rows.filter(r => !r.main && r.merged)
+  if (merged.length === 0) {
+    state.status = `${c.yellow}No deprecated worktrees: every worktree holds commits missing from the base.${c.reset}`
+    redraw()
+    return
+  }
+  state.checked = new Set(merged.map(r => r.path))
+  let dirty = 0
+  for (const r of merged) {
+    if (countDirtyFiles(r.path) > 0) dirty++
+  }
+  const dirtyNote = dirty > 0 ? ` ${c.yellow}· ${dirty} with uncommitted changes${c.reset}` : ''
+  state.status = `${c.green}${merged.length} deprecated worktree(s) selected${c.reset}${dirtyNote} · Del deletes · Space toggles`
+  redraw()
 }
 
 // Close the confirm dialog before deleting: a failing delete must never
@@ -783,8 +900,8 @@ function handleMouse({ button, x, y, release }) {
   const { cols, rows: rr } = currentLayout()
   const { dialogW, listH } = currentDialogGeometry()
 
-  if (state.mode === 'menu' || state.mode === 'confirm') {
-    const dg = state.mode === 'confirm' ? buildConfirm() : buildDialog()
+  if (state.mode === 'menu' || state.mode === 'confirm' || state.mode === 'create') {
+    const dg = state.mode === 'confirm' ? buildConfirm() : state.mode === 'create' ? buildCreate() : buildDialog()
     const top = Math.max(0, Math.floor((rr - dg.lines.length) / 2))
     const left = dialogColumns({ cols, dialogW }).padLeft
     const sr = y - 1
@@ -792,6 +909,8 @@ function handleMouse({ button, x, y, release }) {
     if (sc < left || sr < top || sr >= top + dg.lines.length) {
       if (state.mode === 'menu') {
         closeMenu()
+      } else if (state.mode === 'create') {
+        cancelCreate()
       } else {
         state.mode = 'list'
         state.confirm = null
@@ -805,6 +924,10 @@ function handleMouse({ button, x, y, release }) {
       if (sr === top + CONFIRM_NO_ROW) resolveConfirm(false)
       else if (sr === top + CONFIRM_YES_ROW) resolveConfirm(true)
       else redraw()
+      return
+    }
+    if (state.mode === 'create') {
+      redraw()
       return
     }
     if (sr - top === 1) {
@@ -968,6 +1091,17 @@ function applyInputEvent(event) {
 // Ctrl-C/D/Q: while a command runs Ctrl-C stops it; in the command prompt
 // Ctrl-C clears the line, Ctrl-D drops the finished proc; otherwise quit.
 function handleControlKey(key) {
+  if (state.mode === 'create') {
+    if (key === 'a') state.create.caret = 0
+    else if (key === 'e') state.create.caret = state.create.input.length
+    else if (key === 'w') state.create.caret = deleteWordBack(state.create.input, state.create.caret)
+    else {
+      cancelCreate()
+      return
+    }
+    redraw()
+    return
+  }
   if (state.mode === 'run' && state.pane?.running) {
     paneKillChild()
     state.pane.dirty = true
@@ -975,6 +1109,11 @@ function handleControlKey(key) {
     return
   }
   if (cmdPromptActive()) {
+    if (key === 'w' && state.cmdCaret > 0) {
+      state.cmdCaret = deleteWordBack(state.cmdInput, state.cmdCaret)
+      redraw()
+      return
+    }
     if (state.cmdInput.length || state.cmdCaret) {
       state.cmdInput = []
       state.cmdCaret = 0
@@ -1021,12 +1160,25 @@ function handleTextInput(value) {
     } else if (value === 'r') {
       refreshList()
       redraw()
+    } else if (value === 'n') {
+      openCreate()
+    } else if (value === 'd') {
+      scanDeprecated()
     } else if (value === 's') {
       launchShell(state.rows[state.cursor])
     } else if (value === 'c') {
       startCommandInput()
     } else if (value === 'x') {
       killFocusedProc()
+    }
+    return
+  }
+  if (state.mode === 'create') {
+    if (value.codePointAt(0) >= 0x20) {
+      state.create.input.splice(state.create.caret, 0, value)
+      state.create.caret += value.length
+      state.create.error = null
+      redraw()
     }
     return
   }
@@ -1042,7 +1194,9 @@ function handleTextInput(value) {
 }
 
 function handleArrowUp() {
-  if (cmdPromptActive()) {
+  if (state.mode === 'create') {
+    return
+  } else if (cmdPromptActive()) {
     historyUp()
   } else if (state.mode === 'menu') {
     state.menuCursor = Math.max(0, state.menuCursor - 1)
@@ -1056,7 +1210,9 @@ function handleArrowUp() {
 }
 
 function handleArrowDown() {
-  if (cmdPromptActive()) {
+  if (state.mode === 'create') {
+    return
+  } else if (cmdPromptActive()) {
     historyDown()
   } else if (state.mode === 'menu') {
     state.menuCursor = Math.min(currentMenuOptions().length - 1, state.menuCursor + 1)
@@ -1070,7 +1226,10 @@ function handleArrowDown() {
 }
 
 function handleArrowLeft() {
-  if (state.mode === 'menu') {
+  if (state.mode === 'create') {
+    state.create.caret = Math.max(0, state.create.caret - 1)
+    redraw()
+  } else if (state.mode === 'menu') {
     state.menuTab = 0
     state.menuCursor = 0
     redraw()
@@ -1083,7 +1242,10 @@ function handleArrowLeft() {
 }
 
 function handleArrowRight() {
-  if (state.mode === 'menu') {
+  if (state.mode === 'create') {
+    state.create.caret = Math.min(state.create.input.length, state.create.caret + 1)
+    redraw()
+  } else if (state.mode === 'menu') {
     state.menuTab = 1
     state.menuCursor = 0
     redraw()
@@ -1096,7 +1258,10 @@ function handleArrowRight() {
 }
 
 function handleHome() {
-  if (cmdPromptActive()) moveCmdCaret(-state.cmdCaret)
+  if (state.mode === 'create') {
+    state.create.caret = 0
+    redraw()
+  } else if (cmdPromptActive()) moveCmdCaret(-state.cmdCaret)
   else if (state.mode === 'list') {
     state.cursor = 0
     redraw()
@@ -1104,7 +1269,10 @@ function handleHome() {
 }
 
 function handleEnd() {
-  if (cmdPromptActive()) moveCmdCaret(state.cmdInput.length - state.cmdCaret)
+  if (state.mode === 'create') {
+    state.create.caret = state.create.input.length
+    redraw()
+  } else if (cmdPromptActive()) moveCmdCaret(state.cmdInput.length - state.cmdCaret)
   else if (state.mode === 'list') {
     state.cursor = Math.max(0, state.rows.length - 1)
     redraw()
@@ -1132,7 +1300,9 @@ function handleShiftArrow(dir) {
 }
 
 function handleEnter() {
-  if (state.mode === 'menu') {
+  if (state.mode === 'create') {
+    submitCreate()
+  } else if (state.mode === 'menu') {
     activateMenuItem()
   } else if (state.mode === 'confirm') {
     resolveConfirm(state.confirm ? state.confirm.yes === 1 : false)
@@ -1144,14 +1314,20 @@ function handleEnter() {
 }
 
 function handleBackspace() {
-  if (cmdPromptActive() && state.cmdCaret > 0) {
+  if (state.mode === 'create' && state.create.caret > 0) {
+    state.create.input.splice(--state.create.caret, 1)
+    state.create.error = null
+    redraw()
+  } else if (cmdPromptActive() && state.cmdCaret > 0) {
     state.cmdInput.splice(--state.cmdCaret, 1)
     redraw()
   }
 }
 
 function handleEscape() {
-  if (state.mode === 'run') {
+  if (state.mode === 'create') {
+    cancelCreate()
+  } else if (state.mode === 'run') {
     // Esc detaches: the child keeps running in the background. Ctrl-C kills.
     state.status = `${c.dim}Detached; command keeps running. Focus row + c to reattach.${c.reset}`
     paneDetach()
@@ -1181,6 +1357,7 @@ const state = {
   menuCursor: 0,
   mode: 'list',
   confirm: null,
+  create: null,
   pane: null,
   procs: new Map(),
   cmdInput: [],

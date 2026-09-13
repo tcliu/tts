@@ -42,6 +42,7 @@ const CONTROL_KEYS = {
   '\x05': 'e',
   '\x10': 'p',
   '\x0e': 'n',
+  '\x17': 'w',
 }
 
 // Returns the index after the sequence, or -1 when the chunk ends mid-sequence

@@ -24,7 +24,7 @@ export const MODES = ['Actions', 'Command']
 
 export const HELP_TEXT =
   'Arrows: move · Space: select · a: all · Tab: menu · c: cmd · s: shell · ' +
-  'Del: delete · x: stop bg · r: refresh · PgUp/PgDn: cmd output · ' +
+  'Del: delete · n: new · d: deprecated · x: stop bg · r: refresh · PgUp/PgDn: cmd output · ' +
   'q: quit · Ctrl-C: stop cmd/quit · Mouse: click focus · [ ] select · right-click menu · wheel scroll'
 
 export const DIALOG_OPTION_START = 3 // border, tabs line, separator precede options
@@ -78,6 +78,7 @@ export function renderRows({ rows, cursor, checked, procs, boxW, first, last, bo
     const branch = row.branch ? `${c.gray}(${row.branch})${c.reset}` : `${c.gray}(detached)${c.reset}`
     const unregistered = row.registered === false ? ` ${c.yellow}[unregistered]${c.reset}` : ''
     const mainTag = row.main ? ` ${c.yellow}[main]${c.reset}` : ''
+    const mergedTag = row.merged ? ` ${c.yellow}[merged]${c.reset}` : ''
     const aheadBehind = row.aheadBehind
     const parts = []
     const proc = procs.get(row.path)
@@ -93,7 +94,7 @@ export function renderRows({ rows, cursor, checked, procs, boxW, first, last, bo
       parts.push(`${fresh ? c.cyan : c.dim}${age}${c.reset}`)
     }
     const meta = parts.length ? ` ${c.dim}·${c.reset} ${parts.join(' ')}` : ''
-    let cells = `${marker} ${checkbox} ${row.name} ${branch}${unregistered}${mainTag}${meta}`
+    let cells = `${marker} ${checkbox} ${row.name} ${branch}${unregistered}${mainTag}${mergedTag}${meta}`
     if (!isCursor) cells = c.dim + cells + c.reset
     // Last two content columns are reserved for the scroll edge marker.
     let line = padRight(truncate(cells, contentW - 2), contentW - 2)
@@ -157,6 +158,8 @@ export function currentOptions({ menuTab, checkedCount }) {
       'Select all',
       'Clear selection',
       'Refresh',
+      'Create worktree…',
+      'Select deprecated…',
       'Quit',
     ]
   }
@@ -208,6 +211,30 @@ export function buildDeleteConfirmDialog({ message, detail, yes, dialogW, listH 
     selectedIndex: yes,
     headerLines: [message, detail],
     accent: c.red,
+  })
+}
+
+// The branch-name prompt for worktree creation: a text field with a block
+// cursor plus an optional error line. Pure: the caller owns the char array
+// and caret in its state, mirroring the command-prompt input convention.
+export function buildCreateDialog({ name, caret, error, dialogW }) {
+  const safeCaret = Math.max(0, Math.min(name.length, caret))
+  const before = name.slice(0, safeCaret).join('')
+  const at = name[safeCaret] ?? ' '
+  const after = name.slice(safeCaret + 1).join('')
+  const headerLines = [
+    `Branch name (${c.dim}type/name · empty cancels${c.reset}):`,
+    `${before}${c.reverse}${at}${c.reset}${after}`,
+  ]
+  if (error) headerLines.push(`${c.red}${error}${c.reset}`)
+  else headerLines.push(`${c.dim}Enter creates · Esc cancels${c.reset}`)
+  return buildDialogBox({
+    title: 'NEW WORKTREE',
+    dialogW,
+    listH: 0,
+    options: [],
+    selectedIndex: 0,
+    headerLines,
   })
 }
 
