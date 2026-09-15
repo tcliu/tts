@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { c } from './_terminal.mjs'
 import { interactiveShell } from './_interactive-shell.mjs'
-import { listRegisterTargets, registerWorktree } from './_worktrees.mjs'
+import { listRegisterTargets, registerWorktree, resolveWorktreesDir } from './_worktrees.mjs'
 
 export { listRegisterTargets, registerWorktree }
 
@@ -49,7 +49,7 @@ async function runRegisterInterview(worktrees) {
 
 async function main() {
   const root = process.cwd()
-  const worktrees = listRegisterTargets(root)
+  const worktrees = listRegisterTargets(root, resolveWorktreesDir(root))
 
   if (worktrees.length === 0) {
     console.log(`${c.yellow}No unregistered worktrees found.${c.reset}`)

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { c } from './_terminal.mjs'
 import { interactiveShell } from './_interactive-shell.mjs'
-import { copyDevFiles, listCopyTargets, readDevTag } from './_worktrees.mjs'
+import { copyDevFiles, listCopyTargets, readDevTag, resolveWorktreesDir } from './_worktrees.mjs'
 
 export { copyDevFiles }
 
@@ -58,7 +58,7 @@ async function runCopyInterview(worktrees) {
 
 async function main() {
   const root = process.cwd()
-  const worktrees = listCopyTargets(root)
+  const worktrees = listCopyTargets(root, resolveWorktreesDir(root))
 
   if (worktrees.length === 0) {
     console.log(`${c.yellow}No worktrees found to copy to.${c.reset}`)

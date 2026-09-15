@@ -4,7 +4,7 @@ import { parseArgs as parseCliArgs } from 'node:util'
 
 import { c, selectOne } from './_terminal.mjs'
 import { interactiveShell } from './_interactive-shell.mjs'
-import { countDirtyFiles, deleteBranch, listDeleteTargets, removeWorktree } from './_worktrees.mjs'
+import { countDirtyFiles, deleteBranch, findProcessesInPath, listDeleteTargets, removeWorktree, resolveWorktreesDir } from './_worktrees.mjs'
 
 function fail(message) {
   console.error(`${c.red}${message}${c.reset}`)
@@ -117,6 +117,16 @@ async function runDeleteInterview(worktrees) {
 // --yes (same contract as scripts/vercel.mjs remove-deployment).
 async function confirmDeletion({ selected, yes }) {
   for (const worktree of selected) {
+    // Warn-only here (unlike the manager's refuse-before-confirm): the CLI
+    // already requires an explicit Yes with No as the default, so this stays
+    // informed consent rather than changing the command's exit contract.
+    const blockers = findProcessesInPath(worktree.path) ?? []
+    if (blockers.length > 0) {
+      const who = blockers.map(p => `${p.pid}${p.cmd ? ` (${p.cmd})` : ''}`).join(', ')
+      console.log(
+        `  ${c.red}✖ ${worktree.path}${c.reset} ${c.gray}(process(es) running inside: ${who} — stop them or the delete half-finishes)${c.reset}`,
+      )
+    }
     const dirty = countDirtyFiles(worktree.path)
     if (dirty === null || dirty > 0) {
       const detail = dirty === null ? 'status unavailable' : `${dirty} uncommitted change(s)`
@@ -139,7 +149,7 @@ async function confirmDeletion({ selected, yes }) {
 async function main() {
   const root = process.cwd()
   const { interactive, yes, positional } = parseArgs(process.argv.slice(2))
-  const worktrees = listDeleteTargets(root)
+  const worktrees = listDeleteTargets(root, resolveWorktreesDir(root))
 
   if (worktrees.length === 0) {
     console.log(`${c.yellow}No worktrees found.${c.reset}`)

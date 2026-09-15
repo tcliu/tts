@@ -9,6 +9,7 @@ import {
   getWorktreesRoot,
   isValidBranchName,
   removeWorktreeAndBranch,
+  resolveWorktreesDir,
   setupWorktree,
 } from './_worktrees.mjs'
 
@@ -50,6 +51,7 @@ function parseArgs(argv) {
 // Effect code stays outside the graph, mirroring deploy.mjs
 // (runDeployInterview collects answers, runDeployFlow acts on them).
 function buildBranchGraph(root) {
+  const worktreesDir = resolveWorktreesDir(root)
   const graph = {
     branch: {
       message: 'Create a new worktree:',
@@ -68,7 +70,7 @@ function buildBranchGraph(root) {
           }
           if (!isValidBranchName(answer)) {
             console.error(`${c.red}Invalid branch name:${c.reset} ${answer}`)
-          } else if (existsSync(path.join(getWorktreesRoot(root), answer))) {
+          } else if (existsSync(path.join(getWorktreesRoot(root, worktreesDir), answer))) {
             console.error(`${c.red}Worktree already exists:${c.reset} ${answer}`)
           } else {
             ctx.branchName = answer
@@ -108,7 +110,8 @@ async function runBranchInterview(root) {
 
 async function main() {
   const root = process.cwd()
-  if (path.resolve(root).split(path.sep).includes('.worktrees')) {
+  const worktreesDir = resolveWorktreesDir(root)
+  if (path.resolve(root).split(path.sep).includes(path.basename(worktreesDir))) {
     console.error(`${c.red}Run this script from the default worktree, not a nested worktree.${c.reset}`)
     process.exit(1)
   }
@@ -129,7 +132,7 @@ async function main() {
     process.exit(1)
   }
 
-  const worktreeDir = path.join(getWorktreesRoot(root), branchName)
+  const worktreeDir = path.join(getWorktreesRoot(root, worktreesDir), branchName)
   if (existsSync(worktreeDir)) {
     console.error(`${c.red}Worktree already exists:${c.reset} ${worktreeDir}`)
     process.exit(1)

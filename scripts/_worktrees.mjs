@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -16,8 +17,49 @@ import path from 'node:path'
 
 import { parseEnvFile } from './env-file.mjs'
 
-export function getWorktreesRoot(root = process.cwd()) {
-  return path.join(root, '.worktrees')
+// Worktree location: `<project>/.worktrees` unless the project overrides it
+// through `WORKTREES_DIR` in its gitignored `.env.local` (see
+// `resolveWorktreesDir`). One named default keeps every script on the same
+// directory instead of each one spelling out the literal.
+export const DEFAULT_WORKTREES_DIR = '.worktrees'
+export const WORKTREES_DIR_KEY = 'WORKTREES_DIR'
+
+// Absolute path of the configured worktree directory: a relative value is
+// resolved against the project root, an absolute one is used as given.
+export function getWorktreesRoot(root = process.cwd(), worktreesDir = DEFAULT_WORKTREES_DIR) {
+  if (!worktreesDir) return path.join(root, DEFAULT_WORKTREES_DIR)
+  return path.isAbsolute(worktreesDir) ? worktreesDir : path.join(root, worktreesDir)
+}
+
+// The project's configured worktree directory (relative value as authored, so
+// the prompt can show it back), falling back to the default.
+export function resolveWorktreesDir(root = process.cwd()) {
+  const value = parseEnvFile(path.join(root, '.env.local'))[WORKTREES_DIR_KEY]
+  return value && value.trim() ? value.trim() : DEFAULT_WORKTREES_DIR
+}
+
+// Persist the worktree directory in the project's gitignored `.env.local`,
+// clearing the key when the value is the default so the file keeps only real
+// overrides. Returns the stored value (`null` once cleared).
+export function setWorktreesDir(root, worktreesDir) {
+  const value = String(worktreesDir ?? '').trim()
+  const next = !value || value === DEFAULT_WORKTREES_DIR ? null : value
+  setLocalEnvValue(path.join(root, '.env.local'), WORKTREES_DIR_KEY, next)
+  return next
+}
+
+// True when git ignores `target` inside `root`; null when git cannot answer.
+// A worktree directory must stay out of version control, so the manager warns
+// when a new location is not covered by `.gitignore`.
+export function isPathIgnored(root, target) {
+  const relative = path.relative(root, path.resolve(target))
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return false
+  try {
+    execFileSync('git', ['check-ignore', '-q', '--', relative], { cwd: root, stdio: 'pipe' })
+    return true
+  } catch (error) {
+    return error?.status === 1 ? false : null
+  }
 }
 
 export function getMainRoot(root = process.cwd()) {
@@ -28,7 +70,8 @@ export function getMainRoot(root = process.cwd()) {
   }).trim()
 }
 
-export function getGitWorktrees(root = process.cwd()) {
+export function getGitWorktrees(root = process.cwd(), worktreesDir = DEFAULT_WORKTREES_DIR) {
+  const worktreesRoot = getWorktreesRoot(root, worktreesDir)
   const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
     cwd: root,
     encoding: 'utf-8',
@@ -58,7 +101,7 @@ export function getGitWorktrees(root = process.cwd()) {
   return worktrees.map(worktree => ({
     ...worktree,
     path: path.resolve(worktree.path),
-    name: path.relative(getWorktreesRoot(root), path.resolve(worktree.path)),
+    name: path.relative(worktreesRoot, path.resolve(worktree.path)),
   }))
 }
 
@@ -66,8 +109,8 @@ export function hasGitEntry(dir) {
   return existsSync(path.join(dir, '.git'))
 }
 
-export function listNestedGitDirs(root = process.cwd()) {
-  const worktreesRoot = getWorktreesRoot(root)
+export function listNestedGitDirs(root = process.cwd(), worktreesDir = DEFAULT_WORKTREES_DIR) {
+  const worktreesRoot = getWorktreesRoot(root, worktreesDir)
   if (!existsSync(worktreesRoot)) return []
 
   const results = []
@@ -110,13 +153,13 @@ export function listNestedGitDirs(root = process.cwd()) {
   return results.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function listCopyTargets(root = process.cwd()) {
-  return listNestedGitDirs(root)
+export function listCopyTargets(root = process.cwd(), worktreesDir = DEFAULT_WORKTREES_DIR) {
+  return listNestedGitDirs(root, worktreesDir)
 }
 
-export function listDeleteTargets(root = process.cwd()) {
-  const registered = new Map(getGitWorktrees(root).map(worktree => [worktree.path, worktree]))
-  return listNestedGitDirs(root).map(item => {
+export function listDeleteTargets(root = process.cwd(), worktreesDir = DEFAULT_WORKTREES_DIR) {
+  const registered = new Map(getGitWorktrees(root, worktreesDir).map(worktree => [worktree.path, worktree]))
+  return listNestedGitDirs(root, worktreesDir).map(item => {
     const registeredEntry = registered.get(item.path)
     if (registeredEntry) return registeredEntry
     return {
@@ -135,12 +178,12 @@ export function listDeleteTargets(root = process.cwd()) {
 // behind, lastCommitTime }]` newest-first. Uses the local exported primitives
 // (`listNestedGitDirs`, `getGitWorktrees`) so there is exactly one
 // implementation of each git query in this file.
-export function listWorktrees(root = process.cwd()) {
+export function listWorktrees(root = process.cwd(), worktreesDir = DEFAULT_WORKTREES_DIR) {
   const mainRoot = path.resolve(getMainRoot(root))
   const base = resolveBaseBranch(root)
-  const registered = new Map(getGitWorktrees(root).map(worktree => [worktree.path, worktree]))
+  const registered = new Map(getGitWorktrees(root, worktreesDir).map(worktree => [worktree.path, worktree]))
   const entries = []
-  for (const item of listNestedGitDirs(root)) {
+  for (const item of listNestedGitDirs(root, worktreesDir)) {
     if (item.path === mainRoot) continue
     const registeredEntry = registered.get(item.path)
     const branch = registeredEntry?.branch ?? readBranchFromGitDir(item.path)
@@ -159,9 +202,9 @@ export function listWorktrees(root = process.cwd()) {
   return { base, entries }
 }
 
-export function listRegisterTargets(root = process.cwd()) {
-  const registered = new Set(getGitWorktrees(root).map(worktree => worktree.path))
-  return listNestedGitDirs(root).filter(item => !registered.has(item.path))
+export function listRegisterTargets(root = process.cwd(), worktreesDir = DEFAULT_WORKTREES_DIR) {
+  const registered = new Set(getGitWorktrees(root, worktreesDir).map(worktree => worktree.path))
+  return listNestedGitDirs(root, worktreesDir).filter(item => !registered.has(item.path))
 }
 
 export function readBranchFromGitDir(worktreePath) {
@@ -291,8 +334,8 @@ export function isMergedToBase(options) {
 // (newest-first) plus `merged: true` and the `dirty` file count so callers
 // can skip worktrees with uncommitted work. Never throws for unresolvable
 // rows; they are omitted.
-export function listDeprecatedWorktrees(root = process.cwd()) {
-  const { base, entries } = listWorktrees(root)
+export function listDeprecatedWorktrees(root = process.cwd(), worktreesDir = DEFAULT_WORKTREES_DIR) {
+  const { base, entries } = listWorktrees(root, worktreesDir)
   const deprecated = []
   for (const entry of entries) {
     if (!entry.branch || entry.branch === base) {
@@ -310,14 +353,128 @@ export function listDeprecatedWorktrees(root = process.cwd()) {
 // Number of entries `git status --porcelain` reports for a worktree (0 =
 // clean), or null when git cannot answer. Delete flows surface this before
 // acting because `git worktree remove --force` discards uncommitted work.
+// Delegates to `getDirtyDetail` so the count and the preview always come from
+// one porcelain read.
 export function countDirtyFiles(worktreePath) {
+  return getDirtyDetail(worktreePath).dirty
+}
+
+// Max dirty file lines kept per worktree for the manager's detail line.
+// The full count comes from the same porcelain output, so refreshList makes
+// one git call per checkout instead of two. `files` holds the first `limit`
+// `{ code, path }` entries; both are null when git cannot answer, which
+// callers treat as unsafe rather than clean.
+export const DIRTY_FILES_PREVIEW = 5
+
+// Every changed file in a worktree as `{ code, path }`, newest porcelain
+// semantics: `code` is the two-letter status trimmed to its meaningful half
+// (`M`, `A`, `??`). Parsed from the NUL-delimited form so paths that need
+// quoting survive intact; a rename/copy entry carries its source path in the
+// following record, which is skipped. Null when git cannot answer.
+export function listDirtyFiles(worktreePath) {
   try {
-    const out = execFileSync('git', ['status', '--porcelain'], {
+    const out = execFileSync('git', ['status', '--porcelain=v1', '-z'], {
       cwd: worktreePath,
       encoding: 'utf-8',
       stdio: 'pipe',
     })
-    return out.split('\n').filter(line => line.trim()).length
+    const records = out.split('\0')
+    const files = []
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i]
+      if (!record) continue
+      files.push({ code: record.slice(0, 2).trim() || '??', path: record.slice(3) })
+      if (record[0] === 'R' || record[0] === 'C') i++ // rename/copy source record
+    }
+    return files
+  } catch {
+    return null
+  }
+}
+
+export function getDirtyDetail(worktreePath, limit = DIRTY_FILES_PREVIEW) {
+  const files = listDirtyFiles(worktreePath)
+  if (!files) return { dirty: null, files: null }
+  return { dirty: files.length, files: files.slice(0, limit) }
+}
+
+// Line cap for one file's diff in the manager's viewer; a vendored file or a
+// generated bundle must not lock the TUI filling the pane.
+export const FILE_DIFF_MAX_LINES = 2000
+
+// Text diff of one changed file, for the uncommitted-changes viewer. Untracked
+// entries have no committed counterpart, so they are diffed against /dev/null;
+// git exits 1 when the files differ, which is the expected result and still
+// carries the patch on stdout. Returns `{ lines, truncated }`, or null when the
+// entry has no readable text diff (an untracked directory, a missing file).
+export function getFileDiff({ worktreePath, file, maxLines = FILE_DIFF_MAX_LINES }) {
+  // `--no-index` compares filesystem paths, so it must not be given the `--`
+  // separator: git would treat `/dev/null` as relative to the entry's own
+  // directory and fail to read anything.
+  const args =
+    file.code === '??'
+      ? ['diff', '--no-index', '--binary', '/dev/null', file.path]
+      : ['diff', 'HEAD', '--', file.path]
+  let out
+  try {
+    out = execFileSync('git', args, {
+      cwd: worktreePath,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      maxBuffer: 32 * 1024 * 1024,
+    })
+  } catch (error) {
+    if (typeof error?.stdout !== 'string') return null
+    out = error.stdout // --no-index exit 1: files differ, patch is still here
+  }
+  const lines = out.split('\n')
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+  const truncated = lines.length > maxLines
+  return { lines: truncated ? lines.slice(0, maxLines) : lines, truncated }
+}
+
+// Processes whose current working directory lies inside `worktreePath`.
+// Deleting a worktree out from under a running process half-removes it: the
+// checkout is unregistered but its files, branch, and server are left behind
+// (observed with a dev server running inside the target). Delete flows refuse
+// guarded targets and name the PIDs instead. Linux-only (`/proc` cwd scan,
+// self excluded); returns null where /proc is unavailable so callers proceed
+// without the guard rather than blocking every delete on unknown platforms.
+export function findProcessesInPath(worktreePath) {
+  const root = path.resolve(worktreePath)
+  let entries
+  try {
+    entries = readdirSync('/proc')
+  } catch {
+    return null
+  }
+  const found = []
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue
+    const pid = Number(entry)
+    if (pid === process.pid) continue
+    let cwd
+    try {
+      cwd = readlinkSync(`/proc/${pid}/cwd`)
+    } catch {
+      continue // exited, or another user's process
+    }
+    if (cwd === root || cwd.startsWith(root + path.sep)) {
+      found.push({ pid, cmd: readProcessCmd(pid) })
+    }
+  }
+  return found
+}
+
+function readProcessCmd(pid) {
+  try {
+    const parts = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').filter(Boolean)
+    if (parts.length === 0) return null
+    parts[0] = path.basename(parts[0])
+    // Strip control characters (including ESC): argv renders raw into the
+    // TUI status line, so embedded escapes would act as terminal injection.
+    const cmd = parts.join(' ').replace(/[\0-\x1F\x7F]/g, '')
+    return cmd.length > 80 ? `${cmd.slice(0, 80)}\u2026` : cmd
   } catch {
     return null
   }
@@ -330,7 +487,13 @@ export function registerWorktree(root, worktreePath, branch) {
   })
 }
 
-export function removeWorktree(root, worktree) {
+// Upper bound for `git worktree remove --force` before the rmSync fallback
+// takes over: a hung remove must never freeze the manager's synchronous batch
+// delete with the confirm dialog still on screen.
+export const REMOVE_TIMEOUT_MS = 120_000
+
+export function removeWorktree(root, worktree, options = {}) {
+  const { timeoutMs = REMOVE_TIMEOUT_MS } = options
   const mainRoot = getMainRoot(root)
   if (path.resolve(worktree.path) === mainRoot) {
     return false
@@ -341,6 +504,7 @@ export function removeWorktree(root, worktree) {
       cwd: root,
       encoding: 'utf-8',
       stdio: 'pipe',
+      timeout: timeoutMs,
     })
     return true
   } catch {
@@ -413,28 +577,38 @@ export function isValidBranchName(name) {
 }
 
 export function setDevTag(worktreeRoot, tag) {
-  const filePath = path.join(worktreeRoot, '.env.local')
+  setLocalEnvValue(path.join(worktreeRoot, '.env.local'), 'DEV_TAG', tag)
+}
+
+// Set, replace, or clear one key in a gitignored dotenv file, preserving
+// comments and unrelated lines. `value === null` removes the line; duplicate
+// keys collapse to the last write. Creating the file is allowed — it is the
+// project's local-only config surface.
+function setLocalEnvValue(filePath, key, value) {
   const content = existsSync(filePath) ? readFileSync(filePath, 'utf8') : ''
-  // One dotenv parser for the whole script layer (env-file.mjs), so quoting
-  // and comment handling cannot drift between scripts.
-  const values = parseEnvFile(filePath)
-  const entry = `DEV_TAG=${tag}`
-  if (!Object.prototype.hasOwnProperty.call(values, 'DEV_TAG')) {
-    writeFileSync(filePath, content.replace(/\s*$/, '') + (content.trim() ? '\n' : '') + `${entry}\n`)
-    return
-  }
-  const output = content.split(/\r?\n/).map(line => {
+  const kept = []
+  let replaced = false
+  for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) return line
-    const separatorIndex = trimmed.indexOf('=')
-    if (separatorIndex === -1) return line
-    if (trimmed.slice(0, separatorIndex).trim() !== 'DEV_TAG') return line
-    return entry
-  })
-  // Collapse trailing blank lines first: `split` leaves an empty tail when the
-  // file ends with a newline, so a plain join would append a blank line on
-  // every rewrite and grow the file without bound.
-  writeFileSync(filePath, `${output.join('\n').replace(/\s*$/, '')}\n`)
+    const separatorIndex = trimmed && !trimmed.startsWith('#') ? trimmed.indexOf('=') : -1
+    if (separatorIndex !== -1 && trimmed.slice(0, separatorIndex).trim() === key) {
+      if (value === null) continue // cleared
+      if (!replaced) {
+        kept.push(`${key}=${value}`)
+        replaced = true
+      }
+      continue // a duplicate key collapses into the first write
+    }
+    kept.push(line)
+  }
+  if (value !== null && !replaced) {
+    // Collapse trailing blank lines first: `split` leaves an empty tail when
+    // the file ends with a newline, so a plain join would append a blank line
+    // on every rewrite and grow the file without bound.
+    while (kept.length > 0 && kept[kept.length - 1].trim() === '') kept.pop()
+    kept.push(`${key}=${value}`)
+  }
+  writeFileSync(filePath, `${kept.join('\n').replace(/\s*$/, '')}\n`)
 }
 
 export function copyDevFiles(sourceRoot, targetRoot) {

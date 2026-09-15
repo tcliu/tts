@@ -8,14 +8,31 @@
 // opens the menu, and the wheel scrolls the list, menus, and command output.
 // Keys n opens a branch-name prompt that creates a worktree (same setup as
 // scripts/create-worktree.mjs); d checks every row already merged into the
-// base branch ([merged] badge) so Del reviews them as one batch.
+// base branch with a clean working tree ([merged] badge) so Del reviews them
+// as one batch — a checkout holding uncommitted work is never offered, since
+// the delete path force-removes it.
 // The worktrees frame always uses
 // the whole console and reflows on resize. Worktree data comes from the shared
 // ./_worktrees.mjs library (no duplicated git logic); delete semantics mirror
 // scripts/delete-worktrees.mjs (remove worktree, then delete its branch), with
 // one safety divergence: unregistered dirs skip branch cleanup because their
 // branch name comes from a foreign .git and may collide with a real main-repo
-// branch.
+// branch. Rows and the detail line under the box report each checkout's
+// uncommitted files, including the main one.
+//
+// Changes mode (`u`, menu: Show uncommitted changes) splits the box into two
+// panes: every changed file on the left with its porcelain status code, the
+// focused file's diff on the right. ←/→ move focus between the panes, so ↑/↓
+// either steps the file selection or walks the diff one line at a time;
+// PgUp/PgDn and the wheel scroll the diff, r re-reads the file list, Esc/q
+// closes, and clicking a pane focuses it (a click on a file name also selects
+// it). The focused pane's header carries the marker.
+// Worktree directory (`w`) stores a relative or absolute root in the project's
+// gitignored `.env.local` under WORKTREES_DIR, defaulting to `.worktrees`, and
+// re-scans the list after a change; it stays off the menu because it is a
+// setting rather than an action. Every script that walks worktrees resolves the
+// same setting, and a directory outside .gitignore is reported in the status
+// line.
 //
 // Command mode attaches a sub-pane to the focused row and works like an
 // embedded shell session: the status line acts as the prompt, each entered
@@ -32,17 +49,25 @@ import { stdin, stdout } from 'node:process'
 import { StringDecoder } from 'node:string_decoder'
 
 import {
+  DEFAULT_WORKTREES_DIR,
   countDirtyFiles,
   deleteBranch,
+  findProcessesInPath,
+  getDirtyDetail,
+  getFileDiff,
   getLastCommitTime,
   getMainRoot,
   getWorktreesRoot,
   isMergedToBase,
+  isPathIgnored,
   isValidBranchName,
+  listDirtyFiles,
   listWorktrees,
   readBranchFromGitDir,
   removeWorktree,
   removeWorktreeAndBranch,
+  resolveWorktreesDir,
+  setWorktreesDir,
   setupWorktree,
 } from './_worktrees.mjs'
 
@@ -67,23 +92,30 @@ import {
   DIALOG_OPTION_START,
   LIST_TOP_ROW,
   PRESET_COMMANDS,
+  buildDiffDetail,
+  buildDirtyDetail,
   currentOptions,
   dialogColumns,
   dialogGeometry,
+  dialogTop,
+  diffPaneWidths,
   formatRelativeTime,
   frameSplit,
   layout,
   listWindow,
+  isDeprecated,
   buildCreateDialog,
   buildDeleteConfirmDialog,
   buildMenuDialog,
+  buildWorktreesDirDialog,
   overlayRow,
+  renderDiffView,
   renderRows,
   tabHitColumns,
   wrapPaneLine,
 } from './_worktree-tui/layout.mjs'
 
-const DEFAULT_STATUS = `${c.green}Ready.${c.reset} Tab: menu · Space: select · Del: delete · c: cmd · s: shell · n: new · d: deprecated · r: refresh · q: quit.`
+const DEFAULT_STATUS = `${c.green}Ready.${c.reset} u: changes · w: dir · Tab: menu · Space: select · Del: delete · c: cmd · s: shell · n: new · d: deprecated · r: refresh · q: quit.`
 
 const OUTPUT_MAX_LINES = 2000
 const KILL_ESCALATE_MS = 2000
@@ -126,7 +158,9 @@ function writeLines(lines) {
 // ---- domain ----
 function refreshList() {
   const root = state.mainRoot
-  const { base, entries } = listWorktrees(root)
+  const { base, entries } = listWorktrees(root, state.worktreesDir)
+  // One porcelain call covers both the dirty count and the preview files.
+  const mainDetail = getDirtyDetail(root)
   const rows = [
     {
       path: root,
@@ -135,12 +169,15 @@ function refreshList() {
       registered: true,
       main: true,
       aheadBehind: null,
+      dirty: mainDetail.dirty,
+      dirtyFiles: mainDetail.files,
       commitTime: getLastCommitTime(root),
     },
   ]
   // listWorktrees returns newest-commit-first; rows without a
   // resolvable time sink to the bottom. Main stays pinned at the top.
   for (const e of entries) {
+    const detail = getDirtyDetail(e.path)
     rows.push({
       path: e.path,
       name: e.name,
@@ -148,6 +185,8 @@ function refreshList() {
       registered: e.registered,
       main: false,
       merged: isMergedToBase({ root, base, worktreePath: e.path, branch: e.branch }),
+      dirty: detail.dirty,
+      dirtyFiles: detail.files,
       aheadBehind: e.ahead === null ? null : { ahead: e.ahead, behind: e.behind },
       commitTime: e.lastCommitTime,
     })
@@ -174,10 +213,23 @@ function refreshList() {
 
 // ---- layout ----
 
-// When a command pane is open the frame splits: list on top, divider, then the
-// command output pane. Returns the row budget for each part.
-function renderListRows() {
+// The box body: worktree list rows, or the two-pane diff view while it is
+// open. Both renderers return rows sized to the box interior, so the frame
+// chrome around them never changes.
+function renderBoxRows() {
   const { boxW } = currentLayout()
+  const { boxH } = currentListWindow()
+  if (state.mode === 'diff' && state.diff) {
+    return renderDiffView({
+      files: state.diff.files,
+      cursor: state.diff.cursor,
+      diffLines: state.diff.diffLines,
+      scroll: state.diff.scroll,
+      activePane: state.diff.activePane,
+      boxW,
+      boxH,
+    })
+  }
   return renderRows({
     rows: state.rows,
     cursor: state.cursor,
@@ -190,6 +242,15 @@ function renderListRows() {
 
 function buildCreate() {
   const { dialogW } = currentDialogGeometry()
+  if (state.create.kind === 'worktreesDir') {
+    return buildWorktreesDirDialog({
+      value: state.create.input,
+      caret: state.create.caret,
+      error: state.create.error,
+      dialogW,
+      defaultDir: DEFAULT_WORKTREES_DIR,
+    })
+  }
   return buildCreateDialog({
     name: state.create.input,
     caret: state.create.caret,
@@ -441,11 +502,127 @@ function runInWorktree(cmd, row) {
   redraw()
 }
 
+// ---- uncommitted-changes viewer ----
+
+// Two-pane viewer over one worktree: every changed file on the left, the
+// focused file's diff on the right. Re-reads the file list from the worktree
+// rather than trusting the row's preview, which keeps only the first few
+// entries. A clean, unreadable, or empty worktree stays on the list and
+// reports why.
+function openDiffView(row = state.rows[state.cursor]) {
+  if (!row) {
+    state.status = `${c.red}No worktree selected.${c.reset}`
+    redraw()
+    return
+  }
+  const files = listDirtyFiles(row.path)
+  if (files === null) {
+    state.status = `${c.red}Cannot read uncommitted changes in ${row.name}.${c.reset}`
+    redraw()
+    return
+  }
+  if (files.length === 0) {
+    state.status = `${c.green}${row.name} has no uncommitted changes.${c.reset}`
+    redraw()
+    return
+  }
+  state.mode = 'diff'
+  state.diff = { row, files, cursor: 0, diffLines: null, truncated: false, scroll: 0, activePane: 'files' }
+  loadDiff()
+  state.fullClear = true
+  redraw()
+}
+
+// One synchronous git read per focused file: a single-file diff is small
+// enough that the command pane's async machinery would only add state.
+function loadDiff() {
+  const view = state.diff
+  if (!view) return
+  const diff = getFileDiff({ worktreePath: view.row.path, file: view.files[view.cursor] })
+  // An empty result means there is nothing textually diffable (an untracked
+  // directory, a mode-only change), which the viewer reports instead of
+  // showing a blank pane.
+  view.diffLines = diff && diff.lines.length > 0 ? diff.lines : null
+  view.truncated = Boolean(diff?.truncated && diff.lines.length > 0)
+  view.scroll = 0
+}
+
+function moveDiffCursor(delta) {
+  const view = state.diff
+  if (!view || view.files.length === 0) return
+  view.cursor = (view.cursor + delta + view.files.length) % view.files.length
+  loadDiff()
+  redraw()
+}
+
+// Left/right pick the pane the arrows drive: the file list on the left, the
+// diff text on the right. Direct mapping (not a cycle) so the key always means
+// the pane on its side.
+function setDiffPane(pane) {
+  const view = state.diff
+  if (!view || view.activePane === pane) return
+  view.activePane = pane
+  redraw()
+}
+
+function scrollDiff(delta) {
+  const view = state.diff
+  if (!view) return
+  view.scroll = Math.max(0, view.scroll + delta)
+  redraw()
+}
+
+// Re-read the file list and the focused diff without leaving the viewer, for
+// changes made outside the manager while it is open.
+function reloadDiffView() {
+  const view = state.diff
+  if (!view) return
+  const files = listDirtyFiles(view.row.path)
+  if (files === null) {
+    state.status = `${c.red}Cannot read uncommitted changes in ${view.row.name}.${c.reset}`
+    redraw()
+    return
+  }
+  if (files.length === 0) {
+    closeDiffView()
+    state.status = `${c.green}${view.row.name} has no uncommitted changes.${c.reset}`
+    redraw()
+    return
+  }
+  view.files = files
+  view.cursor = Math.max(0, Math.min(view.cursor, files.length - 1))
+  loadDiff()
+  redraw()
+}
+
+function closeDiffView() {
+  state.mode = 'list'
+  state.diff = null
+  state.fullClear = true
+  state.status = DEFAULT_STATUS
+  redraw()
+}
+
+function diffStatusText() {
+  const view = state.diff
+  if (!view) return ''
+  const truncated = view.truncated ? `${c.yellow}diff truncated${c.reset} · ` : ''
+  const pane = view.activePane === 'diff' ? 'diff pane · ↑↓ line' : 'files pane · ↑↓ file'
+  return (
+    `${truncated}${c.gray}${view.row.name}${c.reset}${c.dim} · ${pane}` +
+    ` · ←→ switch · PgUp/PgDn scroll · Esc or q closes${c.reset}`
+  )
+}
+
 // ---- draw ----
 
 function draw() {
   const { rows, cols, boxW, helpLines } = currentLayout()
-  const { lines: listLines } = renderListRows()
+  const box = renderBoxRows()
+  // The viewer clamps its own scroll to the rendered diff, so keep the state
+  // in step (same contract as the command pane below).
+  if (state.mode === 'diff' && state.diff) state.diff.scroll = box.scroll ?? state.diff.scroll
+  const listLines = box.lines
   const { listH, cmdH } = currentFrameSplit()
   const border = s => `${c.cyan}${s}${c.reset}`
   const side = t => `${c.cyan}│${c.reset} ${t}${c.cyan} │${c.reset}`
@@ -458,8 +635,10 @@ function draw() {
     `${c.dim}Focused:${c.reset} ${c.dim}${focused ? focused.path : ''}${c.reset}` +
     `  ${c.gray}checked: ${state.checked.size} · Ln ${state.cursor + 1}/${state.rows.length}${c.reset}`
 
+  const boxTitle = state.mode === 'diff' ? 'CHANGES' : 'WORKTREES'
+  const boxHead = `┌ ${boxTitle} `
   const lines = [header, subheader]
-  lines.push(border(`┌ WORKTREES ${'─'.repeat(Math.max(1, boxW - 13))}┐`))
+  lines.push(border(`${boxHead}${'─'.repeat(Math.max(1, boxW - displayWidth(boxHead) - 1))}┐`))
   for (let i = 0; i < listH; i++) {
     lines.push(side(padRight(listLines[i] ?? '', boxW - 4)))
   }
@@ -492,15 +671,30 @@ function draw() {
     }
   }
   lines.push(border(`└${'─'.repeat(boxW - 2)}┘`))
+  // Focused-row uncommitted detail: one stable line between the box and the
+  // status, so cursor movement never shifts the frame. Placed after the box
+  // so list hit-testing (LIST_TOP_ROW + boxH) is unaffected; the viewer
+  // reports the focused file there instead.
+  const detail =
+    state.mode === 'diff' && state.diff
+      ? buildDiffDetail({
+          files: state.diff.files,
+          cursor: state.diff.cursor,
+          lineCount: state.diff.diffLines ? state.diff.diffLines.length : null,
+          truncated: state.diff.truncated,
+        })
+      : buildDirtyDetail({ row: focused })
+  lines.push(truncate(detail, cols))
 
   let status
   if (state.mode === 'run' && state.pane) {
     status = truncate(paneStatusText(), cols)
+  } else if (state.mode === 'diff' && state.diff) {
+    status = truncate(diffStatusText(), cols)
   } else {
     status = truncate(state.status, cols)
   }
   lines.push(status)
-  lines.push('')
   for (const hl of helpLines) lines.push(`${c.dim}${hl}${c.reset}`)
   while (lines.length < rows) lines.push('')
   if (lines.length > rows) lines.length = rows
@@ -509,7 +703,7 @@ function draw() {
     const { dialogW: dw } = currentDialogGeometry()
     const dg = state.mode === 'confirm' ? buildConfirm() : state.mode === 'create' ? buildCreate() : buildDialog()
     const dH = dg.lines.length
-    const top = Math.max(0, Math.floor((rows - dH) / 2))
+    const top = dialogTop({ rows, dialogH: dH })
     const { padLeft, rightLen } = dialogColumns({ cols, dialogW: dw })
     for (let k = 0; k < dH; k++) {
       const r = top + k
@@ -613,10 +807,17 @@ function startConfirm({ rows, message, detail }) {
 function executeBatchDelete(rows) {
   const targets = new Set(rows.map(r => r.path))
   let ok = 0
-  let failed = 0
-  const failedNames = []
+  const failures = []
   for (const wt of state.rows) {
     if (!targets.has(wt.path) || wt.main) continue
+    // Re-check for running processes: one may have started between the
+    // confirm dialog and Yes. A guarded row fails with its reason instead of
+    // half-deleting (unregistered, files/branch/server left behind).
+    const blockers = findProcessesInPath(wt.path) ?? []
+    if (blockers.length > 0) {
+      failures.push({ name: wt.name, reason: `process ${blockers[0].pid} running inside` })
+      continue
+    }
     // removeWorktree can throw before reaching its internal try (main-root
     // lookup); count that as a failed target so one bad row never aborts
     // the rest of the batch.
@@ -629,16 +830,16 @@ function executeBatchDelete(rows) {
         }
         ok++
       } else {
-        failed++
-        failedNames.push(wt.name)
+        failures.push({ name: wt.name, reason: 'remove failed' })
       }
     } catch {
-      failed++
-      failedNames.push(wt.name)
+      failures.push({ name: wt.name, reason: 'remove failed' })
     }
   }
   let status = `${c.green}Deleted ${ok} worktree(s)${c.reset}`
-  if (failed) status += `${c.red} · ${failed} failed: ${failedNames.join(', ')}${c.reset}`
+  if (failures.length) {
+    status += `${c.red} · ${failures.length} failed: ${failures.map(f => `${f.name} (${f.reason})`).join(', ')}${c.reset}`
+  }
   try {
     refreshList()
   } catch (e) {
@@ -657,9 +858,13 @@ function activateMenuItem() {
         return
       case 1:
         closeMenu()
+        openDiffView()
+        return
+      case 2:
+        closeMenu()
         launchShell(state.rows[state.cursor])
         return
-      case 2: {
+      case 3: {
         if (state.checked.size === 0) {
           state.status = `${c.yellow}No worktrees selected.${c.reset}`
           redraw()
@@ -668,7 +873,7 @@ function activateMenuItem() {
         confirmDeleteFlow(state.rows.filter(r => state.checked.has(r.path) && !r.main))
         return
       }
-      case 3: {
+      case 4: {
         const r = state.rows[state.cursor]
         if (!r || r.main) {
           state.status = `${c.yellow}Cannot delete the main root.${c.reset}`
@@ -678,31 +883,31 @@ function activateMenuItem() {
         confirmDeleteFlow([r])
         return
       }
-      case 4:
+      case 5:
         killFocusedProc()
         closeMenu()
         return
-      case 5:
+      case 6:
         selectAll()
         closeMenu()
         return
-      case 6:
+      case 7:
         clearSelection()
         closeMenu()
         return
-      case 7:
+      case 8:
         refreshList()
         closeMenu()
         return
-      case 8:
+      case 9:
         closeMenu()
         openCreate()
         return
-      case 9:
+      case 10:
         closeMenu()
         scanDeprecated()
         return
-      case 10:
+      case 11:
         quit()
         return
       default:
@@ -721,6 +926,22 @@ function activateMenuItem() {
 }
 
 function confirmDeleteFlow(targets) {
+  // Refuse before opening the dialog: deleting a worktree out from under a
+  // running process half-removes it (unregistered, files/branch/server left
+  // behind), and the synchronous batch would freeze the UI on the dialog.
+  const blocked = []
+  for (const target of targets) {
+    for (const proc of findProcessesInPath(target.path) ?? []) {
+      blocked.push({ target, proc })
+    }
+  }
+  if (blocked.length > 0) {
+    const names = [...new Set(blocked.map(b => b.target.name))].join(', ')
+    const pids = blocked.map(b => `${b.proc.pid}${b.proc.cmd ? ` (${b.proc.cmd})` : ''}`).join(', ')
+    state.status = `${c.red}Cannot delete: ${names} has running process(es) (${pids}). Stop them first.${c.reset}`
+    redraw()
+    return
+  }
   startConfirm({
     rows: targets,
     message: `Delete ${targets.length} worktree(s)?`,
@@ -732,7 +953,49 @@ function confirmDeleteFlow(targets) {
 
 function openCreate() {
   state.mode = 'create'
-  state.create = { input: [], caret: 0, error: null }
+  state.create = { kind: 'create', input: [], caret: 0, error: null }
+  redraw()
+}
+
+// Pre-fill the field with the configured value so Enter keeps it and a small
+// edit (or an empty field, which restores the default) is one keystroke away.
+function openWorktreesDir() {
+  const value = [...state.worktreesDir]
+  state.mode = 'create'
+  state.create = { kind: 'worktreesDir', input: value, caret: value.length, error: null }
+  redraw()
+}
+
+// Persist the directory and re-scan: the whole inventory comes from it, so the
+// list must be rebuilt rather than patched. An empty value restores the
+// default, and a directory outside `.gitignore` is flagged because worktrees
+// must never enter version control.
+function applyWorktreesDir(value) {
+  const mainRoot = state.mainRoot
+  const next = value.trim()
+  const resolved = getWorktreesRoot(mainRoot, next || DEFAULT_WORKTREES_DIR)
+  if (path.resolve(resolved) === path.resolve(mainRoot)) {
+    state.create.error = 'The worktree directory cannot be the project root.'
+    redraw()
+    return
+  }
+  const stored = setWorktreesDir(mainRoot, next)
+  state.worktreesDir = stored ?? DEFAULT_WORKTREES_DIR
+  state.mode = 'list'
+  state.create = null
+  state.fullClear = true
+  let count = 0
+  let note = ''
+  try {
+    refreshList()
+    count = Math.max(0, state.rows.length - 1)
+    if (isPathIgnored(mainRoot, resolved) === false) note = ` ${c.yellow}· not gitignored${c.reset}`
+  } catch (e) {
+    note = ` ${c.red}· list refresh failed (${e?.message ?? e}), press r to retry${c.reset}`
+  }
+  state.status =
+    `${c.green}Worktree directory:${c.reset} ${c.gray}${state.worktreesDir}${c.reset}` +
+    ` · ${count} worktree(s)${note}`
   redraw()
 }
 
@@ -747,7 +1010,12 @@ function cancelCreate() {
 // the main checkout's uncommitted changes. Validation failures keep the
 // dialog open with an error; setup failures clean up and report status.
 function submitCreate() {
-  const branchName = state.create.input.join('').trim()
+  const raw = state.create.input.join('').trim()
+  if (state.create.kind === 'worktreesDir') {
+    applyWorktreesDir(raw)
+    return
+  }
+  const branchName = raw
   if (!branchName) {
     cancelCreate()
     return
@@ -757,7 +1025,7 @@ function submitCreate() {
     redraw()
     return
   }
-  const dir = path.join(getWorktreesRoot(state.mainRoot), branchName)
+  const dir = path.join(getWorktreesRoot(state.mainRoot, state.worktreesDir), branchName)
   if (existsSync(dir)) {
     state.create.error = `Worktree already exists: ${branchName}`
     redraw()
@@ -786,22 +1054,29 @@ function submitCreate() {
   redraw()
 }
 
-// Check every row already merged into the base branch so Del reviews them
-// as a batch. Dirty counts surface before the destructive confirm.
+// Check every row that is already merged and has a clean working tree so Del
+// reviews a batch the force-remove delete path cannot lose work from. The
+// dirty count is re-read here rather than trusted from the row, and a status
+// that cannot be read counts as unsafe. Merged checkouts left out are reported
+// so the missing [merged] badge is explained instead of looking like a bug.
 function scanDeprecated() {
-  const merged = state.rows.filter(r => !r.main && r.merged)
-  if (merged.length === 0) {
-    state.status = `${c.yellow}No deprecated worktrees: every worktree holds commits missing from the base.${c.reset}`
+  const mergedRows = state.rows.filter(r => !r.main && r.merged === true)
+  const deprecated = []
+  for (const r of mergedRows) {
+    if (isDeprecated(r) && countDirtyFiles(r.path) === 0) deprecated.push(r)
+  }
+  const heldBack = mergedRows.length - deprecated.length
+  if (deprecated.length === 0) {
+    state.status =
+      heldBack > 0
+        ? `${c.yellow}No deprecated worktrees: ${heldBack} merged checkout(s) still hold uncommitted work or an unreadable status (r: refresh).${c.reset}`
+        : `${c.yellow}No deprecated worktrees: every worktree holds commits missing from the base.${c.reset}`
     redraw()
     return
   }
-  state.checked = new Set(merged.map(r => r.path))
-  let dirty = 0
-  for (const r of merged) {
-    if (countDirtyFiles(r.path) > 0) dirty++
-  }
-  const dirtyNote = dirty > 0 ? ` ${c.yellow}· ${dirty} with uncommitted changes${c.reset}` : ''
-  state.status = `${c.green}${merged.length} deprecated worktree(s) selected${c.reset}${dirtyNote} · Del deletes · Space toggles`
+  state.checked = new Set(deprecated.map(r => r.path))
+  const heldNote = heldBack > 0 ? ` ${c.yellow}· ${heldBack} held back (uncommitted work)${c.reset}` : ''
+  state.status = `${c.green}${deprecated.length} deprecated worktree(s) selected${c.reset}${heldNote} · Del deletes · Space toggles`
   redraw()
 }
 
@@ -884,6 +1159,8 @@ function handleWheel(dir) {
     redraw()
   } else if (state.mode === 'run') {
     scrollOutput(-dir * 3) // wheel up reveals older output, wheel down newer
+  } else if (state.mode === 'diff') {
+    scrollDiff(dir * 3) // wheel down moves into the diff, wheel up toward its start
   }
   // confirm: wheel is a no-op so the highlight can't drift under the cursor.
 }
@@ -902,7 +1179,7 @@ function handleMouse({ button, x, y, release }) {
 
   if (state.mode === 'menu' || state.mode === 'confirm' || state.mode === 'create') {
     const dg = state.mode === 'confirm' ? buildConfirm() : state.mode === 'create' ? buildCreate() : buildDialog()
-    const top = Math.max(0, Math.floor((rr - dg.lines.length) / 2))
+    const top = dialogTop({ rows: rr, dialogH: dg.lines.length })
     const left = dialogColumns({ cols, dialogW }).padLeft
     const sr = y - 1
     const sc = x - 1
@@ -948,12 +1225,42 @@ function handleMouse({ button, x, y, release }) {
     }
     return
   }
-  // List / command-pane hit test. Dialog modes return above, so only list
-  // and run reach here.
+  // List / command-pane / diff-view hit test. Dialog modes return above, so
+  // only list, run, and diff reach here.
   const { first, boxH } = currentListWindow()
   const sr = y - 1
   if (sr < LIST_TOP_ROW || sr >= LIST_TOP_ROW + boxH) return
   const idx = first + (sr - LIST_TOP_ROW)
+
+  if (state.mode === 'diff') {
+    // Either pane can be focused by clicking it: the left column also selects
+    // the file under the pointer, the right column only takes focus.
+    const view = state.diff
+    if (!view || btn !== 0) return
+    const { leftW } = diffPaneWidths({ boxW: currentLayout().boxW, files: view.files })
+    const column = x - 3 // 1-based screen column minus `│ `
+    if (column < 0) return
+    if (column >= leftW) {
+      setDiffPane('diff')
+      return
+    }
+    // Row 0 is the pane header, and the viewer's list window follows its own
+    // body height, so recompute `first` here rather than reuse the box one.
+    const bodyH = Math.max(1, boxH - 1)
+    const win = listWindow({ count: view.files.length, cursor: view.cursor, listH: bodyH })
+    const fileIndex = win.first + (sr - LIST_TOP_ROW - 1)
+    if (fileIndex < 0 || fileIndex >= view.files.length) return
+    if (view.activePane !== 'files') view.activePane = 'files'
+    if (fileIndex === view.cursor) {
+      redraw()
+      return
+    }
+    view.cursor = fileIndex
+    loadDiff()
+    redraw()
+    return
+  }
+
   if (idx < 0 || idx >= state.rows.length) return
   const row = state.rows[idx]
   if (btn === 2) {
@@ -1048,9 +1355,11 @@ function applyInputEvent(event) {
       return
     case 'pageup':
       if (state.mode === 'run') scrollOutput(currentFrameSplit().cmdH - 1)
+      else if (state.mode === 'diff') scrollDiff(-(currentListWindow().boxH - 2))
       return
     case 'pagedown':
       if (state.mode === 'run') scrollOutput(-currentFrameSplit().cmdH + 1)
+      else if (state.mode === 'diff') scrollDiff(currentListWindow().boxH - 2)
       return
     case 'delete':
       handleDeleteKey()
@@ -1168,6 +1477,10 @@ function handleTextInput(value) {
       launchShell(state.rows[state.cursor])
     } else if (value === 'c') {
       startCommandInput()
+    } else if (value === 'u') {
+      openDiffView()
+    } else if (value === 'w') {
+      openWorktreesDir()
     } else if (value === 'x') {
       killFocusedProc()
     }
@@ -1190,6 +1503,12 @@ function handleTextInput(value) {
       state.cmdCaret += value.length
       redraw()
     }
+    return
+  }
+  if (state.mode === 'diff') {
+    // A viewer owns `q` so leaving it never exits the whole manager.
+    if (value === 'q' || value === 'Q') closeDiffView()
+    else if (value === 'r') reloadDiffView()
   }
 }
 
@@ -1198,6 +1517,10 @@ function handleArrowUp() {
     return
   } else if (cmdPromptActive()) {
     historyUp()
+  } else if (state.mode === 'diff') {
+    // ↑ acts on the active pane: the next file, or one diff line back.
+    if (state.diff?.activePane === 'diff') scrollDiff(-1)
+    else moveDiffCursor(-1)
   } else if (state.mode === 'menu') {
     state.menuCursor = Math.max(0, state.menuCursor - 1)
     redraw()
@@ -1214,6 +1537,9 @@ function handleArrowDown() {
     return
   } else if (cmdPromptActive()) {
     historyDown()
+  } else if (state.mode === 'diff') {
+    if (state.diff?.activePane === 'diff') scrollDiff(1)
+    else moveDiffCursor(1)
   } else if (state.mode === 'menu') {
     state.menuCursor = Math.min(currentMenuOptions().length - 1, state.menuCursor + 1)
     redraw()
@@ -1236,6 +1562,8 @@ function handleArrowLeft() {
   } else if (state.mode === 'confirm') {
     state.confirm.yes = 0
     redraw()
+  } else if (state.mode === 'diff') {
+    setDiffPane('files')
   } else if (cmdPromptActive()) {
     moveCmdCaret(-1)
   }
@@ -1252,6 +1580,8 @@ function handleArrowRight() {
   } else if (state.mode === 'confirm') {
     state.confirm.yes = 1
     redraw()
+  } else if (state.mode === 'diff') {
+    setDiffPane('diff')
   } else if (cmdPromptActive()) {
     moveCmdCaret(1)
   }
@@ -1306,6 +1636,8 @@ function handleEnter() {
     activateMenuItem()
   } else if (state.mode === 'confirm') {
     resolveConfirm(state.confirm ? state.confirm.yes === 1 : false)
+  } else if (state.mode === 'diff') {
+    closeDiffView()
   } else if (cmdPromptActive()) {
     submitCommand()
   } else if (state.mode === 'list') {
@@ -1327,6 +1659,8 @@ function handleBackspace() {
 function handleEscape() {
   if (state.mode === 'create') {
     cancelCreate()
+  } else if (state.mode === 'diff') {
+    closeDiffView()
   } else if (state.mode === 'run') {
     // Esc detaches: the child keeps running in the background. Ctrl-C kills.
     state.status = `${c.dim}Detached; command keeps running. Focus row + c to reattach.${c.reset}`
@@ -1358,6 +1692,8 @@ const state = {
   mode: 'list',
   confirm: null,
   create: null,
+  diff: null,
+  worktreesDir: DEFAULT_WORKTREES_DIR,
   pane: null,
   procs: new Map(),
   cmdInput: [],
@@ -1383,6 +1719,7 @@ async function main() {
   }
   const startDir = path.resolve(process.argv[2] ?? '.')
   state.mainRoot = getMainRoot(startDir)
+  state.worktreesDir = resolveWorktreesDir(state.mainRoot)
   refreshList()
   term.onResize(() => {
     if (state.suspended) return
