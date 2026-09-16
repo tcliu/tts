@@ -16,6 +16,7 @@
     preventFocusSteal?: boolean
     ariaLabel?: string
     ariaExpanded?: boolean
+    dataTip?: string
     tooltip?: string
     tooltipAlign?: 'center' | 'left' | 'right'
     badge?: string | number
@@ -38,6 +39,7 @@
     ariaLabel,
     ariaPressed,
     ariaExpanded,
+    dataTip,
     tooltip,
     tooltipAlign = 'center',
     badge,
@@ -77,6 +79,9 @@
   }
 
   // Count pill overhanging the button's top-right corner; omit the prop to hide it.
+  // The pill is `min-h-5` at `-top-2`, so it sticks 8px out above the button's box:
+  // the enclosing scroll/clip container must give it that much room inside its
+  // scrollport, or the clip line shaves the pill's top.
   const hasBadge = $derived(badge !== undefined && badge !== null && badge !== '')
 
   const isIconOnly = $derived(!!icon && !children)
@@ -126,10 +131,13 @@
 {/snippet}
 
   {#snippet buttonElement()}
-    <button bind:this={buttonEl} {type} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} onclick={onClick} onkeydown={onKeyDown} onpointerdown={preventFocusSteal ? handlePreventFocusSteal : undefined} disabled={disabledState} class={`${baseClass} ${hasBadge ? 'relative' : ''} ${className}`}>
+    <!-- Two tooltip systems, applied independently: `dataTip` renders the
+      `data-tip` custom-tooltip attribute, `tooltip` wraps the button with the
+      positioned Tooltip component. Existing callers use one or the other. -->
+    <button bind:this={buttonEl} {type} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} data-tip={dataTip} onclick={onClick} onkeydown={onKeyDown} onpointerdown={preventFocusSteal ? handlePreventFocusSteal : undefined} disabled={disabledState} class={`${baseClass} ${hasBadge ? 'relative' : ''} ${className}`}>
       {@render buttonInner()}
       {#if hasBadge}
-        <span class={`absolute -top-2 -right-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold text-slate-950 ${badgeClasses[accent]}`}>{badge}</span>
+        <span class={`absolute -top-2 -right-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold text-onaccent ${badgeClasses[accent]}`}>{badge}</span>
       {/if}
     </button>
   {/snippet}
