@@ -82,7 +82,7 @@
   <Tabs
     ariaLabel={i18n.t('app.settingsTitle')}
     state={{}}
-    class="bg-slate-900/95"
+    headerClass="sticky top-0 z-10 flex w-full flex-wrap items-center justify-between gap-2 pb-3"
     tabs={[
       { label: i18n.t('voices.tab'), path: 'voices', content: voicesContent },
       { label: i18n.t('settings.speedTab'), path: 'speed', content: speedContent },
