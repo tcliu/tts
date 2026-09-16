@@ -438,8 +438,8 @@ export function getFileDiff({ worktreePath, file, maxLines = FILE_DIFF_MAX_LINES
 // checkout is unregistered but its files, branch, and server are left behind
 // (observed with a dev server running inside the target). Delete flows refuse
 // guarded targets and name the PIDs instead. Linux-only (`/proc` cwd scan,
-// self excluded); returns null where /proc is unavailable so callers proceed
-// without the guard rather than blocking every delete on unknown platforms.
+// self excluded); returns null where /proc is unavailable, and callers treat
+// null as unsafe (refuse or fail the target) rather than proceeding unguarded.
 export function findProcessesInPath(worktreePath) {
   const root = path.resolve(worktreePath)
   let entries

@@ -813,7 +813,11 @@ function executeBatchDelete(rows) {
     // Re-check for running processes: one may have started between the
     // confirm dialog and Yes. A guarded row fails with its reason instead of
     // half-deleting (unregistered, files/branch/server left behind).
-    const blockers = findProcessesInPath(wt.path) ?? []
+    const blockers = findProcessesInPath(wt.path)
+    if (blockers === null) {
+      failures.push({ name: wt.name, reason: 'process status unreadable' })
+      continue
+    }
     if (blockers.length > 0) {
       failures.push({ name: wt.name, reason: `process ${blockers[0].pid} running inside` })
       continue
@@ -930,10 +934,22 @@ function confirmDeleteFlow(targets) {
   // running process half-removes it (unregistered, files/branch/server left
   // behind), and the synchronous batch would freeze the UI on the dialog.
   const blocked = []
+  const unknown = []
   for (const target of targets) {
-    for (const proc of findProcessesInPath(target.path) ?? []) {
+    const procs = findProcessesInPath(target.path)
+    if (procs === null) {
+      unknown.push(target)
+      continue
+    }
+    for (const proc of procs) {
       blocked.push({ target, proc })
     }
+  }
+  if (unknown.length > 0) {
+    const names = [...new Set(unknown.map(t => t.name))].join(', ')
+    state.status = `${c.red}Cannot delete: ${names} has an unreadable process status. Stop any processes inside first.${c.reset}`
+    redraw()
+    return
   }
   if (blocked.length > 0) {
     const names = [...new Set(blocked.map(b => b.target.name))].join(', ')
@@ -1008,7 +1024,9 @@ function cancelCreate() {
 
 // Mirrors scripts/create-worktree.mjs: register, copy dev files, tag, carry
 // the main checkout's uncommitted changes. Validation failures keep the
-// dialog open with an error; setup failures clean up and report status.
+// dialog open with an error; setup failures clean up and report status. Only
+// `setupWorktree` failures roll back — the list refresh after a successful
+// setup has its own guard, so a stale list can never delete the new worktree.
 function submitCreate() {
   const raw = state.create.input.join('').trim()
   if (state.create.kind === 'worktreesDir') {
@@ -1035,9 +1053,16 @@ function submitCreate() {
     const { carried } = setupWorktree({ root: state.mainRoot, worktreePath: dir, branch: branchName })
     state.mode = 'list'
     state.create = null
-    refreshList()
     const notes = carried.notes.length ? ` ${c.yellow}· ${carried.notes.join('; ')}${c.reset}` : ''
     state.status = `${c.green}Worktree created:${c.reset} ${c.gray}${branchName}${c.reset}${notes}`
+    try {
+      refreshList()
+    } catch (refreshError) {
+      // The creation succeeded, so there is nothing to roll back here: the new
+      // worktree stays on disk and the list is one r away, same as the batch
+      // delete path.
+      state.status += `${c.red} · list refresh failed (${refreshError?.message ?? refreshError}), press r to retry${c.reset}`
+    }
   } catch (e) {
     if (e?.phase === 'register') {
       state.create.error = `Could not create worktree (${e?.message ?? e})`
