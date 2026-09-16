@@ -358,7 +358,7 @@
               aria-sort={isActive ? (isAsc ? 'ascending' : 'descending') : undefined}>
               {#if column.sortable}
                 <span class="flex w-full items-center gap-2 text-left {centerHeader ? 'relative justify-center pr-5' : ''}">
-                  <span>{column.header}</span>
+                  <span class={centerHeader ? 'min-w-0 overflow-hidden text-ellipsis break-words' : ''}>{column.header}</span>
                   <span
                     class="{centerHeader ? 'absolute right-0 top-1/2 flex -translate-y-1/2 flex-col' : 'flex flex-col'} text-slate-400 transition-opacity {isActive ? 'opacity-100' : '[@media(hover:hover)]:opacity-0'} group-hover:opacity-100 group-focus-within:opacity-100">
                     <button
