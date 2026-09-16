@@ -54,20 +54,14 @@
     lg: { pad: 'py-3', minW: 'min-w-28' },
   } as const
 
-  // The trailing `!` keeps the size-driven font on the control and the
-  // option rows: the legacy viewer stylesheet sets `font:inherit` on bare
-  // `button`/`input` elements, and unlayered author CSS beats Tailwind's
-  // layered utilities, so without it every size would inherit 14px.
-  const fontSizeClass = $derived(`${TEXT_SIZE[size]}!`)
-
   const resolvedButtonClass = $derived(
     buttonClass ??
-      `inline-flex ${SIZE_CLASS[size].minW} cursor-pointer items-center justify-between gap-2 rounded-md border border-slate-700 bg-slate-950 px-3 text-slate-100 outline-none transition motion-reduce:transition-none hover:border-cyan-500 focus-visible:border-cyan-500 ${SIZE_CLASS[size].pad} ${fontSizeClass}`,
+      `inline-flex ${SIZE_CLASS[size].minW} cursor-pointer items-center justify-between gap-2 rounded-md border border-slate-700 bg-slate-950 px-3 text-slate-100 outline-none transition motion-reduce:transition-none hover:border-cyan-500 focus-visible:border-cyan-500 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
   const resolvedControlClass = $derived(
     controlClass ??
-      `${SIZE_CLASS[size].minW} field-sizing-content cursor-pointer rounded-md border border-slate-700 bg-slate-950 pl-3 pr-8 text-slate-100 outline-none transition motion-reduce:transition-none hover:border-cyan-500 focus-visible:border-cyan-500 ${SIZE_CLASS[size].pad} ${fontSizeClass}`,
+      `${SIZE_CLASS[size].minW} field-sizing-content cursor-pointer rounded-md border border-slate-700 bg-slate-950 pl-3 pr-8 text-slate-100 outline-none transition motion-reduce:transition-none hover:border-cyan-500 focus-visible:border-cyan-500 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
   // Phone viewports get a 44px minimum row height via pure CSS so in-dialog
@@ -77,10 +71,10 @@
   // the literal stays inline so Tailwind can see the class — keep them in sync.
   const optionRowClass = $derived(
     optionClass ??
-      `flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 text-left outline-none transition motion-reduce:transition-none max-[27.999rem]:min-h-11 ${SIZE_CLASS[size].pad} ${fontSizeClass}`,
+      `flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 text-left outline-none transition motion-reduce:transition-none max-[27.999rem]:min-h-11 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]}`,
   )
 
-  const emptyClass = $derived(`px-3 ${SIZE_CLASS[size].pad} ${fontSizeClass} text-slate-500`)
+  const emptyClass = $derived(`px-3 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]} text-slate-500`)
   let open = $state(false)
   const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
