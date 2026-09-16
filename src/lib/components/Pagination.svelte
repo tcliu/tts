@@ -194,12 +194,12 @@
     <span>{pageSizeLabel}</span>
     <div class="relative">
       <SelectDropdown
-        buttonLabel={String(pageSize)}
-        activeValue={String(pageSize)}
-        ariaLabel={pageSizeLabel}
-        size={size}
-        options={pageSizeOptions.map(size => ({ value: String(size), label: String(size) }))}
-        onSelect={handlePageSizeChange} />
+      buttonLabel={String(pageSize)}
+      activeValue={String(pageSize)}
+      ariaLabel={pageSizeLabel}
+      size={size}
+      options={pageSizeOptions.map(size => ({ value: String(size), label: String(size) }))}
+      onSelect={handlePageSizeChange} />
     </div>
   </div>
 </nav>
