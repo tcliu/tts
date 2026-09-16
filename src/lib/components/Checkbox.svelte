@@ -9,6 +9,7 @@
     disabled?: boolean
     indeterminate?: boolean
     stopPropagation?: boolean
+    size?: 'sm' | 'md'
     labelClass?: string
     wrapperClass?: string
     boxClass?: string
@@ -24,12 +25,20 @@
     disabled = false,
     indeterminate = false,
     stopPropagation = true,
-    labelClass = 'text-sm text-slate-300',
+    size = 'md',
+    labelClass,
     wrapperClass = '',
     boxClass = '',
     inputRef = $bindable(null),
     onChange,
   }: Props = $props()
+
+  const gapClass = $derived(size === 'sm' ? 'gap-2' : 'gap-3')
+  const boxSizeClass = $derived(size === 'sm' ? 'h-4 w-4' : 'h-5 w-5')
+  const iconSizeClass = $derived(size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5')
+  const resolvedLabelClass = $derived(
+    labelClass ?? (size === 'sm' ? 'text-xs text-slate-300' : 'text-sm text-slate-300')
+  )
 
   $effect(() => {
     if (!inputRef) return
@@ -38,7 +47,7 @@
 </script>
 
 <label
-  class={`inline-flex cursor-pointer items-center gap-3 ${disabled ? 'cursor-not-allowed opacity-40' : ''} ${wrapperClass}`}>
+  class={`inline-flex cursor-pointer items-center ${gapClass} ${disabled ? 'cursor-not-allowed opacity-40' : ''} ${wrapperClass}`}>
   <input
     bind:checked
     bind:this={inputRef}
@@ -55,10 +64,10 @@
     onchange={event => onChange?.((event.currentTarget as HTMLInputElement).checked)} />
   <span
     aria-hidden="true"
-    class={`inline-flex h-5 w-5 items-center justify-center rounded-md border transition peer-focus-visible:border-transparent peer-focus-visible:ring-2 peer-focus-visible:ring-cyan-500/70 ${checked ? 'border-cyan-500 bg-cyan-300 text-slate-950' : 'border-slate-700 bg-slate-950 text-transparent'} ${boxClass}`}>
-    <CheckIcon className="h-3.5 w-3.5" />
+    class={`inline-flex ${boxSizeClass} items-center justify-center rounded-md border transition peer-focus-visible:border-transparent peer-focus-visible:ring-2 peer-focus-visible:ring-cyan-500/70 ${checked ? 'border-cyan-500 bg-cyan-300 text-slate-950' : 'border-slate-700 bg-slate-950 text-transparent'} ${boxClass}`}>
+    <CheckIcon className={iconSizeClass} />
   </span>
   {#if label}
-    <span class={labelClass}>{label}</span>
+    <span class={resolvedLabelClass}>{label}</span>
   {/if}
 </label>

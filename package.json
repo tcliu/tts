@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite dev --host",
     "build": "svelte-kit sync && vite build",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && node scripts/check-scripts.mjs",
     "test": "vitest run",
     "format": "prettier --write '**/*.{js,ts,svelte}'",
     "e2e": "node scripts/run-e2e.mjs",

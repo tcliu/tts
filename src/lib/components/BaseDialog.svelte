@@ -25,9 +25,8 @@
 
   let { title, titleClass = '', className = '', maxWidth = 'md', height = 'auto', pending = false, allowPendingCancel = false, dismissKeydownCapture = true, fullscreen = false, closeLabel, onCancel, header, children }: Props = $props()
 
-  // Union prop (shared with share-text/tts): while a pending operation runs
-  // the dialog stops dismissing unless the caller opts into cancel-during-
-  // pending. Defaults keep catalog behavior (always cancelable).
+  // While a pending operation runs the dialog stops dismissing unless the
+  // caller opts into cancel-during-pending.
   const cancelDisabled = $derived(pending && !allowPendingCancel)
 
   let dialogIndex = 0
@@ -157,7 +156,7 @@
   <div
     class={fullscreen
       ? 'relative h-full'
-      : 'relative flex min-h-full items-center justify-center px-3 py-4 @max-md:p-0'}>
+      : 'relative flex min-h-full items-center justify-center px-4 py-6 @max-md:p-0'}>
     <div
       bind:this={dialogRef}
       role="dialog"
@@ -165,22 +164,22 @@
       aria-labelledby={!header && title ? titleId : undefined}
       tabindex="-1"
       class={fullscreen
-        ? `relative flex h-full w-full flex-col overflow-y-auto bg-slate-900 p-4 outline-none ${className}`
+        ? `relative flex h-full w-full flex-col overflow-y-auto bg-slate-900 p-5.5 outline-none ${className}`
         : `relative flex max-h-[90vh] flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/95 shadow-2xl shadow-slate-950/60 outline-none backdrop-blur @max-md:h-dvh @max-md:max-h-full @max-md:w-full @max-md:max-w-none @max-md:rounded-none @max-md:border-x-0 ${sizeClass} ${className}`}>
       <button
         type="button"
         aria-label={closeLabel}
         onclick={handleCancelRequest}
         disabled={cancelDisabled}
-        class="absolute right-3 top-3 flex items-center justify-center p-1 text-slate-500 outline-none transition hover:text-slate-100 focus:text-slate-100 motion-reduce:transition-none before:absolute before:-inset-1.5 before:content-[''] disabled:cursor-not-allowed disabled:opacity-40">
-        <CloseIcon className="h-3.5 w-3.5" />
+        class="absolute right-4 top-4 flex items-center justify-center p-1.5 text-slate-500 outline-none transition hover:text-slate-200 focus:text-slate-200 motion-reduce:transition-none before:absolute before:-inset-1.5 before:content-[''] disabled:cursor-not-allowed disabled:opacity-40">
+        <CloseIcon className="h-4 w-4" />
       </button>
       {#if header}
-        <div class="px-4 pt-4">{@render header()}</div>
+        <div class="px-5.5 pt-5.5">{@render header()}</div>
       {:else if title}
-        <h2 id={titleId} class="pl-4 pr-12 pt-4 text-lg font-semibold tracking-tight text-slate-100 {titleClass}">{title}</h2>
+        <h2 id={titleId} class="pl-5.5 pr-12 pt-5.5 text-2xl font-semibold tracking-tight text-slate-100 {titleClass}">{title}</h2>
       {/if}
-      <div tabindex="-1" class="mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 outline-none">
+      <div tabindex="-1" class="mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto px-5.5 pb-5.5 outline-none">
         {@render children?.()}
       </div>
     </div>
