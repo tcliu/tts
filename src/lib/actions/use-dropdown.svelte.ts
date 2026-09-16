@@ -35,8 +35,8 @@ export interface UseDropdownOptions {
 }
 
 /**
- * Shared open/close lifecycle for dropdown-style menus (Menu, SelectDropdown,
- * ChipDropdown). Wires outside-click dismissal, a window-level Escape
+ * Shared open/close lifecycle for dropdown-style menus. Wires outside-click
+ * dismissal, a window-level Escape
  * capture, and (optionally) scroll-close while the dropdown is open. Call
  * once per component:
  *
@@ -90,12 +90,18 @@ export function useDropdown(get: () => UseDropdownOptions): void {
 
     function isHostHidden(host: HTMLElement): boolean {
       if (!host.isConnected) return true
-      if (typeof (host as unknown as { checkVisibility?: (opts?: unknown) => boolean }).checkVisibility === 'function') {
+      const checkVisibility = (host as unknown as { checkVisibility?: (opts?: unknown) => boolean })
+        .checkVisibility
+      if (typeof checkVisibility === 'function') {
+        // A throwing checkVisibility is inconclusive; fall through to the
+        // rect/geometry checks below rather than swallowing the error.
+        let visible: boolean | null = null
         try {
-          if (!(host as unknown as { checkVisibility: (opts: unknown) => boolean }).checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })) {
-            return true
-          }
-        } catch {}
+          visible = checkVisibility.call(host, { checkOpacity: false, checkVisibilityCSS: true })
+        } catch {
+          visible = null
+        }
+        if (visible === false) return true
       }
       const rect = host.getBoundingClientRect()
       if (rect.width === 0 && rect.height === 0) return true
