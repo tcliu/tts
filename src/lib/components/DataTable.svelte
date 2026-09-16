@@ -29,7 +29,9 @@
     // existing callers are unchanged. For a sortable center header the label
     // itself is centered and the two-arrow control is pinned to the header's
     // right edge, so the (usually invisible) arrows never pull the label off
-    // center and hovering reveals them without shifting it.
+    // center and hovering reveals them without shifting it. The label row
+    // reserves right padding for the control width so a long label wraps
+    // instead of sliding under the arrows.
     headerAlign?: 'left' | 'center' | 'right'
     // When widthClass / minWidthClass is omitted, they are derived from these:
     // a number is pixels, a string ending in '%' is a percentage (rebased so
@@ -355,7 +357,7 @@
               data-tip={column.headerTip ?? undefined}
               aria-sort={isActive ? (isAsc ? 'ascending' : 'descending') : undefined}>
               {#if column.sortable}
-                <span class="flex w-full items-center gap-2 text-left {centerHeader ? 'relative justify-center' : ''}">
+                <span class="flex w-full items-center gap-2 text-left {centerHeader ? 'relative justify-center pr-5' : ''}">
                   <span>{column.header}</span>
                   <span
                     class="{centerHeader ? 'absolute right-0 top-1/2 flex -translate-y-1/2 flex-col' : 'flex flex-col'} text-slate-400 transition-opacity {isActive ? 'opacity-100' : '[@media(hover:hover)]:opacity-0'} group-hover:opacity-100 group-focus-within:opacity-100">
