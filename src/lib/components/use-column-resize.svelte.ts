@@ -1,4 +1,4 @@
-import { loadColumnWidths, saveColumnWidths } from '$lib/column-width-storage'
+import { clearColumnWidths, loadColumnWidths, saveColumnWidths } from '$lib/column-width-storage'
 
 // Shared column-resize engine for tables that render resizable columns via a
 // fixed-layout `<colgroup>` (DataGrid and DataTable). Each data column is
@@ -184,6 +184,15 @@ export function createColumnResize(config: ColumnResizeConfig) {
     return persistedWidths
   }
 
+  // Drop the persisted widths so a width reset (or a cleared table) never
+  // restores them on the next mount. The cached first-load result is reset
+  // alongside, so a later load in the same session re-reads storage.
+  function clearPersistedWidths(): void {
+    const storageKey = getStorageKey()
+    if (storageKey) clearColumnWidths(storageKey)
+    persistedWidths = null
+  }
+
   // Persist resized column widths so the user's splitter positions survive a
   // reload. Only fires after a resize (columnWidths non-empty).
   $effect(() => {
@@ -198,5 +207,6 @@ export function createColumnResize(config: ColumnResizeConfig) {
     handleResizeKeydown,
     handleResizeMouseUp,
     loadPersistedWidths,
+    clearPersistedWidths,
   }
 }

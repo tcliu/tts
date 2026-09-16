@@ -8,15 +8,27 @@
 // 3. Run Playwright against the resolved URL (E2E_BASE_URL), then stop the
 //    server only when this script started it.
 //
-// Defaults: project `tts`, branch = this checkout's git branch.
+// Defaults: project from package.json `name` (/api/catalog id),
+// branch = this checkout's git branch.
 
 import { execFileSync, spawn } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import net from 'node:net'
 import { pathToFileURL } from 'node:url'
 import { findRunningApps } from './find-running-apps.mjs'
 
 const START_TIMEOUT_MS = 120_000
 const POLL_MS = 500
+
+// App props from the manifest: the default e2e project is this package's
+// `name` (it matches the app's /api/catalog id), and `e2eEnv` carries extra
+// environment for a spawned dev server. session-catalog ships
+// `SESSIONS_LIVE=0` there so e2e serves the deterministic bundled payload
+// instead of whatever sessions exist on the machine; the hook is inert for
+// apps that do not read those vars.
+const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+const defaultProject = typeof manifest.name === 'string' && manifest.name ? manifest.name : null
+const extraSpawnEnv = manifest.e2eEnv != null && typeof manifest.e2eEnv === 'object' ? manifest.e2eEnv : {}
 
 function currentBranch() {
   try {
@@ -111,6 +123,8 @@ async function resolveBaseUrl({ project, branch, host }) {
     const child = spawn('npm', ['run', 'dev', '--', '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
+      // Deterministic-e2e hook: extra env comes from the manifest (see above).
+      env: { ...process.env, ...extraSpawnEnv },
     })
     child.stdout.on('data', d => process.stdout.write(`[dev:${port}] ${d}`))
     child.stderr.on('data', d => process.stderr.write(`[dev:${port}] ${d}`))
@@ -131,7 +145,7 @@ async function main() {
   const sep = process.argv.indexOf('--')
   const ownArgs = (sep === -1 ? process.argv.slice(2) : process.argv.slice(2, sep)).filter(a => !a.startsWith('-'))
   const playArgs = sep === -1 ? [] : process.argv.slice(sep + 1)
-  const project = ownArgs[0] ?? 'tts'
+  const project = ownArgs[0] ?? defaultProject
   const branch = ownArgs[1] ?? currentBranch()
   const host = '127.0.0.1'
 

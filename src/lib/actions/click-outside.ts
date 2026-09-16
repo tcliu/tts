@@ -5,8 +5,7 @@ export type ClickOutsideOptions = {
 }
 
 export function clickOutside(node: HTMLElement, options: ClickOutsideOptions | (() => void)) {
-  const getOptions = (): ClickOutsideOptions =>
-    typeof options === 'function' ? { handler: options } : options
+  const getOptions = (): ClickOutsideOptions => (typeof options === 'function' ? { handler: options } : options)
 
   function handlePointerDown(event: PointerEvent) {
     const { enabled = true, handler, include = [] } = getOptions()

@@ -1,6 +1,6 @@
 /**
- * Shared "unconfirmed selection" state for list-style surfaces (Menu,
- * SelectDropdown, ChipDropdown). Owns one piece of $state that the caller
+ * Shared "unconfirmed selection" state for list-style dropdown surfaces.
+ * Owns one piece of $state that the caller
  * exposes to mouse hover and arrow-key handlers; the caller still commits
  * the selection itself (calls `onSelect(option)` and closes the panel) when
  * the user clicks or presses Enter. `.svelte.ts` is required so `$state` is
@@ -33,7 +33,7 @@ export interface ListSelection {
   syncToActive<T>(options: readonly T[], isActive: (option: T) => boolean): void
 }
 
-// The `aria-activedescendant` surfaces (SelectDropdown, ChipDropdown) keep
+// The `aria-activedescendant` dropdown surface keeps
 // option elements at `tabindex="-1"` and never focus them, so the browser
 // does not auto-reveal the active option when it leaves the scrollable
 // panel. `scrollIntoView({ block: 'nearest' })` scrolls the option into the

@@ -32,6 +32,15 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
     if (!originalParent) {
       return
     }
+    // The `{#if}` block that owns this panel removes the node itself, and the
+    // portal detached it from that parent: re-inserting a node Svelte has
+    // already dropped would resurrect it as a hidden orphan (one leaked node,
+    // with a duplicate panel id, per close). Restore only while still attached.
+    if (!node.isConnected) {
+      originalParent = null
+      nextSibling = null
+      return
+    }
     if (nextSibling && nextSibling.parentNode === originalParent) {
       originalParent.insertBefore(node, nextSibling)
     } else {
@@ -85,6 +94,11 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
       top = rect.top - VIEWPORT_MARGIN - panelHeight
     }
     top = Math.max(VIEWPORT_MARGIN, Math.min(top, window.innerHeight - panelHeight - VIEWPORT_MARGIN))
+    // Position the panel using top/left instead of a CSS transform.
+    // Firefox may include transformed fixed elements in the page's scroll extents,
+    // which causes unexpected vertical scroll when overlays are opened inside
+    // an overflow-auto container (observed in dialogs). Using top/left avoids
+    // that behavior while still allowing exact placement.
     node.style.transform = ''
     node.style.left = `${left}px`
     node.style.top = `${top}px`
@@ -99,6 +113,8 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
     scrollableAncestor = null
     triggerObserver = null
     panelObserver = null
+    // Clear any positioning styles we set to avoid leaving visual artifacts
+    // if the node is reused or reinserted elsewhere.
     node.style.transform = ''
     node.style.left = ''
     node.style.top = ''
@@ -112,6 +128,8 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
     const { getTrigger, getOpen, presentation = 'anchored' } = options()
     if (!getOpen()) {
       node.style.visibility = 'hidden'
+      // Clear positioning when the panel is hidden so it doesn't affect
+      // any measuring or leftover layout in some browsers.
       node.style.transform = ''
       node.style.left = ''
       node.style.top = ''

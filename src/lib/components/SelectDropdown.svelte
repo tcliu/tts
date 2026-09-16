@@ -49,7 +49,7 @@
 
   const SIZE_CLASS = {
     xs: { pad: 'py-1', minW: 'min-w-16' },
-    sm: { pad: 'py-2', minW: 'min-w-24' },
+    sm: { pad: 'py-2', minW: 'min-w-16' },
     md: { pad: 'py-2.5', minW: 'min-w-24' },
     lg: { pad: 'py-3', minW: 'min-w-28' },
   } as const
@@ -145,6 +145,12 @@
     // Highlight the committed value on open; hover/arrows move from there.
     selection.syncToActive(filteredOptions, option => option.value === activeValue)
     open = true
+    // A long list would otherwise open with the highlighted row scrolled out of
+    // sight: the option never receives focus (aria-activedescendant pattern), so
+    // nothing else brings it into view, and a native select always shows the
+    // selected row. Reveal after the flush, once `positionPanel` has portaled
+    // and shown the panel — an effect here runs too early to scroll it.
+    void tick().then(() => revealActive())
   }
 
   function handleControlFocus() {
@@ -287,8 +293,8 @@
       onclick={toggle}
       onkeydown={handleControlKeydown}
       class={resolvedButtonClass}>
-      <span>{buttonLabel}</span>
-      <ChevronDownIcon className="h-4 w-4 text-slate-500" />
+      <span class="min-w-0 flex-1 truncate">{buttonLabel}</span>
+      <ChevronDownIcon className="ml-auto h-4 w-4 shrink-0 text-slate-500" />
     </button>
   {/if}
   {#if open}

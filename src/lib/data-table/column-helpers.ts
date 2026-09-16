@@ -12,6 +12,31 @@ export type ResolvedColumn<T> = T & {
   minWidthStyle?: string
 }
 
+// Re-partition managed pixel widths when the visible column set changes
+// (column show/hide). Widths follow their column key: retained columns keep
+// their width, removed columns are dropped, and added columns get a computed
+// width from `widthForAdded`. Positional carry-over would hand each column
+// after a removed one its neighbour's width, so always realign by key here.
+export function realignColumnWidths(
+  keys: string[],
+  prevKeys: string[],
+  prevWidths: number[],
+  widthForAdded: (key: string) => number,
+): number[] {
+  const prev = new Map<string, number>()
+  for (let i = 0; i < prevKeys.length; i++) {
+    if (!prev.has(prevKeys[i])) prev.set(prevKeys[i], prevWidths[i] ?? 0)
+  }
+  return keys.map(key => {
+    const retained = prev.get(key)
+    if (retained !== undefined && Number.isFinite(retained) && retained > 0) {
+      return Math.round(retained)
+    }
+    const computed = widthForAdded(key)
+    return Number.isFinite(computed) && computed > 0 ? Math.round(computed) : 0
+  })
+}
+
 export function resolveColumnWidths<T extends { key: string; widthClass?: string; minWidthClass?: string; width?: string | number; minWidth?: string | number }>(
   columns: T[],
 ): ResolvedColumn<T>[] {

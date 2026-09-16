@@ -120,8 +120,12 @@ async function confirmDeletion({ selected, yes }) {
     // Warn-only here (unlike the manager's refuse-before-confirm): the CLI
     // already requires an explicit Yes with No as the default, so this stays
     // informed consent rather than changing the command's exit contract.
-    const blockers = findProcessesInPath(worktree.path) ?? []
-    if (blockers.length > 0) {
+    const blockers = findProcessesInPath(worktree.path)
+    if (blockers === null) {
+      console.log(
+        `  ${c.red}✖ ${worktree.path}${c.reset} ${c.gray}(process status unreadable — stop any processes inside or the delete half-finishes)${c.reset}`,
+      )
+    } else if (blockers.length > 0) {
       const who = blockers.map(p => `${p.pid}${p.cmd ? ` (${p.cmd})` : ''}`).join(', ')
       console.log(
         `  ${c.red}✖ ${worktree.path}${c.reset} ${c.gray}(process(es) running inside: ${who} — stop them or the delete half-finishes)${c.reset}`,
