@@ -31,3 +31,11 @@ export function saveColumnWidths(key: string, widths: number[]) {
     console.error('Failed to save column widths to localStorage', { key, error })
   }
 }
+
+export function clearColumnWidths(key: string) {
+  try {
+    localStorage.removeItem(STORAGE_KEY_PREFIX + key)
+  } catch (error) {
+    console.error('Failed to clear column widths from localStorage', { key, error })
+  }
+}
