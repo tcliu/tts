@@ -4,7 +4,7 @@
 // range and reporting every responder as a JSON array.
 //
 // Usage:
-//   node scripts/find-running-apps.mjs [--project tts] [--branch main]
+//   node scripts/find-running-apps.mjs [--project <catalog-id>] [--branch main]
 //     [--port-start 5173] [--max-ports 10]
 //
 // Prints `[{ project, branch, port }]`. With no --project/--branch filter,
