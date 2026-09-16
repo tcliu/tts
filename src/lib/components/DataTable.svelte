@@ -104,6 +104,10 @@
     // Escape-hatch renderer for callers that own cell HTML as strings (adapted
     // from the legacy viewer); used only when a column supplies no `cell`.
     renderCellHtml?: (columnKey: string, row: T) => string
+    // Preferred placement for the header tooltip (`data-tip-place` on the
+    // header cell, read by the tooltip engine). Defaults to below; pass
+    // 'above' where a below-placed tip would cover content (e.g. data rows).
+    headerTipPlace?: 'above' | 'below'
   }
 
   let {
@@ -151,6 +155,7 @@
     storageKey,
     resetWidthsSignal = 0,
     renderCellHtml,
+    headerTipPlace,
   }: Props<T> = $props()
 
   const resolvedEmptyMessage = $derived(emptyMessage ?? 'No rows')
@@ -355,6 +360,7 @@
               style={[headerAlignStyle, managedWidths ? '' : column.widthStyle, managedWidths ? '' : column.minWidthStyle, dense ? 'padding: 4px 8px; font-size: 12px' : ''].filter(Boolean).join('; ')}
               data-col-index={i}
               data-tip={column.headerTip ?? undefined}
+              data-tip-place={column.headerTip ? (headerTipPlace ?? undefined) : undefined}
               aria-sort={isActive ? (isAsc ? 'ascending' : 'descending') : undefined}>
               {#if column.sortable}
                 <span class="flex w-full items-center gap-2 text-left {centerHeader ? 'relative justify-center pr-5' : ''}">
