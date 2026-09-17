@@ -37,6 +37,10 @@ Project-specific development conventions for the TTS web app.
 - The project root hosts the browser app; `tts.mjs` stays in the repo as the
   behavioral reference for supported voices, speeds, segmentation, and playback
   flow.
+- The canonical source for the shared UI primitives, icons, actions, and generic
+  scripts is the sibling `ui-lib` project. Vendor them through the `unify` skill
+  and port a shared-component fix back there in the same change; `ui-lib`'s
+  parity gate fails otherwise.
 - Component attributes stay camelCase.
 - Reuse this project's existing UI primitives and patterns when they fit,
   especially dialog, form, dropdown, editor, and icon components; do not build a
