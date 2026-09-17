@@ -1,24 +1,28 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
-  import { Compartment, EditorSelection, EditorState, RangeSetBuilder } from '@codemirror/state'
+  import { tick } from 'svelte'
+  import { Compartment, EditorSelection, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state'
   import { defaultKeymap, history, historyKeymap, indentLess } from '@codemirror/commands'
   import { bracketMatching, indentOnInput, indentUnit } from '@codemirror/language'
   import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
   import { search, searchKeymap } from '@codemirror/search'
   import { Decoration, EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view'
   import { githubDark, githubLight } from '@uiw/codemirror-theme-github'
-
-  import type { UiTheme } from '$lib/use-settings.svelte'
+  import { maxContentLengthFilter } from './code-editor-max-content'
 
   interface Props {
     content: string
     editable?: boolean
+    docType?: string
     selectionEnabled?: boolean
-    theme?: UiTheme
+    theme?: string
     containerClass?: string
     editorClass?: string
     editorAriaLabel?: string
+    autoFocus?: boolean
+    recreateKey?: string
+    maxContentLength?: number
     onReady?: () => void
+    onAutoFocused?: () => void
     onContentChange?: (content: string) => void
     onSelectionChange?: (range: { from: number; to: number } | null) => void
   }
@@ -26,21 +30,44 @@
   let {
     content = $bindable(),
     editable = true,
+    docType = 'text',
     selectionEnabled = true,
     theme = 'dark',
     containerClass = '',
     editorClass = '',
     editorAriaLabel = 'Content',
+    autoFocus = false,
+    recreateKey = '',
+    maxContentLength = 0,
     onReady,
+    onAutoFocused,
     onContentChange,
     onSelectionChange,
   }: Props = $props()
 
-  // Chrome colors are CSS variables defined in src/styles.css per [data-theme].
-  // Keeping them there satisfies AGENTS.md "palettes live only in styles.css"
-  // while the CodeMirror compartment only maps the variables to the required
-  // editor selectors.
-  function colorThemeExtensions(theme: UiTheme) {
+  // Language packs are loaded on demand, one chunk per document type, so the
+  // editor never bundles the languages a given document does not use. A host
+  // that never passes `docType` (it defaults to `'text'`) loads no language,
+  // exactly like an editor without language support.
+  const LANGUAGE_LOADERS: Record<string, () => Promise<Extension | null>> = {
+    html: () => import('@codemirror/lang-html').then(m => m.html()),
+    javascript: () => import('@codemirror/lang-javascript').then(m => m.javascript()),
+    json: () => import('@codemirror/lang-json').then(m => m.json()),
+    markdown: () => import('@codemirror/lang-markdown').then(m => m.markdown()),
+    xml: () => import('@codemirror/lang-xml').then(m => m.xml()),
+    yaml: () => import('@codemirror/lang-yaml').then(m => m.yaml()),
+  }
+
+  function loadEditorLanguage(documentType: string): Promise<Extension | null> {
+    return LANGUAGE_LOADERS[documentType]?.() ?? Promise.resolve(null)
+  }
+
+  // Chrome colors are CSS variables when the host theme defines them (the
+  // themed host keeps its palette in its stylesheet) and fall back to the
+  // fixed dark values otherwise, so an unthemed host renders the same dark
+  // chrome it always did. `theme` stays a plain string so this shared file
+  // never imports a per-app settings module.
+  function colorThemeExtensions(theme: string) {
     return [
       theme === 'dark' || theme === 'ember' || theme === 'forest' || theme === 'midnight' || theme === 'nebula' ? githubDark : githubLight,
       EditorView.theme({
@@ -60,23 +87,23 @@
           paddingBottom: '0.75rem',
           paddingLeft: '0.5rem',
           minHeight: '100%',
-          caretColor: 'var(--cm-caret)',
+          caretColor: 'var(--cm-caret, rgb(103 232 249))',
         },
         '.cm-gutters': {
-          color: 'var(--cm-gutterColor)',
-          borderRight: `1px solid var(--cm-gutterBorder)`,
+          color: 'var(--cm-gutterColor, rgb(100 116 139))',
+          borderRight: '1px solid var(--cm-gutterBorder, rgb(51 65 85))',
         },
         '.cm-activeLineGutter': {
-          backgroundColor: 'var(--cm-activeLineGutter)',
+          backgroundColor: 'var(--cm-activeLineGutter, rgba(22, 27, 34, 0.95))',
         },
         '.cm-activeLine': {
-          backgroundColor: 'var(--cm-activeLine)',
+          backgroundColor: 'var(--cm-activeLine, rgba(48, 54, 61, 0.45))',
         },
         '.cm-cursor, .cm-dropCursor': {
-          borderLeftColor: 'var(--cm-caret)',
+          borderLeftColor: 'var(--cm-caret, rgb(103 232 249))',
         },
         '.cm-selectionBackground, ::selection': {
-          backgroundColor: 'var(--cm-selection)',
+          backgroundColor: 'var(--cm-selection, rgba(56, 139, 253, 0.35))',
         },
         '.cm-playbackHighlight': {
           backgroundColor: 'var(--cm-playbackHighlight)',
@@ -99,11 +126,11 @@
     ]
   }
 
-  let editorContainerRef: HTMLDivElement | null = null
-  let editorView: EditorView | null = null
+  let editorContainerRef = $state<HTMLDivElement | null>(null)
+  let editorView = $state<EditorView | null>(null)
   let lastEditable = false
   let lastSelectionEnabled = true
-  let lastTheme: UiTheme = 'dark'
+  let lastTheme = 'dark'
   const editableCompartment = new Compartment()
   const colorThemeCompartment = new Compartment()
   const playbackHighlightCompartment = new Compartment()
@@ -139,6 +166,7 @@
       class: enabled ? '' : 'cm-selectionDisabled',
     })
   }
+
   // Large pastes through the browser's native contenteditable path force
   // CodeMirror to reverse-engineer the change from DOM mutations (seconds
   // for hundreds of KB). Applying the plain-text clipboard payload as a
@@ -193,90 +221,122 @@
     return true
   }
 
+  function createEditorExtensions(languageExtensions: Extension[] = []): Extension[] {
+    return [
+      colorThemeCompartment.of(colorThemeExtensions(theme)),
+      editableCompartment.of(EditorView.editable.of(editable)),
+      selectionGuardCompartment.of(selectionGuardExtension(selectionEnabled)),
+      selectionAttrCompartment.of(selectionAttrExtension(selectionEnabled)),
+      pasteExtension(),
+      ...languageExtensions,
+      drawSelection(),
+      playbackHighlightCompartment.of(playbackHighlightField(null, null)),
+      lineNumbers(),
+      search({ top: true }),
+      history(),
+      bracketMatching(),
+      closeBrackets(),
+      indentOnInput(),
+      indentUnit.of('  '),
+      EditorState.tabSize.of(2),
+      EditorView.lineWrapping,
+      maxContentLengthFilter(maxContentLength),
+      EditorView.contentAttributes.of({
+        'aria-label': editorAriaLabel,
+        'aria-multiline': 'true',
+      }),
+      EditorView.updateListener.of(update => {
+        if (update.docChanged) {
+          const next = update.state.doc.toString()
+          content = next
+          onContentChange?.(next)
+        }
+        if (update.selectionSet) {
+          const main = update.state.selection.main
+          if (!lastSelectionEnabled && main.from !== main.to) {
+            update.view.dispatch({
+              selection: EditorSelection.cursor(main.head),
+              userEvent: 'select.pointer.collapse',
+            })
+            return
+          }
+          onSelectionChange?.(main.from === main.to ? null : { from: main.from, to: main.to })
+        }
+      }),
+      keymap.of([
+        { key: 'Tab', run: insertTwoSpaces, preventDefault: true },
+        { key: 'Shift-Tab', run: removeTwoSpaces, preventDefault: true },
+        ...closeBracketsKeymap,
+        ...defaultKeymap,
+        ...historyKeymap,
+        ...searchKeymap,
+      ]),
+    ]
+  }
+
   function syncEditorDocument(nextContent: string) {
     if (!editorView) return
     const current = editorView.state.doc.toString()
     if (current === nextContent) return
-    // Replacing the whole buffer invalidates any selection computed against
-    // the previous document; mapping it instead would leak the old playback
-    // highlight into the new document as a phantom range. Collapse to the
-    // start of the incoming text explicitly.
+    if (onSelectionChange) {
+      // The host observes selection, so a wholesale replacement invalidates
+      // any selection computed against the previous document; mapping it
+      // instead would leak the old highlight into the new document as a
+      // phantom range. Collapse to the start of the incoming text explicitly.
+      editorView.dispatch({
+        changes: { from: 0, to: current.length, insert: nextContent },
+        selection: EditorSelection.cursor(0),
+      })
+      return
+    }
     editorView.dispatch({
       changes: { from: 0, to: current.length, insert: nextContent },
-      selection: EditorSelection.cursor(0),
+      filter: false,
     })
   }
 
-  function createEditor() {
-    if (!editorContainerRef) return
-    lastEditable = editable
-    lastSelectionEnabled = selectionEnabled
-    lastTheme = theme
-    editorView = new EditorView({
-      state: EditorState.create({
-        doc: content,
-        extensions: [
-          colorThemeCompartment.of(colorThemeExtensions(theme)),
-          editableCompartment.of(EditorView.editable.of(editable)),
-          selectionGuardCompartment.of(selectionGuardExtension(selectionEnabled)),
-          selectionAttrCompartment.of(selectionAttrExtension(selectionEnabled)),
-          pasteExtension(),
-          drawSelection(),
-          playbackHighlightCompartment.of(playbackHighlightField(null, null)),
-          lineNumbers(),
-          search({ top: true }),
-          history(),
-          bracketMatching(),
-          closeBrackets(),
-          indentOnInput(),
-          indentUnit.of('  '),
-          EditorState.tabSize.of(2),
-          EditorView.lineWrapping,
-          EditorView.contentAttributes.of({
-            'aria-label': editorAriaLabel,
-            'aria-multiline': 'true',
+  $effect(() => {
+    void recreateKey
+    void docType
+    let cancelled = false
+    tick()
+      .then(async () => {
+        if (cancelled || !editorContainerRef) {
+          editorView?.destroy()
+          editorView = null
+          return
+        }
+        const languageExtension = await loadEditorLanguage(docType)
+        if (cancelled) {
+          return
+        }
+        const languageExtensions = languageExtension ? [languageExtension] : []
+        editorView?.destroy()
+        editorView = new EditorView({
+          state: EditorState.create({
+            doc: content,
+            extensions: createEditorExtensions(languageExtensions),
           }),
-          EditorView.updateListener.of(update => {
-            if (update.docChanged) {
-              const next = update.state.doc.toString()
-              content = next
-              onContentChange?.(next)
-            }
-            if (update.selectionSet) {
-              const main = update.state.selection.main
-              if (!lastSelectionEnabled && main.from !== main.to) {
-                update.view.dispatch({
-                  selection: EditorSelection.cursor(main.head),
-                  userEvent: 'select.pointer.collapse',
-                })
-                return
-              }
-              onSelectionChange?.(main.from === main.to ? null : { from: main.from, to: main.to })
-            }
-          }),
-          keymap.of([
-            { key: 'Tab', run: insertTwoSpaces, preventDefault: true },
-            { key: 'Shift-Tab', run: removeTwoSpaces, preventDefault: true },
-            ...closeBracketsKeymap,
-            ...defaultKeymap,
-            ...historyKeymap,
-            ...searchKeymap,
-          ]),
-        ],
-      }),
-      parent: editorContainerRef,
-    })
-
-    onReady?.()
-  }
-
-  onMount(() => {
-    createEditor()
-  })
-
-  onDestroy(() => {
-    editorView?.destroy()
-    editorView = null
+          parent: editorContainerRef,
+        })
+        lastEditable = editable
+        lastSelectionEnabled = selectionEnabled
+        lastTheme = theme
+        if (autoFocus) {
+          editorView.focus()
+          onAutoFocused?.()
+        }
+        // Notify parent that the EditorView is ready so pending selections can be applied
+        onReady?.()
+      })
+      .catch(error => {
+        if (!cancelled) {
+          console.error('Failed to load editor language support', error)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
   })
 
   $effect(() => {
@@ -309,12 +369,6 @@
     })
   })
 
-  $effect(() => {
-    if (!editorView) return
-    void content
-    syncEditorDocument(content)
-  })
-
   export function focus() {
     editorView?.focus()
   }
@@ -344,18 +398,17 @@
 
   export function setSelection(from: number, to: number): boolean {
     if (!editorView) return false
-    const current = editorView.state.selection.main
-    if (current.from === from && current.to === to) return false
-    const selection = EditorSelection.create([EditorSelection.range(from, to)])
-    editorView.dispatch({ selection, scrollIntoView: true })
+    editorView.focus()
+    const sel = EditorSelection.create([EditorSelection.range(from, to)])
+    editorView.dispatch({ selection: sel, scrollIntoView: true })
     return true
   }
 
   export function clearSelection() {
     if (!editorView) return
-    const position = editorView.state.selection.main.anchor
-    const selection = EditorSelection.create([EditorSelection.range(position, position)])
-    editorView.dispatch({ selection })
+    const pos = editorView.state.selection.main.anchor
+    const sel = EditorSelection.create([EditorSelection.range(pos, pos)])
+    editorView.dispatch({ selection: sel })
   }
 
   export function setPlaybackHighlight(from: number, to: number) {
@@ -380,8 +433,25 @@
       effects: playbackHighlightCompartment.reconfigure(playbackHighlightField(null, null)),
     })
   }
+
+  $effect(() => {
+    if (!editorView) return
+    void content
+    syncEditorDocument(content)
+  })
+
+  $effect(() => {
+    return () => {
+      editorView?.destroy()
+      editorView = null
+    }
+  })
 </script>
 
 <div class={containerClass}>
-  <div bind:this={editorContainerRef} class={editorClass}></div>
+  <div
+    bind:this={editorContainerRef}
+    role="textbox"
+    aria-label={editorAriaLabel}
+    class={editorClass}></div>
 </div>
