@@ -30,8 +30,8 @@
     // itself is centered and the two-arrow control is pinned to the header's
     // right edge, so the (usually invisible) arrows never pull the label off
     // center and hovering reveals them without shifting it. The label row
-    // reserves right padding for the control width so a long label wraps
-    // instead of sliding under the arrows.
+    // keeps only a small symmetric gutter; sized columns keep headroom so a
+    // long label shows an ellipsis before sliding under the arrows.
     headerAlign?: 'left' | 'center' | 'right'
     // When widthClass / minWidthClass is omitted, they are derived from these:
     // a number is pixels, a string ending in '%' is a percentage (rebased so
@@ -78,8 +78,7 @@
     // always fit one page (the dashboard breakdowns).
     showPagination?: boolean
     // Compact header/cell padding for summary tables embedded in a panel.
-    // Applied inline so it also wins inside hosts whose global table rules are
-    // unlayered (the legacy viewer stylesheet).
+    // Applied inline so it wins over host table rules.
     dense?: boolean
     sortKey?: string | null
     sortDirection?: SortDirection
@@ -319,7 +318,7 @@
 
   <div tabindex="-1" class={`${fillHeight ? FILL_CONTAINER_CLASS : containerClass} outline-none`} bind:this={tableContainer}>
     <table
-      class="border-separate border-spacing-0 text-sm [&_tr:last-child_td]:border-b-0 {managedWidths ? 'min-w-full' : `w-full min-w-full ${tableClass}`}"
+      class="border-separate border-spacing-0 text-sm [&_tr:last-child_td]:border-b-0 {managedWidths ? 'min-w-full' : `w-full ${tableClass}`}"
       style={managedWidths ? `table-layout:fixed;min-width:100%;width:${totalWidth}px;` : ''}>
       {#if managedWidths}
         <colgroup>
@@ -363,7 +362,7 @@
               data-tip-place={column.headerTip ? (headerTipPlace ?? undefined) : undefined}
               aria-sort={isActive ? (isAsc ? 'ascending' : 'descending') : undefined}>
               {#if column.sortable}
-                <span class="flex w-full items-center gap-2 text-left {centerHeader ? 'relative justify-center pr-5' : ''}">
+                <span class="flex w-full items-center gap-2 text-left {centerHeader ? 'relative justify-center px-1' : ''}">
                   <span class={centerHeader ? 'min-w-0 overflow-hidden text-ellipsis break-words' : ''}>{column.header}</span>
                   <span
                     class="{centerHeader ? 'absolute right-0 top-1/2 flex -translate-y-1/2 flex-col' : 'flex flex-col'} text-slate-400 transition-opacity {isActive ? 'opacity-100' : '[@media(hover:hover)]:opacity-0'} group-hover:opacity-100 group-focus-within:opacity-100">
