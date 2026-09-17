@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { flushSync, tick } from 'svelte'
+  import { flushSync, tick, type Snippet } from 'svelte'
   import CloseIcon from '$lib/icons/CloseIcon.svelte'
   import { DEFAULT_CHIP_PANEL_CLASS } from '$lib/dropdown-chrome'
   import { positionPanel } from '$lib/position-panel.svelte'
@@ -17,9 +17,11 @@
     inputId?: string
     chipClass?: string
     chipClassFor?: (tag: string) => string
+    chip?: Snippet<[tag: string, remove: () => void]>
+    option?: Snippet<[tag: string]>
   }
 
-  let { value = [], availableTags = [], onChange, placeholder = '', disabled = false, inputId, chipClass = 'border-slate-600 bg-slate-800 text-slate-200', chipClassFor }: Props = $props()
+  let { value = [], availableTags = [], onChange, placeholder = '', disabled = false, inputId, chipClass = 'border-slate-600 bg-slate-800 text-slate-200', chipClassFor, chip, option }: Props = $props()
   const i18n = getI18nContext()
 
   let id = $props.id()
@@ -56,6 +58,10 @@
     if (!open) return
     selection.clamp(suggestions.length)
   })
+
+  export function focus(): void {
+    inputRef?.focus()
+  }
 
   function emit(): void {
     onChange?.([...value])
@@ -202,17 +208,21 @@
   class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 transition focus-within:border-cyan-500">
   <div class="flex flex-wrap items-center gap-1.5">
     {#each value as tag, index (tag.toLowerCase())}
-      <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs {chipClassFor?.(tag) ?? chipClass}">
-        {tag}
-        <button
-          type="button"
-          aria-label={i18n.t('tagInput.remove', { name: tag })}
-          disabled={disabled}
-          onclick={() => removeAt(index)}
-          class="rounded-full p-0.5 opacity-60 outline-none transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
-          <CloseIcon className="h-3 w-3" />
-        </button>
-      </span>
+      {#if chip}
+        {@render chip(tag, () => removeAt(index))}
+      {:else}
+        <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs {chipClassFor?.(tag) ?? chipClass}">
+          {tag}
+          <button
+            type="button"
+            aria-label={i18n.t('tagInput.remove', { name: tag })}
+            disabled={disabled}
+            onclick={() => removeAt(index)}
+            class="rounded-full p-0.5 opacity-60 outline-none transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
+            <CloseIcon className="h-3 w-3" />
+          </button>
+        </span>
+      {/if}
     {/each}
     <input
       bind:this={inputRef}
@@ -256,7 +266,11 @@
           selection.set(index)
         }}
         onclick={() => addSuggestion(suggestion)}>
-        <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs {chipClassFor?.(suggestion) ?? chipClass}">{suggestion}</span>
+        {#if option}
+          {@render option(suggestion)}
+        {:else}
+          <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs {chipClassFor?.(suggestion) ?? chipClass}">{suggestion}</span>
+        {/if}
       </button>
     {/each}
   </div>

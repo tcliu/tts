@@ -12,8 +12,9 @@
     maxWidth?: 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | '7xl' | 'fit' | 'wide'
     confirmColor?: 'rose' | 'amber' | 'emerald' | 'cyan'
     pending?: boolean
+    confirmOnDismiss?: boolean
     onConfirm: () => void
-    onCancel: () => void
+    onCancel?: () => void
   }
 
   let {
@@ -25,12 +26,15 @@
     maxWidth = 'md',
     confirmColor = 'rose',
     pending = false,
+    confirmOnDismiss = false,
     onConfirm,
     onCancel,
   }: Props = $props()
+
+  const resolvedCancel = $derived(confirmOnDismiss ? onConfirm : (onCancel ?? onConfirm))
 </script>
 
-<BaseDialog {title} {className} {maxWidth} {closeLabel} {onCancel}>
+<BaseDialog {title} {className} {maxWidth} {closeLabel} onCancel={resolvedCancel}>
   <div class="flex flex-col gap-4">
     <p class="text-sm leading-6 text-slate-400">{message}</p>
     <Buttons align="right">
