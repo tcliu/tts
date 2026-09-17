@@ -122,9 +122,6 @@
   }
 
   function handleWindowKeydown(event: KeyboardEvent) {
-    if (!dismissKeydownCapture) {
-      return
-    }
     // Cooperates with sibling overlays (drawers, nested dialogs): whoever
     // handles the key first marks it so the other listeners stand down.
     const handledEvent = event as KeyboardEvent & {
@@ -143,7 +140,12 @@
       return
     }
 
-    if (event.key === 'Escape' && !cancelDisabled) {
+    if (event.key === 'Escape') {
+      // `dismissKeydownCapture` gates dismissal only; the focus trap below
+      // still runs so a modal that opts out of Escape stays tab-contained.
+      if (!dismissKeydownCapture || cancelDisabled) {
+        return
+      }
       const target = event.target
       if (target instanceof Element && target.closest('[data-escape-capture]')) {
         return
@@ -158,9 +160,6 @@
   }
 
   $effect(() => {
-    if (!dismissKeydownCapture) {
-      return
-    }
     document.addEventListener('keydown', handleWindowKeydown, true)
     return () => document.removeEventListener('keydown', handleWindowKeydown, true)
   })
