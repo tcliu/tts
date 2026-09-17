@@ -17,7 +17,7 @@
     headerClass?: string
   }
 
-  let { tabs, state: tabState, pathname, ariaLabel = 'Tabs', class: className = '', headerClass = 'sticky top-0 z-10 flex w-full flex-wrap items-center justify-between gap-2 bg-slate-950 pb-3' }: Props<TState> = $props()
+  let { tabs, state: tabState, pathname, ariaLabel = 'Tabs', class: className = '', headerClass = 'sticky top-0 z-10 flex w-full flex-wrap items-center justify-between gap-2 bg-transparent pb-3' }: Props<TState> = $props()
 
   let activePath = $state('')
 
