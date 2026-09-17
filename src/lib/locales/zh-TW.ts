@@ -157,6 +157,8 @@ export const zhTW: Record<MessageKey, string> = {
   'common.closeDialog': '關閉對話框',
   'tabs.label': '頁籤',
   'search.placeholder': '搜尋...',
+  'password.show': '顯示密碼',
+  'password.hide': '隱藏密碼',
   'number.increment': '增加',
   'number.decrement': '減少',
   'dropdown.noOptions': '沒有選項',

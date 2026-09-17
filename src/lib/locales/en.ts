@@ -155,6 +155,8 @@ export const en = {
   'common.closeDialog': 'Close dialog',
   'tabs.label': 'Tabs',
   'search.placeholder': 'Search...',
+  'password.show': 'Show password',
+  'password.hide': 'Hide password',
   'number.increment': 'Increment',
   'number.decrement': 'Decrement',
   'dropdown.noOptions': 'No options',

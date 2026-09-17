@@ -1,12 +1,6 @@
 import type { ActionReturn } from 'svelte/action'
 
 export interface DragCloseDownOptions {
-  /**
-   * The drag handle MUST disable vertical touch scrolling (e.g. Tailwind
-   * `touch-pan-x`), otherwise the browser claims the gesture for scroll and
-   * `pointermove` never fires. Deliberately not set here: touch-action is
-   * layout intent the caller owns.
-   */
   isEnabled: () => boolean
   onDragUpdate: (offset: number, dragging: boolean) => void
   onClose: () => void
@@ -19,11 +13,11 @@ const FAST_SWIPE_VELOCITY_PX_PER_MS = 0.5
 const FAST_SWIPE_MIN_DISTANCE_PX = 40
 
 /**
- * Vertical mirror of `dragCloseLeft` for bottom sheets: touch/pen drags
- * starting on the element that move down past ~30% of the panel height (or
- * a fast downward flick) request `onClose`; otherwise the sheet snaps back.
- * Drags starting on form controls or buttons stay taps and are never tracked,
- * so an embedded close button keeps working on touch.
+ * Vertical drag-to-close for bottom sheets: touch/pen drags starting on the
+ * element that move down past ~30% of the panel height (or a fast downward
+ * flick) request `onClose`; otherwise the sheet snaps back. Drags starting
+ * on form controls or buttons stay taps and are never tracked, so an
+ * embedded close button keeps working on touch.
  */
 export function dragCloseDown(
   element: HTMLElement,

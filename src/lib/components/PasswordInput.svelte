@@ -4,38 +4,39 @@
   import EyeIcon from '$lib/icons/EyeIcon.svelte'
   import EyeSlashIcon from '$lib/icons/EyeSlashIcon.svelte'
   import { getI18nContext } from '$lib/i18n.svelte'
+  const i18n = getI18nContext()
 
   interface Props {
     value: string
-    showLabel?: string
-    hideLabel?: string
     id?: string
     name?: string
     placeholder?: string
     autocomplete?: HTMLInputAttributes['autocomplete']
     disabled?: boolean
     required?: boolean
+    showLabel?: string
+    hideLabel?: string
     className?: string
     oninput?: (event: Event) => void
   }
 
   let {
     value = $bindable(),
-    showLabel,
-    hideLabel,
     id,
     name,
     placeholder,
     autocomplete = 'current-password',
     disabled = false,
     required = false,
+    showLabel,
+    hideLabel,
     className = '',
     oninput,
   }: Props = $props()
 
-  const i18n = getI18nContext()
-  const resolvedShowLabel = $derived(showLabel ?? i18n.t('admin.passwordShow'))
-  const resolvedHideLabel = $derived(hideLabel ?? i18n.t('admin.passwordHide'))
+  // Derived (not plain consts) so locale switches re-resolve the labels.
+  const resolvedShowLabel = $derived(showLabel ?? i18n.t('password.show'))
+  const resolvedHideLabel = $derived(hideLabel ?? i18n.t('password.hide'))
 
   let visible = $state(false)
   let input = $state<HTMLInputElement>()

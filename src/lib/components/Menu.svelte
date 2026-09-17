@@ -10,9 +10,7 @@
 
 <script lang="ts" generics="T">
   // Menu owns the icon-trigger dropdown (desktop popover, phone bottom sheet).
-  // Phase 2: cut SelectOverlay over to Menu + positionPanel so all dropdown
-  // chrome converges here instead of a parallel overlay.
-  import { onMount, flushSync, tick } from 'svelte'
+  import { flushSync, onMount, tick } from 'svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
   import { createFocusoutClose } from '$lib/actions/use-focusout-close'
   import { useDropdown } from '$lib/actions/use-dropdown.svelte'
@@ -29,6 +27,7 @@
     icon: Snippet
     item: Snippet<[T, MenuItemState]>
     ariaLabel: string
+    id?: string
     triggerClass?: string
     triggerTooltip?: string
     triggerTooltipAlign?: 'center' | 'left' | 'right'
@@ -50,6 +49,7 @@
     icon,
     item,
     ariaLabel,
+    id,
     align = 'right',
     autoPlace = true,
     triggerClass = '',
@@ -64,8 +64,8 @@
     closeLabel,
   }: Props = $props()
 
-  let uid = $props.id()
-  const menuId = $derived(`menu-${uid}`)
+  const fallbackId = $props.id()
+  const menuId = $derived(`menu-${id ?? fallbackId}`)
   const sheetTitleId = $derived(`${menuId}-title`)
   // closeLabel is required alongside phoneSheetTitle (see Props); the
   // fallback only serves plain menus, which never render the sheet branch.
@@ -85,11 +85,11 @@
   let sheetDragOffset = $state(0)
   let sheetDragging = $state(false)
   let reduceMotion = $state(false)
+  const usePhoneSheet = $derived(phoneSheetTitle !== undefined && isPhoneViewport)
 
   // isPhoneViewport only resolves via matchMedia after mount, so phones first
   // paint the popover branch before swapping to the sheet — accepted flash,
   // the cheapest stable option (no SSR viewport guess, no forced sheet).
-  const usePhoneSheet = $derived(phoneSheetTitle !== undefined && isPhoneViewport)
 
   onMount(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return

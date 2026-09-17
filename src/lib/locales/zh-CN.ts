@@ -157,6 +157,8 @@ export const zhCN: Record<MessageKey, string> = {
   'common.closeDialog': '关闭对话框',
   'tabs.label': '标签页',
   'search.placeholder': '搜索...',
+  'password.show': '显示密码',
+  'password.hide': '隐藏密码',
   'number.increment': '增加',
   'number.decrement': '减少',
   'dropdown.noOptions': '没有选项',
