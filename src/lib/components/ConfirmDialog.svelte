@@ -7,7 +7,7 @@
     title: string
     message: string
     confirmLabel: string
-    closeLabel: string
+    closeLabel?: string
     className?: string
     maxWidth?: 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | '7xl' | 'fit' | 'wide'
     confirmColor?: 'rose' | 'amber' | 'emerald' | 'cyan'

@@ -16,9 +16,10 @@
     disabled?: boolean
     inputId?: string
     chipClass?: string
+    chipClassFor?: (tag: string) => string
   }
 
-  let { value = [], availableTags = [], onChange, placeholder = '', disabled = false, inputId, chipClass = 'border-slate-600 bg-slate-800 text-slate-200' }: Props = $props()
+  let { value = [], availableTags = [], onChange, placeholder = '', disabled = false, inputId, chipClass = 'border-slate-600 bg-slate-800 text-slate-200', chipClassFor }: Props = $props()
   const i18n = getI18nContext()
 
   let id = $props.id()
@@ -201,7 +202,7 @@
   class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 transition focus-within:border-cyan-500">
   <div class="flex flex-wrap items-center gap-1.5">
     {#each value as tag, index (tag.toLowerCase())}
-      <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs {chipClass}">
+      <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs {chipClassFor?.(tag) ?? chipClass}">
         {tag}
         <button
           type="button"
@@ -255,7 +256,7 @@
           selection.set(index)
         }}
         onclick={() => addSuggestion(suggestion)}>
-        <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs {chipClass}">{suggestion}</span>
+        <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs {chipClassFor?.(suggestion) ?? chipClass}">{suggestion}</span>
       </button>
     {/each}
   </div>
