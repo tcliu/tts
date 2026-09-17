@@ -153,6 +153,8 @@ export const en = {
   'pagination.current': 'Current page',
   'pagination.label': 'Pagination',
   'common.closeDialog': 'Close dialog',
+  'tabs.label': 'Tabs',
+  'search.placeholder': 'Search...',
   'number.increment': 'Increment',
   'number.decrement': 'Decrement',
   'dropdown.noOptions': 'No options',

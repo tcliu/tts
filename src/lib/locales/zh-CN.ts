@@ -155,6 +155,8 @@ export const zhCN: Record<MessageKey, string> = {
   'pagination.current': '当前页',
   'pagination.label': '分页',
   'common.closeDialog': '关闭对话框',
+  'tabs.label': '标签页',
+  'search.placeholder': '搜索...',
   'number.increment': '增加',
   'number.decrement': '减少',
   'dropdown.noOptions': '没有选项',

@@ -1,5 +1,8 @@
 <script lang="ts" generics="TState">
   import type { Snippet } from 'svelte'
+  import { getI18nContext } from '$lib/i18n.svelte'
+
+  const i18n = getI18nContext()
 
   export interface Tab<TState> {
     label: string
@@ -17,7 +20,10 @@
     headerClass?: string
   }
 
-  let { tabs, state: tabState, pathname, ariaLabel = 'Tabs', class: className = '', headerClass = 'sticky top-0 z-10 flex w-full flex-wrap items-center justify-between gap-2 bg-transparent pb-3' }: Props<TState> = $props()
+  let { tabs, state: tabState, pathname, ariaLabel, class: className = '', headerClass = 'sticky top-0 z-10 flex w-full flex-wrap items-center justify-between gap-2 bg-transparent pb-3' }: Props<TState> = $props()
+
+  // Derived (not a plain const) so locale switches re-resolve the label.
+  const resolvedAriaLabel = $derived(ariaLabel ?? i18n.t('tabs.label'))
 
   let activePath = $state('')
 
@@ -26,7 +32,7 @@
 
 <div class="flex min-h-0 flex-1 flex-col">
   <div class={`${headerClass} ${className}`}>
-    <nav aria-label={ariaLabel} class="inline-flex rounded-xl border border-slate-700 bg-slate-950 p-1">
+    <nav aria-label={resolvedAriaLabel} class="inline-flex rounded-xl border border-slate-700 bg-slate-950 p-1">
       {#each tabs as tab}
         {#if pathname !== undefined}
           <a

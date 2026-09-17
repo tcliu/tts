@@ -155,6 +155,8 @@ export const zhTW: Record<MessageKey, string> = {
   'pagination.current': '目前頁',
   'pagination.label': '分頁',
   'common.closeDialog': '關閉對話框',
+  'tabs.label': '頁籤',
+  'search.placeholder': '搜尋...',
   'number.increment': '增加',
   'number.decrement': '減少',
   'dropdown.noOptions': '沒有選項',
