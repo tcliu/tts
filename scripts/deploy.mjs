@@ -171,6 +171,19 @@ function extractDeploymentUrl(commandOutput) {
   return candidates.length > 0 ? candidates[0] : ''
 }
 
+function extractDeploymentId(commandOutput) {
+  const payload = trimJsonPayload(String(commandOutput || ''))
+  if (!payload) {
+    return ''
+  }
+  try {
+    const id = String(JSON.parse(payload)?.id || '').trim()
+    return /^dpl_[A-Za-z0-9]+$/.test(id) ? id : ''
+  } catch {
+    return ''
+  }
+}
+
 function deploymentReadyState(inspectOutput) {
   const raw = String(inspectOutput || '')
   const lineStart = raw.search(/(^|\r?\n)\s*\{/)
@@ -195,7 +208,29 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function waitForReadyDeployment(deploymentUrl) {
+// `vercel inspect --format json` omits the platform's block explanation, so
+// pull it from the deployment API (diagnostics only; never fails the deploy).
+function fetchDeploymentBlockDetail(deploymentId) {
+  const empty = { reason: '', errorLink: '' }
+  if (!deploymentId) {
+    return empty
+  }
+  const { status, output } = runVercelApi(`/v13/deployments/${deploymentId}`)
+  if (status !== 0) {
+    return empty
+  }
+  try {
+    const parsed = JSON.parse(output || '{}')
+    return {
+      reason: String(parsed?.readyStateReason || '').trim(),
+      errorLink: String(parsed?.errorLink || '').trim(),
+    }
+  } catch {
+    return empty
+  }
+}
+
+async function waitForReadyDeployment(deploymentUrl, deploymentId = '') {
   console.log('-> Waiting for Vercel deployment to become ready...')
   console.log(
     `-> Vercel deployment log command: vercel inspect ${deploymentUrl} --logs --wait --timeout ${DEPLOY_WAIT_TIMEOUT}`,
@@ -235,6 +270,14 @@ async function waitForReadyDeployment(deploymentUrl) {
 
   if (inspectOutput) {
     console.error(inspectOutput)
+  }
+
+  const { reason, errorLink } = fetchDeploymentBlockDetail(deploymentId)
+  if (reason) {
+    console.error(`Vercel block reason: ${reason}`)
+  }
+  if (errorLink) {
+    console.error(`Reference: ${errorLink}`)
   }
 
   if (inspectStatus !== 0) {
@@ -658,7 +701,7 @@ async function runDeployFlow(profileValue, syncEnv, applySchema) {
     process.exit(1)
   }
 
-  await waitForReadyDeployment(deploymentUrl)
+  await waitForReadyDeployment(deploymentUrl, extractDeploymentId(deployOutput))
 
   syncProjectDomains()
 

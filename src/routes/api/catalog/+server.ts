@@ -13,6 +13,8 @@ import {
 } from '$lib/server/catalog-app';
 import { resolveProfile } from '$lib/server/profile';
 
+const NO_STORE = { 'cache-control': 'no-store, max-age=0' };
+
 export const GET: RequestHandler = async () => {
   // Runtime branch, not a static prop: worktree tag in dev, commit ref on Vercel.
   const branch = (process.env.DEV_TAG || process.env.VERCEL_GIT_COMMIT_REF || '').trim() || null;
@@ -28,5 +30,5 @@ export const GET: RequestHandler = async () => {
     tags: [...CATALOG_APP_TAGS, CATALOG_APP_FRAMEWORK],
     branch,
     profile,
-  });
+  }, { headers: NO_STORE });
 };
