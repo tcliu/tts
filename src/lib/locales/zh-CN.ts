@@ -152,6 +152,12 @@ export const zhCN: Record<MessageKey, string> = {
   'pagination.next': '下一页',
   'pagination.pageSize': '每页行数',
   'pagination.page': '页',
+  'pagination.current': '当前页',
+  'pagination.label': '分页',
+  'common.closeDialog': '关闭对话框',
+  'number.increment': '增加',
+  'number.decrement': '减少',
+  'dropdown.noOptions': '没有选项',
 
   'theme.label': '主题',
   'theme.dark': '深色',

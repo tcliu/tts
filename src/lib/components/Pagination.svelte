@@ -3,6 +3,8 @@
   import SelectDropdown from './SelectDropdown.svelte'
   import ChevronLeftIcon from '$lib/icons/ChevronLeftIcon.svelte'
   import ChevronRightIcon from '$lib/icons/ChevronRightIcon.svelte'
+  import { getI18nContext } from '$lib/i18n.svelte'
+  const i18n = getI18nContext()
 
   interface Props {
     total: number
@@ -29,12 +31,19 @@
     pageSizeOptions = [10, 20, 50],
     onPageChange,
     onPageSizeChange,
-    previousLabel = 'Previous page',
-    nextLabel = 'Next page',
-    pageSizeLabel = 'Page size',
-    currentPageLabel = 'Current page',
-    paginationLabel = 'Pagination',
+    previousLabel,
+    nextLabel,
+    pageSizeLabel,
+    currentPageLabel,
+    paginationLabel,
   }: Props = $props()
+
+  // Derived (not plain consts) so locale switches re-resolve the labels.
+  const resolvedPreviousLabel = $derived(previousLabel ?? i18n.t('pagination.previous'))
+  const resolvedNextLabel = $derived(nextLabel ?? i18n.t('pagination.next'))
+  const resolvedPageSizeLabel = $derived(pageSizeLabel ?? i18n.t('pagination.pageSize'))
+  const resolvedCurrentPageLabel = $derived(currentPageLabel ?? i18n.t('pagination.current'))
+  const resolvedPaginationLabel = $derived(paginationLabel ?? i18n.t('pagination.label'))
 
   const PAGE_JUMP_DELTA = 2
 
@@ -145,10 +154,10 @@
   }
 </script>
 
-<nav aria-label={paginationLabel} class="flex flex-wrap items-center gap-1.5 {SIZE_CLASS[size].text} text-slate-400 {className}">
+<nav aria-label={resolvedPaginationLabel} class="flex flex-wrap items-center gap-1.5 {SIZE_CLASS[size].text} text-slate-400 {className}">
   <button
     type="button"
-    aria-label={previousLabel}
+    aria-label={resolvedPreviousLabel}
     disabled={!canGoPrev}
     onclick={() => changePageBy(-1)}
     class={iconButtonClass}>
@@ -168,7 +177,7 @@
         max={totalPages}
         onblur={clampPageInput}
         onkeydown={handlePageInputKeydown}
-        ariaLabel={currentPageLabel}
+        ariaLabel={resolvedCurrentPageLabel}
         showControls={false}
         className={`inline-flex ${SIZE_CLASS[size].pageInput} items-center justify-center rounded-md border border-cyan-500 bg-slate-950 text-center ${SIZE_CLASS[size].text} font-semibold text-cyan-300 outline-none focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-500/40`} />
     {:else}
@@ -183,7 +192,7 @@
 
   <button
     type="button"
-    aria-label={nextLabel}
+    aria-label={resolvedNextLabel}
     disabled={!canGoNext}
     onclick={() => changePageBy(1)}
     class={iconButtonClass}>
@@ -191,15 +200,16 @@
   </button>
 
   <div class="flex items-center gap-1.5">
-    <span>{pageSizeLabel}</span>
+    <span>{resolvedPageSizeLabel}</span>
     <div class="relative">
       <SelectDropdown
       buttonLabel={String(pageSize)}
       activeValue={String(pageSize)}
-      ariaLabel={pageSizeLabel}
+      ariaLabel={resolvedPageSizeLabel}
       size={size}
       options={pageSizeOptions.map(size => ({ value: String(size), label: String(size) }))}
-      onSelect={handlePageSizeChange} />
+      onSelect={handlePageSizeChange}
+      emptyLabel={i18n.t('dropdown.noOptions')} />
     </div>
   </div>
 </nav>

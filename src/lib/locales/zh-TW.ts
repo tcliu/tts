@@ -152,6 +152,12 @@ export const zhTW: Record<MessageKey, string> = {
   'pagination.next': '下一頁',
   'pagination.pageSize': '每頁列數',
   'pagination.page': '頁',
+  'pagination.current': '目前頁',
+  'pagination.label': '分頁',
+  'common.closeDialog': '關閉對話框',
+  'number.increment': '增加',
+  'number.decrement': '減少',
+  'dropdown.noOptions': '沒有選項',
 
   'theme.label': '主題',
   'theme.dark': '深色',

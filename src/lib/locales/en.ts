@@ -150,6 +150,12 @@ export const en = {
   'pagination.next': 'Next page',
   'pagination.pageSize': 'Page size',
   'pagination.page': 'Page',
+  'pagination.current': 'Current page',
+  'pagination.label': 'Pagination',
+  'common.closeDialog': 'Close dialog',
+  'number.increment': 'Increment',
+  'number.decrement': 'Decrement',
+  'dropdown.noOptions': 'No options',
 
   'theme.label': 'Theme',
   'theme.dark': 'Dark',

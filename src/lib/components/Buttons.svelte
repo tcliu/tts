@@ -25,4 +25,3 @@
 <div class={resolvedClassName}>
   {@render children?.()}
 </div>
-

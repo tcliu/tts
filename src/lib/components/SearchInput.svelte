@@ -27,6 +27,14 @@
 <div class={wrapperClass}>
   <div class="relative">
     <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-    <input bind:this={inputRef} type="search" bind:value aria-label={ariaLabel} {placeholder} {oninput} {onkeydown} class={inputClass} />
+    <input
+      bind:this={inputRef}
+      type="search"
+      bind:value
+      aria-label={ariaLabel}
+      {placeholder}
+      {oninput}
+      {onkeydown}
+      class={inputClass} />
   </div>
 </div>
