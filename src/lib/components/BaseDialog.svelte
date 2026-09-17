@@ -73,7 +73,7 @@
   onMount(() => {
     openDialogCount += 1
     dialogIndex = openDialogCount
-    titleId = `tts-dialog-title-${dialogIndex}`
+    titleId = `dialog-title-${dialogIndex}`
     previouslyFocused = document.activeElement
     void tick().then(() => {
       const firstInput = dialogRef?.querySelector<HTMLElement>(
@@ -122,6 +122,9 @@
   }
 
   function handleWindowKeydown(event: KeyboardEvent) {
+    if (!dismissKeydownCapture) {
+      return
+    }
     // Cooperates with sibling overlays (drawers, nested dialogs): whoever
     // handles the key first marks it so the other listeners stand down.
     const handledEvent = event as KeyboardEvent & {
@@ -163,9 +166,7 @@
   })
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} />
-
-<div class="fixed inset-0 z-40 @container tts-dialog">
+<div class="fixed inset-0 z-40 @container dialog">
   <button
     type="button"
     data-testid="dialog-overlay"
