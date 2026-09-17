@@ -78,7 +78,7 @@
     // always fit one page (the dashboard breakdowns).
     showPagination?: boolean
     // Compact header/cell padding for summary tables embedded in a panel.
-    // Applied inline so it wins over host table rules.
+    // Applied inline so it wins over the viewer table rules.
     dense?: boolean
     sortKey?: string | null
     sortDirection?: SortDirection

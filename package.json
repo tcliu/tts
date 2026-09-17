@@ -24,6 +24,7 @@
     "@codemirror/state": "^6.7.0",
     "@codemirror/view": "^6.43.4",
     "@neondatabase/serverless": "^1.1.0",
+    "svelte-sonner": "^1.1.1",
     "@uiw/codemirror-theme-github": "^4.25.10",
     "better-sqlite3": "^13.0.3",
     "franc-min": "^6.2.0",

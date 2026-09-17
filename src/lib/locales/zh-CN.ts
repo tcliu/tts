@@ -44,6 +44,15 @@ export const zhCN: Record<MessageKey, string> = {
   'editor.editText': '编辑文字',
   'editor.doubleClickToEdit': '双击以编辑',
 
+  'edit.editText': '编辑文本',
+  'edit.doubleClickToEdit': '双击编辑',
+  'edit.edit': '编辑',
+  'copy.toClipboard': '复制到剪贴板',
+  'common.copy': '复制',
+
+  'editor.toast.copied': '已复制到剪贴板',
+  'editor.toast.copyFailed': '复制失败',
+
   'info.label': '信息',
   'info.collapse': '收起信息',
 

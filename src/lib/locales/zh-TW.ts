@@ -44,6 +44,15 @@ export const zhTW: Record<MessageKey, string> = {
   'editor.editText': '編輯文字',
   'editor.doubleClickToEdit': '按兩下以編輯',
 
+  'edit.editText': '編輯文字',
+  'edit.doubleClickToEdit': '按兩下編輯',
+  'edit.edit': '編輯',
+  'copy.toClipboard': '複製到剪貼簿',
+  'common.copy': '複製',
+
+  'editor.toast.copied': '已複製到剪貼簿',
+  'editor.toast.copyFailed': '複製失敗',
+
   'info.label': '資訊',
   'info.collapse': '收合資訊',
 

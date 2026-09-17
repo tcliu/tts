@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import Button from './Button.svelte'
+  import CopyButton from './CopyButton.svelte'
   import EditIcon from '$lib/icons/EditIcon.svelte'
-  import { getI18nContext } from '$lib/i18n.svelte'
   import { TEXT_SIZE, type TextSize } from '$lib/text-size'
+  import { getI18nContext } from '$lib/i18n.svelte'
+  const i18n = getI18nContext()
 
   interface Props {
     text: string
@@ -16,6 +18,9 @@
     // maximum width (in px) the editable input may expand to; actual max
     // will be clamped to the remaining horizontal space when editing.
     maxWidth?: number
+    // When true, the display mode is wrapped in a Copyable so the text can
+    // also be copied to the clipboard on hover.
+    copyable?: boolean
   }
 
   let {
@@ -24,10 +29,9 @@
     size = 'md',
     className = 'text-slate-200',
     onActivate,
-    maxWidth = 320,
+    maxWidth = 480,
+    copyable = false,
   }: Props = $props()
-
-  const i18n = getI18nContext()
 
   let editing = $state(false)
   let value = $state('')
@@ -161,7 +165,7 @@
       onkeydown={(e) => { e.stopPropagation(); handleKeydown(e) }}
       onblur={commit}
       data-escape-capture
-      aria-label={i18n.t('editor.editText')}
+      aria-label={i18n.t('edit.editText')}
       style={inputWidth ? `width: ${inputWidth}px; min-width: 0` : 'min-width: 0'}
       class={`${TEXT_SIZE[size]} max-w-full rounded-md bg-slate-950 px-2 py-1 text-slate-100 outline outline-1 outline-slate-700 transition motion-reduce:transition-none focus:outline-cyan-500`} />
   </div>
@@ -171,7 +175,7 @@
       bind:this={displayBtn}
       type="button"
       class={`${TEXT_SIZE[size]} min-w-0 truncate bg-transparent p-0 pl-2 text-left transition motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 ${className}`}
-      title={i18n.t('editor.doubleClickToEdit')}
+      title={i18n.t('edit.doubleClickToEdit')}
       onclick={(e) => { e.stopPropagation(); scheduleActivate() }}
       onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation() }}
       ondblclick={handleTextDoubleClick}>
@@ -181,8 +185,8 @@
       <Button
         size="sm"
         variant="ghost"
-        ariaLabel={i18n.t('editor.edit')}
-        tooltip={i18n.t('editor.edit')}
+        ariaLabel={i18n.t('edit.edit')}
+        tooltip={i18n.t('edit.edit')}
         onClick={(e) => { e.stopPropagation(); startEdit() }}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation() }}
         className="bg-transparent p-0 text-slate-400 hover:text-cyan-300">
@@ -194,9 +198,12 @@
   {/snippet}
 
   <!-- Don't grow to fill the available space in display mode so sibling elements
-       sit immediately after the name instead of being pushed to the right.
-       Keep min-w-0 so truncation still works. -->
+       (e.g. tag chips) sit immediately after the filename instead of being
+       pushed to the right. Keep min-w-0 so truncation still works. -->
   <div class="group flex min-w-0 items-center gap-1">
     {@render displayContent()}
+    {#if copyable && text.trim() !== ''}
+      <CopyButton text={text} copyAriaLabel={`Copy ${text}`} />
+    {/if}
   </div>
 {/if}

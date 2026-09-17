@@ -42,6 +42,15 @@ export const en = {
   'editor.editText': 'Edit text',
   'editor.doubleClickToEdit': 'Double-click to edit',
 
+  'edit.editText': 'Edit text',
+  'edit.doubleClickToEdit': 'Double-click to edit',
+  'edit.edit': 'Edit',
+  'copy.toClipboard': 'Copy to clipboard',
+  'common.copy': 'Copy',
+
+  'editor.toast.copied': 'Copied to clipboard',
+  'editor.toast.copyFailed': 'Failed to copy',
+
   'info.label': 'Info',
   'info.collapse': 'Collapse info',
 
