@@ -61,13 +61,13 @@
   function mapSignInError(err: unknown): string {
     const code = err instanceof Error ? err.message : ''
     if (code === 'invalid_credentials') return i18n.t('auth.signIn.failed')
-    if (code === 'rate_limited') return i18n.t('adminErrorRateLimited')
+    if (code === 'rate_limited') return i18n.t('admin.errorRateLimited')
     return i18n.t('auth.signIn.failed')
   }
 
   function mapRegisterError(err: unknown): string {
     const code = err instanceof Error ? err.message : ''
-    if (code === 'rate_limited') return i18n.t('adminErrorRateLimited')
+    if (code === 'rate_limited') return i18n.t('admin.errorRateLimited')
     if (code === 'username is reserved') return i18n.t('auth.usernameReserved')
     if (code === 'password_too_short') {
       const min = err instanceof UserAuthError ? err.minLength : null

@@ -42,12 +42,12 @@ export function useAdminProperties(onSignedOut: () => void) {
     const label = labelMessage === labelKey ? property.key : labelMessage
     const parsed = Number(raw.trim())
     if (!Number.isInteger(parsed)) {
-      return { ok: false, error: `${label}: ${i18n.t('adminPropNotInteger')}` }
+      return { ok: false, error: `${label}: ${i18n.t('admin.propNotInteger')}` }
     }
     if (parsed < (property.min ?? Number.NEGATIVE_INFINITY) || parsed > (property.max ?? Number.POSITIVE_INFINITY)) {
       return {
         ok: false,
-        error: `${label}: ${i18n.t('adminPropOutOfRange', { min: String(property.min ?? 0), max: String(property.max ?? Number.MAX_SAFE_INTEGER) })}`,
+        error: `${label}: ${i18n.t('admin.propOutOfRange', { min: String(property.min ?? 0), max: String(property.max ?? Number.MAX_SAFE_INTEGER) })}`,
       }
     }
     return { ok: true, value: parsed }

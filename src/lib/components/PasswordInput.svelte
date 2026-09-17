@@ -34,8 +34,8 @@
   }: Props = $props()
 
   const i18n = getI18nContext()
-  const resolvedShowLabel = $derived(showLabel ?? i18n.t('adminPasswordShow'))
-  const resolvedHideLabel = $derived(hideLabel ?? i18n.t('adminPasswordHide'))
+  const resolvedShowLabel = $derived(showLabel ?? i18n.t('admin.passwordShow'))
+  const resolvedHideLabel = $derived(hideLabel ?? i18n.t('admin.passwordHide'))
 
   let visible = $state(false)
   let input = $state<HTMLInputElement>()

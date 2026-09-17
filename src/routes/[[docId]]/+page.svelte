@@ -582,7 +582,7 @@
           <SettingsIcon className="h-4 w-4" />
         {/snippet}
       </Button>
-      <Button variant="secondary" size="sm" ariaLabel={adminPresence.isAdmin ? i18n.t('adminTitle') : (data?.user ? data.user.username : i18n.t('auth.login'))} tooltip={adminPresence.isAdmin ? i18n.t('adminTitle') : (data?.user ? data.user.username : i18n.t('auth.login'))} onClick={handleProfileClick}>
+      <Button variant="secondary" size="sm" ariaLabel={adminPresence.isAdmin ? i18n.t('admin.title') : (data?.user ? data.user.username : i18n.t('auth.login'))} tooltip={adminPresence.isAdmin ? i18n.t('admin.title') : (data?.user ? data.user.username : i18n.t('auth.login'))} onClick={handleProfileClick}>
         {#snippet icon()}
           <ProfileIcon className="h-4 w-4" />
         {/snippet}

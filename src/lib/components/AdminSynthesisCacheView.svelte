@@ -311,7 +311,7 @@
   {/if}
   <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
     <div class="min-w-0 flex-1">
-      <p class="text-sm font-medium text-slate-100">{i18n.t('adminServerCache')}</p>
+      <p class="text-sm font-medium text-slate-100">{i18n.t('admin.serverCache')}</p>
       <p class="mt-0.5 text-xs text-slate-400" aria-live="polite">
         {#if selectedKeys.size === 0}
           {cacheState.stats?.entries ?? 0} {i18n.t('cache.units')} · {formatBytes(cacheState.stats?.bytes ?? 0)}
@@ -356,7 +356,7 @@
         size="sm"
         disabled={cacheState.entries.length === 0 || cacheState.pending}
         pending={cacheState.pending}
-        ariaLabel={i18n.t('adminClearAllServerCache')}
+        ariaLabel={i18n.t('admin.clearAllServerCache')}
         onClick={() => void cacheState.clearAll()}>
         {#snippet icon()}
           <DeleteIcon className="h-4 w-4" />
@@ -371,7 +371,7 @@
     rowId={entry => entry.key}
     {columns}
     loading={cacheState.loading}
-    emptyMessage={search.trim() ? i18n.t('cache.noMatching') : i18n.t('adminServerCacheEmpty')}
+    emptyMessage={search.trim() ? i18n.t('cache.noMatching') : i18n.t('admin.serverCacheEmpty')}
     bind:searchValue={search}
     searchAriaLabel={i18n.t('cache.search')}
     searchPlaceholder={i18n.t('cache.search')}

@@ -22,8 +22,8 @@ export interface AdminProperty extends PropertyDefinition {
 export const PROPERTY_DEFINITIONS: PropertyDefinition[] = [
   {
     key: 'tts_rate_limit_max',
-    labelKey: 'adminPropRateLimitMaxLabel',
-    descriptionKey: 'adminPropRateLimitMaxDesc',
+    labelKey: 'admin.propRateLimitMaxLabel',
+    descriptionKey: 'admin.propRateLimitMaxDesc',
     envKey: 'TTS_RATE_LIMIT_MAX',
     defaultValue: 60,
     min: 1,
@@ -31,8 +31,8 @@ export const PROPERTY_DEFINITIONS: PropertyDefinition[] = [
   },
   {
     key: 'tts_max_text_length',
-    labelKey: 'adminPropMaxTextLengthLabel',
-    descriptionKey: 'adminPropMaxTextLengthDesc',
+    labelKey: 'admin.propMaxTextLengthLabel',
+    descriptionKey: 'admin.propMaxTextLengthDesc',
     envKey: 'TTS_MAX_TEXT_LENGTH',
     defaultValue: 2000,
     min: 1,
@@ -40,8 +40,8 @@ export const PROPERTY_DEFINITIONS: PropertyDefinition[] = [
   },
   {
     key: 'tts_cache_ttl_ms',
-    labelKey: 'adminPropCacheTtlLabel',
-    descriptionKey: 'adminPropCacheTtlDesc',
+    labelKey: 'admin.propCacheTtlLabel',
+    descriptionKey: 'admin.propCacheTtlDesc',
     envKey: 'TTS_CACHE_TTL_MS',
     defaultValue: 7 * 24 * 60 * 60 * 1000,
     min: 60 * 1000,
@@ -49,8 +49,8 @@ export const PROPERTY_DEFINITIONS: PropertyDefinition[] = [
   },
   {
     key: 'tts_cache_max_entries',
-    labelKey: 'adminPropCacheMaxEntriesLabel',
-    descriptionKey: 'adminPropCacheMaxEntriesDesc',
+    labelKey: 'admin.propCacheMaxEntriesLabel',
+    descriptionKey: 'admin.propCacheMaxEntriesDesc',
     envKey: 'TTS_CACHE_MAX_ENTRIES',
     defaultValue: 500,
     min: 1,
@@ -58,8 +58,8 @@ export const PROPERTY_DEFINITIONS: PropertyDefinition[] = [
   },
   {
     key: 'tts_cache_max_bytes',
-    labelKey: 'adminPropCacheMaxBytesLabel',
-    descriptionKey: 'adminPropCacheMaxBytesDesc',
+    labelKey: 'admin.propCacheMaxBytesLabel',
+    descriptionKey: 'admin.propCacheMaxBytesDesc',
     envKey: 'TTS_CACHE_MAX_BYTES',
     defaultValue: 200 * 1024 * 1024,
     min: 1024 * 1024,
@@ -67,8 +67,8 @@ export const PROPERTY_DEFINITIONS: PropertyDefinition[] = [
   },
   {
     key: 'edge_tts_timeout_ms',
-    labelKey: 'adminPropEdgeTtsTimeoutLabel',
-    descriptionKey: 'adminPropEdgeTtsTimeoutDesc',
+    labelKey: 'admin.propEdgeTtsTimeoutLabel',
+    descriptionKey: 'admin.propEdgeTtsTimeoutDesc',
     envKey: 'EDGE_TTS_TIMEOUT_MS',
     defaultValue: 30_000,
     min: 1000,
@@ -76,8 +76,8 @@ export const PROPERTY_DEFINITIONS: PropertyDefinition[] = [
   },
   {
     key: 'auth_password_min_length',
-    labelKey: 'adminPropPasswordMinLengthLabel',
-    descriptionKey: 'adminPropPasswordMinLengthDesc',
+    labelKey: 'admin.propPasswordMinLengthLabel',
+    descriptionKey: 'admin.propPasswordMinLengthDesc',
     envKey: 'AUTH_PASSWORD_MIN_LENGTH',
     defaultValue: 8,
     min: 4,

@@ -17,9 +17,9 @@
   const i18n = getI18nContext()
 
   const sourceLabels = $derived<Record<string, string>>({
-    file: i18n.t('adminSourceFile'),
-    environment: i18n.t('adminSourceEnvironment'),
-    default: i18n.t('adminSourceDefault'),
+    file: i18n.t('admin.sourceFile'),
+    environment: i18n.t('admin.sourceEnvironment'),
+    default: i18n.t('admin.sourceDefault'),
   })
 
   let applyError = $state('')
@@ -55,41 +55,41 @@
       {applyError || resetError || (propertiesState.loadError ? adminErrorMessage(propertiesState.loadError, i18n) : '')}
     </p>
   {/if}
-  <section aria-label={i18n.t('adminPropertiesActions')} class="flex flex-none flex-wrap items-center gap-1.5">
+  <section aria-label={i18n.t('admin.propertiesActions')} class="flex flex-none flex-wrap items-center gap-1.5">
     <Button
       variant="outline"
       accent="cyan"
       size="sm"
       disabled={!propertiesState.hasUnsavedChanges || propertiesState.pending}
       pending={propertiesState.pending}
-      ariaLabel={i18n.t('adminApply')}
+      ariaLabel={i18n.t('admin.apply')}
       onClick={handleApply}>
       {#snippet icon()}
         <SaveIcon className="h-4 w-4" />
       {/snippet}
-      {i18n.t('adminApply')}
+      {i18n.t('admin.apply')}
     </Button>
     <Button
       variant="secondary"
       size="sm"
       disabled={propertiesState.pending}
-      ariaLabel={i18n.t('adminReload')}
+      ariaLabel={i18n.t('admin.reload')}
       onClick={() => void propertiesState.reload()}>
       {#snippet icon()}
         <RefreshIcon className="h-4 w-4" />
       {/snippet}
-      {i18n.t('adminReload')}
+      {i18n.t('admin.reload')}
     </Button>
     <Button
       variant="secondary"
       size="sm"
       disabled={propertiesState.pending || !propertiesState.hasUnsavedChanges}
-      ariaLabel={i18n.t('adminReset')}
+      ariaLabel={i18n.t('admin.reset')}
       onClick={() => propertiesState.resetDraft()}>
       {#snippet icon()}
         <ResetIcon className="h-4 w-4" />
       {/snippet}
-      {i18n.t('adminReset')}
+      {i18n.t('admin.reset')}
     </Button>
   </section>
   <div
@@ -112,8 +112,8 @@
             </span>
           </div>
           <p class="mt-0.5 text-xs text-slate-400">{propertyDescription(property)}</p>
-          <p class="mt-0.5 truncate text-xs text-slate-500" title={`${property.key} (${i18n.t('adminEnv')} ${property.envKey})`}>
-            {property.key} ({i18n.t('adminEnv')} {property.envKey})
+          <p class="mt-0.5 truncate text-xs text-slate-500" title={`${property.key} (${i18n.t('admin.env')} ${property.envKey})`}>
+            {property.key} ({i18n.t('admin.env')} {property.envKey})
           </p>
         </div>
         <div class="flex min-w-0 items-center gap-2">
@@ -132,8 +132,8 @@
           {#if property.source === 'file'}
             <Button
               size="sm"
-              ariaLabel={i18n.t('adminRevertToDefault')}
-              tooltip={i18n.t('adminRevertToDefault')}
+              ariaLabel={i18n.t('admin.revertToDefault')}
+              tooltip={i18n.t('admin.revertToDefault')}
               tooltipAlign="right"
               disabled={propertiesState.pending}
               onClick={() => void handleResetProperty(property)}

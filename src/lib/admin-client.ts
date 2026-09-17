@@ -25,15 +25,15 @@ export function adminErrorCode(error: unknown): string {
 export function adminErrorMessage(code: string, i18n: TtsI18n): string {
   switch (code) {
     case 'rate_limited':
-      return i18n.t('adminErrorRateLimited')
+      return i18n.t('admin.errorRateLimited')
     case 'invalid_request':
-      return i18n.t('adminErrorBadRequest')
+      return i18n.t('admin.errorBadRequest')
     case 'invalid_property':
-      return i18n.t('adminErrorInvalidProperty')
+      return i18n.t('admin.errorInvalidProperty')
     case 'request_timeout':
-      return i18n.t('adminErrorTimeout')
+      return i18n.t('admin.errorTimeout')
     default:
-      return i18n.t('adminErrorGeneric')
+      return i18n.t('admin.errorGeneric')
   }
 }
 

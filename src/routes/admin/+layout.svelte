@@ -169,12 +169,12 @@
           <span>{option.label}</span>
         {/snippet}
       </Menu>
-      <Button size="sm" ariaLabel={i18n.t('adminBackToEditor')} tooltip={i18n.t('adminBackToEditor')} onClick={() => goto(lastDocUrl())}>
+      <Button size="sm" ariaLabel={i18n.t('admin.backToEditor')} tooltip={i18n.t('admin.backToEditor')} onClick={() => goto(lastDocUrl())}>
         {#snippet icon()}
           <DocumentIcon />
         {/snippet}
       </Button>
-      <Button size="sm" ariaLabel={i18n.t('adminSignOut')} tooltip={i18n.t('adminSignOut')} onClick={() => void authState.handleLogout()}>
+      <Button size="sm" ariaLabel={i18n.t('admin.signOut')} tooltip={i18n.t('admin.signOut')} onClick={() => void authState.handleLogout()}>
         {#snippet icon()}
           <SignOutIcon />
         {/snippet}
@@ -190,8 +190,8 @@
       <div class="flex h-full flex-col items-center justify-center gap-3 px-4">
         <p class="text-sm text-rose-400">{adminErrorMessage(authState.sessionError || 'request_failed', i18n)}</p>
         <Button
-          ariaLabel={i18n.t('adminRetry')}
-          tooltip={i18n.t('adminRetry')}
+          ariaLabel={i18n.t('admin.retry')}
+          tooltip={i18n.t('admin.retry')}
           onClick={() => {
             authState.retry()
           }}>
@@ -209,12 +209,12 @@
       {/snippet}
       {@const adminTabs = [
         {
-          label: i18n.t('adminTabProperties'),
+          label: i18n.t('admin.tabProperties'),
           path: PROPERTIES_PATH,
           content: propertiesContent,
         },
         {
-          label: i18n.t('adminTabSynthesisCache'),
+          label: i18n.t('admin.tabSynthesisCache'),
           path: CACHE_PATH,
           content: cacheContent,
         },
@@ -225,7 +225,7 @@
           state={{ propertiesState, cacheState }}
           pathname={page.url.pathname === '/admin' ? PROPERTIES_PATH : page.url.pathname}
           class="pt-4"
-          ariaLabel={i18n.t('adminSections')} />
+          ariaLabel={i18n.t('admin.sections')} />
       </div>
       {@render children()}
     {/if}
