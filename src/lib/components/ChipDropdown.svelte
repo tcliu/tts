@@ -65,7 +65,7 @@
 
   const resolvedButtonClass = $derived(
     buttonClass ??
-      `inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium outline-none transition disabled:cursor-not-allowed disabled:opacity-50 ${VARIANT_CHIP[variant] ?? VARIANT_CHIP.violet}`,
+      `inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium outline-none transition disabled:cursor-not-allowed disabled:opacity-50 relative before:absolute before:-inset-1.5 before:content-[''] ${VARIANT_CHIP[variant] ?? VARIANT_CHIP.violet}`,
   )
 
   // Filterable layout is a fixed header + scrolling list contract
@@ -281,7 +281,7 @@
       <span class="min-w-0 truncate">{option.label}</span>
     </button>
   {:else}
-    <div role="presentation" class="px-3 py-6 text-center text-xs text-slate-500">{emptyText}</div>
+    <div role="presentation" class="px-3 py-6 text-center text-xs text-slate-400">{emptyText}</div>
   {/each}
 {/snippet}
 

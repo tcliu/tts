@@ -81,3 +81,14 @@
     <Tooltip trigger={toggleBtn}>{visible ? resolvedHideLabel : resolvedShowLabel}</Tooltip>
   </button>
 </div>
+
+<style>
+  /* 16px on touch pointers so iOS Safari does not auto-zoom on focus. Plain
+     scoped CSS on purpose: a stacked Tailwind variant inside a class
+     expression never reaches the scanner, so it would silently not exist. */
+  @media (pointer: coarse) {
+    input {
+      font-size: 1rem;
+    }
+  }
+</style>

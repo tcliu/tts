@@ -94,7 +94,7 @@
     <SearchInput bind:value={voiceSearch} ariaLabel={i18n.t('voices.search')} placeholder={i18n.t('voices.search')} wrapperClass="shrink-0" />
     <div tabindex="-1" class="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 outline-none">
       {#if filteredLanguages.length === 0}
-        <p class="p-3 text-sm text-slate-500">{i18n.t('voices.noMatching')}</p>
+        <p class="p-3 text-sm text-slate-400">{i18n.t('voices.noMatching')}</p>
       {:else}
         {#each filteredLanguages as language, i}
           {@const validGroups = voiceGroups(language.code)}

@@ -77,7 +77,7 @@
   class={`fixed z-40 flex items-start gap-3 rounded-md px-4 py-3 shadow-lg shadow-slate-950/25 backdrop-blur-sm ${typeClasses[type]} ${positionClasses[position]}`}>
   <p class={`min-w-0 flex-1 font-medium ${sizeClasses[size]}`}>{message}</p>
   {#if actionLabel && onAction}
-    <Button variant="ghost" size="sm" onClick={onAction} className="-my-1 shrink-0 font-semibold">
+    <Button variant="ghost" size="sm" onClick={onAction} className="shrink-0 font-semibold">
       {actionLabel}
     </Button>
   {/if}
@@ -86,7 +86,7 @@
     size="sm"
     ariaLabel={closeLabel}
     onClick={onClose}
-    className="-mr-1 -mt-1 shrink-0 opacity-75 hover:opacity-100">
+    className="shrink-0 opacity-75 hover:opacity-100">
     {#snippet icon()}
       <CloseIcon className="h-4 w-4" />
     {/snippet}

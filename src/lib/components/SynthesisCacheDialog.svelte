@@ -401,7 +401,7 @@
 {#snippet voiceCell(entry: SynthesisCacheEntry)}
   <div class="truncate text-slate-300">{voiceLabel(entry)}</div>
   {#if entry.voiceId}
-    <div class="mt-1 truncate text-xs text-slate-500">{entry.voiceId}</div>
+    <div class="mt-1 truncate text-xs text-slate-400">{entry.voiceId}</div>
   {/if}
 {/snippet}
 

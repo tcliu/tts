@@ -520,7 +520,7 @@
         triggerTooltip={i18n.t('app.language')}
         align="right"
         autoPlace={true}
-        triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
+        triggerClass="p-1.5 relative before:absolute before:-inset-2 before:content-['']"
         phoneSheetTitle={i18n.t('app.language')}
         closeLabel={i18n.t('close')}
         itemRole="menuitemradio"
@@ -550,7 +550,7 @@
         triggerTooltip={i18n.t('theme.label')}
         align="right"
         autoPlace={true}
-        triggerClass="p-1.5 relative before:absolute before:-inset-1.5 before:content-['']"
+        triggerClass="p-1.5 relative before:absolute before:-inset-2 before:content-['']"
         phoneSheetTitle={i18n.t('theme.label')}
         closeLabel={i18n.t('close')}
         itemRole="menuitemradio"

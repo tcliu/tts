@@ -104,7 +104,7 @@
       <p class="mb-2 text-xs text-amber-200/90" role="status">{syncErrorText}</p>
     {/if}
     {#if documents.length === 0}
-      <p class="text-xs text-slate-500">{search.trim() ? i18n.t('documents.noMatchingDocuments') : i18n.t('documents.noSavedDocuments')}</p>
+      <p class="text-xs text-slate-400">{search.trim() ? i18n.t('documents.noMatchingDocuments') : i18n.t('documents.noSavedDocuments')}</p>
     {:else}
       <ul class="flex flex-col gap-1">
         {#each documents as doc (doc.id)}
@@ -113,7 +113,7 @@
               type="button"
               aria-current={doc.id === currentDocId ? 'true' : undefined}
               onclick={() => onOpen(doc.id)}
-              class={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none transition motion-reduce:transition-none ${
+              class={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-left text-sm outline-none transition motion-reduce:transition-none ${
                 doc.id === currentDocId
                   ? 'bg-cyan-500/15 text-cyan-200'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-cyan-200 focus:bg-slate-800 focus:text-cyan-200'

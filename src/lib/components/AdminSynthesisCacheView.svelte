@@ -408,7 +408,7 @@
   {#if entry.text}
     <div class="whitespace-pre-wrap break-words text-slate-200">{entry.text.slice(0, 200)}</div>
   {:else}
-    <div class="truncate font-mono text-xs text-slate-500" title={entry.key}>{entry.key}</div>
+    <div class="truncate font-mono text-xs text-slate-400" title={entry.key}>{entry.key}</div>
   {/if}
 {/snippet}
 
@@ -416,7 +416,7 @@
   {#if entry.voice}
     <div class="truncate text-slate-300">{entry.voice}</div>
   {:else}
-    <span class="text-slate-500">—</span>
+    <span class="text-slate-400">—</span>
   {/if}
 {/snippet}
 

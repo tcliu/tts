@@ -43,7 +43,7 @@
                 event.preventDefault()
               }
             }}
-            class={`rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition motion-reduce:transition-none ${tab.path === pathname ? 'bg-cyan-500 text-onaccent' : 'text-slate-300 hover:text-cyan-300 focus:text-cyan-300'}`}>
+            class={`rounded-lg px-3 py-2 text-sm font-medium outline-none transition motion-reduce:transition-none ${tab.path === pathname ? 'bg-cyan-500 text-onaccent' : 'text-slate-300 hover:text-cyan-300 focus:text-cyan-300'}`}>
             {tab.label}
           </a>
         {:else}
@@ -51,7 +51,7 @@
             type="button"
             aria-pressed={tab.path === activeTab?.path}
             onclick={() => (activePath = tab.path)}
-            class={`rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition motion-reduce:transition-none ${tab.path === activeTab?.path ? 'bg-cyan-500 text-onaccent' : 'text-slate-300 hover:text-cyan-300 focus:text-cyan-300'}`}>
+            class={`rounded-lg px-3 py-2 text-sm font-medium outline-none transition motion-reduce:transition-none ${tab.path === activeTab?.path ? 'bg-cyan-500 text-onaccent' : 'text-slate-300 hover:text-cyan-300 focus:text-cyan-300'}`}>
             {tab.label}
           </button>
         {/if}

@@ -171,7 +171,7 @@
       {/if}
     </div>
     {#if metadata.rows.length === 0}
-      <p class="text-xs text-slate-500">{metadata.search.trim() ? i18n.t('metadata.noResults') : i18n.t('metadata.noMetadata')}</p>
+      <p class="text-xs text-slate-400">{metadata.search.trim() ? i18n.t('metadata.noResults') : i18n.t('metadata.noMetadata')}</p>
     {:else}
       <div bind:this={tableBodyRef} tabindex="-1" class="min-h-0 flex-1 overflow-auto outline-none">
         <table class="w-full table-fixed border-collapse text-sm">
@@ -260,7 +260,7 @@
                 <tr class="border-t border-slate-800 bg-slate-900/40">
                   <td colspan="6" class="p-0">
                     {#if row.words.length === 0}
-                      <p class="px-3 py-2 text-xs text-slate-500">{i18n.t('sentences.noWords')}</p>
+                      <p class="px-3 py-2 text-xs text-slate-400">{i18n.t('sentences.noWords')}</p>
                     {:else}
                       <div class="border-b border-slate-800 bg-slate-900">
                         <table class="w-full table-fixed border-collapse text-xs">
