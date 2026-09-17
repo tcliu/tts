@@ -52,12 +52,16 @@ export function describeDatabaseTarget(databaseURL) {
   }
 }
 
-// Identifiers cannot be parameterized, so whitelist them before interpolating.
+// Quote a Postgres identifier for DDL. Identifiers cannot be parameterized,
+// so quoting is the only safe path for values that are legitimately
+// interpolated. Quoted identifiers may contain any character except NUL, so
+// the only unsafe input is an embedded double quote — doubled to escape it
+// (`"` -> `""`).
 export function quoteIdentifier(name) {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-    throw new Error(`Invalid identifier: ${name}`)
+  if (typeof name !== 'string' || !name || name.includes('\u0000')) {
+    throw new Error(`Invalid identifier: ${String(name)}`)
   }
-  return `"${name}"`
+  return `"${name.replace(/"/g, '""')}"`
 }
 
 export function toSqliteSql(sql) {
