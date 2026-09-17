@@ -243,8 +243,8 @@
         disabled={disabled || isAtMax}
         tabindex="-1"
         aria-label={resolvedIncrementLabel}
-        class="flex flex-1 items-center justify-center border-b border-slate-700 bg-slate-900 px-1 text-slate-400 outline-none transition motion-reduce:transition-none hover:text-cyan-300 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset disabled:opacity-40">
-        <ChevronUpSmallIcon className="h-3 w-3" />
+        class="flex flex-1 items-center justify-center border-b border-slate-700 bg-slate-900 px-1 text-slate-400 outline-none transition motion-reduce:transition-none hover:text-cyan-300 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset disabled:opacity-40 [@media(pointer:coarse)]:min-h-6">
+        <ChevronUpSmallIcon className="h-4 w-4" />
       </button>
       <button
         type="button"
@@ -252,9 +252,20 @@
         disabled={disabled || isAtMin}
         tabindex="-1"
         aria-label={resolvedDecrementLabel}
-        class="flex flex-1 items-center justify-center bg-slate-900 px-1 text-slate-400 outline-none transition motion-reduce:transition-none hover:text-cyan-300 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset disabled:opacity-40">
-        <ChevronDownSmallIcon className="h-3 w-3" />
+        class="flex flex-1 items-center justify-center bg-slate-900 px-1 text-slate-400 outline-none transition motion-reduce:transition-none hover:text-cyan-300 focus:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-inset disabled:opacity-40 [@media(pointer:coarse)]:min-h-6">
+        <ChevronDownSmallIcon className="h-4 w-4" />
       </button>
     </div>
   {/if}
 </div>
+
+<style>
+  /* 16px on touch pointers so iOS Safari does not auto-zoom on focus. Plain
+     scoped CSS on purpose: a stacked Tailwind variant inside a class
+     expression never reaches the scanner, so it would silently not exist. */
+  @media (pointer: coarse) {
+    input {
+      font-size: 1rem;
+    }
+  }
+</style>

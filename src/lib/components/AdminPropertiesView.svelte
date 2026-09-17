@@ -112,7 +112,7 @@
             </span>
           </div>
           <p class="mt-0.5 text-xs text-slate-400">{propertyDescription(property)}</p>
-          <p class="mt-0.5 truncate text-xs text-slate-500" title={`${property.key} (${i18n.t('admin.env')} ${property.envKey})`}>
+          <p class="mt-0.5 truncate text-xs text-slate-400" title={`${property.key} (${i18n.t('admin.env')} ${property.envKey})`}>
             {property.key} ({i18n.t('admin.env')} {property.envKey})
           </p>
         </div>

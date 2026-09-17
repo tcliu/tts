@@ -47,7 +47,7 @@
 </script>
 
 <label
-  class={`inline-flex cursor-pointer items-center ${gapClass} ${disabled ? 'cursor-not-allowed opacity-40' : ''} ${wrapperClass}`}>
+  class={`inline-flex cursor-pointer items-center relative before:absolute before:-inset-1 before:content-[''] ${gapClass} ${disabled ? 'cursor-not-allowed opacity-40' : ''} ${wrapperClass}`}>
   <input
     bind:checked
     bind:this={inputRef}
