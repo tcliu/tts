@@ -13,6 +13,10 @@
     disabled?: boolean
     className?: string
     showControls?: boolean
+    // Inline style forwarded to the native input. Used by callers that hide
+    // the steppers to size the field themselves (runtime widths must not be
+    // utilities); pagination passes a ch-based width here.
+    inputStyle?: string
     id?: string
     ariaLabel: string
     incrementLabel?: string
@@ -31,6 +35,7 @@
     disabled = false,
     className = '',
     showControls = true,
+    inputStyle,
     id,
     ariaLabel,
     incrementLabel,
@@ -206,7 +211,7 @@
 
 <div
   onwheel={handleWheel}
-  class={`flex items-stretch ${showControls ? 'overflow-hidden rounded-lg border border-slate-700 bg-slate-950 transition motion-reduce:transition-none focus-within:border-cyan-500' : ''}`}>
+  class={`flex ${showControls ? 'items-stretch overflow-hidden rounded-lg border border-slate-700 bg-slate-950 transition motion-reduce:transition-none focus-within:border-cyan-500' : 'flex-none items-stretch'}`}>
   <input
     bind:this={inputEl}
     {id}
@@ -214,6 +219,7 @@
     inputmode={inputType}
     {placeholder}
     {disabled}
+    style={inputStyle}
     aria-label={ariaLabel}
     {value}
     onpointerdown={() => {
@@ -234,7 +240,7 @@
     }}
     onblur={handleBlur}
     onkeydown={handleKeydown}
-    class={`flex-1 px-3 py-2 text-sm text-slate-100 outline-none transition motion-reduce:transition-none disabled:opacity-40 ${showControls ? 'min-w-0 border-0 bg-transparent' : ''} ${className}`} />
+    class={`flex-1 text-slate-100 outline-none transition motion-reduce:transition-none disabled:opacity-40 ${showControls ? 'min-w-0 border-0 bg-transparent px-3 py-2 text-sm' : ''} ${className}`} />
   {#if showControls}
     <div class="flex flex-col">
       <button

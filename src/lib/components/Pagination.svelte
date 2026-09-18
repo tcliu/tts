@@ -51,34 +51,34 @@
     xs: {
       iconButton: 'h-8 w-8',
       pageButton: 'h-8 min-w-8 px-2',
-      pageInput: 'flex-none h-8 w-8 p-0',
+      pageInput: 'h-8 min-w-8',
+      pageInputPad: '0.5rem',
       text: 'text-xs',
       icon: 'h-4 w-4',
-      pad: 'py-1',
     },
     sm: {
       iconButton: 'h-9 w-9',
       pageButton: 'h-9 min-w-9 px-2.5',
-      pageInput: 'flex-none h-9 w-9 p-0',
+      pageInput: 'h-9 min-w-9',
+      pageInputPad: '0.625rem',
       text: 'text-sm',
       icon: 'h-4 w-4',
-      pad: 'py-2',
     },
     md: {
       iconButton: 'h-10 w-10',
       pageButton: 'h-10 min-w-10 px-3',
-      pageInput: 'flex-none h-10 w-10 p-0',
+      pageInput: 'h-10 min-w-10',
+      pageInputPad: '0.75rem',
       text: 'text-md',
       icon: 'h-5 w-5',
-      pad: 'py-2.5',
     },
     lg: {
       iconButton: 'h-11 w-11',
       pageButton: 'h-11 min-w-11 px-3.5',
-      pageInput: 'flex-none h-11 w-11 p-0',
+      pageInput: 'h-11 min-w-11',
+      pageInputPad: '0.875rem',
       text: 'text-lg',
       icon: 'h-5 w-5',
-      pad: 'py-3',
     },
   } as const
 
@@ -107,9 +107,39 @@
   )
 
   let pageJumpInputValue = $state('')
+  let pageJumpInput = $state<{ focus: () => void } | null>(null)
+  // Set only by an Enter commit that actually navigates: the focused input
+  // unmounts on navigation, so the effect below carries focus to the new
+  // page's input. Mouse navigation never sets it and never steals focus.
+  let refocusJumpInput = false
+  let refocusFrame = 0
 
   $effect(() => {
     pageJumpInputValue = String(currentPage)
+  })
+
+  $effect(() => {
+    currentPage
+    pageJumpInput
+    if (!refocusJumpInput) return
+    refocusJumpInput = false
+    // Cancel any pending frame before scheduling a new one, and skip when
+    // focus already moved on, so a fast Tab is never overridden.
+    cancelAnimationFrame(refocusFrame)
+    refocusFrame = requestAnimationFrame(() => {
+      if (document.activeElement !== document.body) return
+      pageJumpInput?.focus()
+    })
+  })
+
+  // Width for the jump input: the widest page number plus the text being
+  // typed, with the buttons' padding and border and a 2px caret allowance —
+  // the same box as the page buttons, never clipped. Inline style because
+  // runtime widths must not be utilities.
+  const pageInputDigits = $derived(Math.max(1, String(totalPages).length, pageJumpInputValue.length))
+  const pageInputStyle = $derived.by(() => {
+    const pad = SIZE_CLASS[size].pageInputPad
+    return `padding-left:${pad};padding-right:${pad};width:calc(${pageInputDigits}ch + 2 * ${pad} + 4px)`
   })
 
   function goToPage(page: number) {
@@ -123,24 +153,31 @@
     goToPage(currentPage + delta)
   }
 
-  function clampPageInput() {
+  // Commit the typed page; returns whether it navigated. Enter uses the result
+  // to refocus the new input, blur discards it and only commits.
+  function commitPageInput(): boolean {
     const parsed = Number.parseInt(pageJumpInputValue, 10)
     if (Number.isNaN(parsed)) {
       pageJumpInputValue = String(currentPage)
-      return
+      return false
     }
     const clamped = Math.min(Math.max(parsed, 1), totalPages)
     if (clamped === currentPage) {
       pageJumpInputValue = String(currentPage)
-      return
+      return false
     }
     onPageChange(clamped)
+    return true
+  }
+
+  function handlePageInputBlur() {
+    commitPageInput()
   }
 
   function handlePageInputKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter') {
       event.preventDefault()
-      clampPageInput()
+      refocusJumpInput = commitPageInput()
     } else if (event.key === 'Escape') {
       pageJumpInputValue = String(currentPage)
     }
@@ -169,17 +206,19 @@
     <span class={`inline-flex ${SIZE_CLASS[size].pageButton} items-center justify-center font-semibold text-slate-500`}>…</span>
   {/if}
 
-  {#each pageNumbers as pageNum}
+  {#each pageNumbers as pageNum (pageNum)}
     {#if pageNum === currentPage}
       <NumberInput
+        bind:this={pageJumpInput}
         bind:value={pageJumpInputValue}
         min={1}
         max={totalPages}
-        onblur={clampPageInput}
+        inputStyle={pageInputStyle}
+        onblur={handlePageInputBlur}
         onkeydown={handlePageInputKeydown}
         ariaLabel={resolvedCurrentPageLabel}
         showControls={false}
-        className={`inline-flex ${SIZE_CLASS[size].pageInput} items-center justify-center rounded-md border border-cyan-500 bg-slate-950 text-center ${SIZE_CLASS[size].text} font-semibold text-cyan-300 outline-none focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-500/40`} />
+        className={`${SIZE_CLASS[size].pageInput} rounded-md border border-cyan-500 bg-slate-950 text-center ${SIZE_CLASS[size].text} font-semibold text-cyan-300 outline-none focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-500/40`} />
     {:else}
       <button type="button" onclick={() => goToPage(pageNum)} class={pageButtonClass}>{pageNum}</button>
     {/if}
