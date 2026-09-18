@@ -143,8 +143,8 @@ export function buildDirtyDetail({ row } = {}) {
 
 // ---- uncommitted-changes viewer ----
 
-// Narrowest column the two-pane viewer allows the file list; the diff keeps
-// the larger share of the box.
+// Narrowest column a two-pane viewer allows the entries list; the diff keeps
+// the larger share of the width.
 const DIFF_LEFT_MIN = 20
 
 // `code path` label of a dirty file, as the viewer and the detail line show it.
@@ -163,100 +163,221 @@ export function colorizeDiffLine(line) {
   return line
 }
 
-// Column widths of the two-pane viewer, inside the box's `│ ` chrome: the
-// narrowest left column that fits the corpus (capped at 40% of the width), one
-// separator column, one space, then the diff.
+// One shared width policy for every two-pane viewer: the narrowest left
+// column that fits the corpus (capped at 40% of the width), one separator
+// column, one space, then the diff. Labels arrive pre-styled-free so every
+// caller measures plain text.
 /**
- * @param {{ boxW: number, files?: Array<{ code: string, path: string }> }} pane
+ * @param {{ contentW: number, labels?: string[] }} pane
  * @returns {{ leftW: number, rightW: number }}
  */
-export function diffPaneWidths({ boxW, files = [] }) {
-  const contentW = boxW - 4
-  const wanted = files.reduce((n, file) => Math.max(n, displayWidth(diffFileLabel(file)) + 2), 0)
+export function paneWidthsForLabels({ contentW, labels = [] }) {
+  const wanted = labels.reduce((n, label) => Math.max(n, displayWidth(label) + 2), 0)
   const cap = Math.max(DIFF_LEFT_MIN, Math.floor(contentW * 0.4))
   const leftW = Math.max(DIFF_LEFT_MIN, Math.min(wanted, cap, contentW - DIFF_LEFT_MIN - 2))
   return { leftW, rightW: Math.max(1, contentW - leftW - 2) }
 }
 
-// The two-pane body: a FILES/DIFF header row, then one row per visible pair of
-// worktree-file and wrapped diff line. The active pane's header carries the
-// focus marker and accent, so it is always clear whether ↑/↓ moves the file
-// selection or the diff. The file list and the diff scroll independently (the
-// list follows the cursor, the diff follows `scroll`), so a long diff never
-// moves the selected file out of view. Pure and ANSI-aware; returns `boxH` rows
-// each exactly `boxW - 4` visible columns wide.
+// ---- changes overlay (`u`: uncommitted + ahead + behind in one dialog) ----
+
+// Tab order inside the changes overlay. Counts render beside each label; a
+// null corpus (unreadable status, unresolvable side) renders as `?`.
+export const CHANGES_TABS = ['Uncommitted', 'Ahead', 'Behind']
+
+// Dialog-line rows (0-based) of the tab line and the first two-pane body row:
+// title(0), context(1), tabs(2), separator(3), pane header(4), entries(5+).
+export const CHANGES_TAB_ROW = 2
+export const CHANGES_BODY_START = 4
+
+// Display label of one overlay entry: `code path` on every tab, since all
+// three corpora are file lists (dirty files, branch-vs-base files,
+// base-vs-branch files).
 /**
- * @param {{ files?: Array<{ code: string, path: string }>, cursor?: number, diffLines?: string[]|null, scroll?: number, boxW: number, boxH: number, activePane?: 'files'|'diff' }} view
- * @returns {{ lines: string[], leftW: number, rightW: number, first: number, bodyH: number, diffTotal: number, scroll: number, activePane: 'files'|'diff' }}
+ * @param {{ entry?: { code?: string, path?: string }, tab?: number }} label
+ * @returns {string}
  */
-export function renderDiffView({
-  files = [],
+export function changesEntryLabel({ entry } = {}) {
+  return diffFileLabel(entry)
+}
+
+// Tab line of the changes overlay, with the active tab highlighted. Counts
+// follow each label; null corpora show `?` instead of a number.
+/**
+ * @param {{ tab?: number, counts?: Array<number|null> }} view
+ * @returns {string}
+ */
+export function changesTabLine({ tab = 0, counts = [] } = {}) {
+  const parts = CHANGES_TABS.map((label, i) => {
+    const count = counts[i]
+    const text = `${label} (${count == null ? '?' : count})`
+    return i === tab ? `${c.cyan}${c.bold}${c.reverse}${text}${c.reset}` : `${c.gray}${text}${c.reset}`
+  })
+  return parts.join('  ')
+}
+
+// Column ranges of the tab labels inside the dialog's content area (relative
+// to the content start, after the frame's `│ `). The renderer and the mouse
+// hit test both derive from this, so a click always lands on the label it
+// appears to cover.
+/**
+ * @param {{ counts?: Array<number|null> }} view
+ * @returns {Array<{ tab: number, start: number, end: number }>}
+ */
+export function changesTabHitColumns({ counts = [] } = {}) {
+  const columns = []
+  let start = 0
+  CHANGES_TABS.forEach((label, i) => {
+    const count = counts[i]
+    const text = `${label} (${count == null ? '?' : count})`
+    columns.push({ tab: i, start, end: start + text.length - 1 })
+    start += text.length + 2
+  })
+  return columns
+}
+
+// Empty-state note per tab: only unreadable corpora report why (an empty tab
+// stays blank — there is nothing to explain when the other tabs hold the
+// worktree's changes).
+/**
+ * @param {{ tab?: number, entries?: Array<{ code?: string, path?: string }>|null }} view
+ * @returns {string}
+ */
+function changesEmptyNote({ tab = 0, entries }) {
+  if (entries === null) {
+    return tab === 0 ? 'Status unreadable (press r to retry).' : 'Branch range unresolvable.'
+  }
+  return ''
+}
+
+// Fullscreen geometry for the changes dialog: it stacks over the whole
+// terminal instead of floating centered like the menu. Title + context + tabs
+// + separator + footer separator + footer + bottom border take seven rows;
+// the rest is the body (one pane-header row plus the entry rows).
+export function changesFullscreenGeometry({ cols, rows }) {
+  const dialogW = Math.max(60, cols || 80)
+  const listH = Math.max(3, (rows || 24) - 7)
+  return { dialogW, listH }
+}
+
+// The changes dialog: the same cyan frame as every other overlay, a context
+// line (worktree + branch + base), the tab line, then a two-pane body with
+// the entries on the left and the focused entry's diff on the right. `entries` is the active tab's file corpus or null
+// when it could not be read; `diffLines` is the focused entry's raw diff or
+// null. `listH` counts the body rows including the pane header, so the dialog
+// is `listH + 5` lines tall (title + context + tabs + separator + bottom),
+// plus a separator and a footer row when `footer` is non-empty.
+/**
+ * @param {{ context?: string, tab?: number, counts?: Array<number|null>, entries?: Array<{ code?: string, path?: string }>|null, cursor?: number, diffLines?: string[]|null, scroll?: number, dialogW: number, listH: number, activePane?: 'entries'|'diff', footer?: string }} view
+ * @returns {{ lines: string[], leftW: number, rightW: number, first: number, entryH: number, diffTotal: number, scroll: number, activePane: 'entries'|'diff', total: number }}
+ */
+export function buildChangesDialog({
+  context = '',
+  tab = 0,
+  counts = [],
+  entries = [],
   cursor = 0,
   diffLines = null,
   scroll = 0,
-  boxW,
-  boxH,
-  activePane = 'files',
+  dialogW,
+  listH,
+  activePane = 'entries',
+  footer = '',
 }) {
-  const contentW = boxW - 4
-  const { leftW, rightW } = diffPaneWidths({ boxW, files })
+  const inner = dialogW - 2
+  const contentW = inner - 2
+  const border = s => `${c.cyan}${s}${c.reset}`
+  const side = t => `${c.cyan}│${c.reset} ${t}${c.cyan} │${c.reset}`
+  const labels = Array.isArray(entries) ? entries.map(entry => changesEntryLabel({ entry })) : []
+  const { leftW, rightW } = paneWidthsForLabels({ contentW, labels })
   const separator = `${c.cyan}│${c.reset}`
-  const focused = files[cursor]
-  const active = activePane === 'diff' ? 'diff' : 'files'
-  const lines = []
+  const active = activePane === 'diff' ? 'diff' : 'entries'
 
+  const lines = [border(`┌ CHANGES ${'─'.repeat(Math.max(1, inner - 'CHANGES'.length - 2))}┐`)]
+  lines.push(side(padRight(truncate(context, contentW), contentW)))
+  lines.push(side(padRight(truncate(changesTabLine({ tab, counts }), contentW), contentW)))
+  lines.push(side('─'.repeat(contentW)))
+
+  const body = []
+  const paneName = 'FILES'
   const header = (text, pane) =>
-    pane === active
-      ? `▸ ${c.bold}${c.cyan}${text}${c.reset}`
-      : `  ${c.dim}${text}${c.reset}`
-  const leftHeader = truncate(header(`FILES (${files.length})`, 'files'), leftW)
-  const rightHeader = truncate(header(`DIFF · ${diffFileLabel(focused) || 'none'}`, 'diff'), rightW)
-  lines.push(`${padRight(leftHeader, leftW)}${separator} ${padRight(rightHeader, rightW)}`)
-
-  const bodyH = Math.max(0, boxH - 1)
+    pane === active ? `▸ ${c.bold}${c.cyan}${text}${c.reset}` : `  ${c.dim}${text}${c.reset}`
+  const focusedLabel = Array.isArray(entries) && entries[cursor] ? labels[cursor] : 'none'
+  body.push(
+    `${padRight(truncate(header(`${paneName} (${labels.length})`, 'entries'), leftW), leftW)}${separator} ` +
+      padRight(truncate(header(`DIFF · ${focusedLabel}`, 'diff'), rightW), rightW),
+  )
+  const entryH = Math.max(1, listH - 1)
   const wrapped = []
-  if (diffLines === null) wrapped.push(`${c.yellow}No text diff for this entry.${c.reset}`)
-  else for (const line of diffLines) wrapped.push(...wrapPaneLine(colorizeDiffLine(line), rightW))
+  if (diffLines === null) {
+    wrapped.push(`${c.yellow}No text diff for this entry.${c.reset}`)
+  } else {
+    for (const line of diffLines) wrapped.push(...wrapPaneLine(colorizeDiffLine(line), rightW))
+  }
   const total = wrapped.length
-  // `scroll` is the distance from the top of the diff (0 = the first line), so
-  // opening a file starts at its beginning — unlike the command pane, where a
-  // live process wants the newest output.
-  const maxScroll = Math.max(0, total - bodyH)
+  const maxScroll = Math.max(0, total - entryH)
   const safeScroll = Math.max(0, Math.min(scroll, maxScroll))
-  const start = safeScroll
-  const window = listWindow({ count: files.length, cursor, listH: Math.max(1, bodyH) })
+  const window = listWindow({ count: labels.length, cursor, listH: Math.max(1, entryH) })
 
-  for (let i = 0; i < bodyH; i++) {
-    const fileIndex = window.first + i
-    const file = files[fileIndex]
-    let left = ''
-    if (file) {
-      const selected = fileIndex === cursor
-      const marker = selected ? `${c.cyan}▸${c.reset}` : ' '
-      const label = `${marker} ${c.gray}${file.code}${c.reset} ${file.path}`
-      left = selected ? truncate(label, leftW) : truncate(`${c.dim}${label}${c.reset}`, leftW)
+  if (!Array.isArray(entries) || entries.length === 0) {
+    const note = changesEmptyNote({ tab, entries })
+    if (note) {
+      // The note spans the whole dialog: there is no corpus to size the
+      // entries pane from, so clipping it to the minimum column would cut
+      // the explanation off mid-sentence.
+      const tone = entries === null ? c.yellow : c.dim
+      body.push(padRight(truncate(`${tone}${note}${c.reset}`, contentW), contentW))
     }
-    const diffIndex = start + i
-    const right = diffIndex < total ? wrapped[diffIndex] : ''
-    lines.push(`${padRight(left, leftW)}${separator} ${padRight(truncate(right, rightW), rightW)}`)
+    for (let i = body.length - 1; i < entryH; i++) body.push(`${padRight('', leftW)}${separator} ${padRight('', rightW)}`)
+  } else {
+    for (let i = 0; i < entryH; i++) {
+      const entryIndex = window.first + i
+      const entry = entries[entryIndex]
+      let left = ''
+      if (entry) {
+        const selected = entryIndex === cursor
+        const marker = selected ? `${c.cyan}▸${c.reset}` : ' '
+        const raw = `${marker} ${c.gray}${entry.code}${c.reset} ${entry.path}`
+        left = selected ? truncate(raw, leftW) : truncate(`${c.dim}${raw}${c.reset}`, leftW)
+      }
+      const diffIndex = safeScroll + i
+      const right = diffIndex < total ? wrapped[diffIndex] : ''
+      body.push(`${padRight(left, leftW)}${separator} ${padRight(truncate(right, rightW), rightW)}`)
+    }
   }
 
-  while (lines.length < boxH) lines.push(padRight('', leftW) + separator + ' ' + padRight('', rightW))
-  if (lines.length > boxH) lines.length = boxH
-  return { lines, leftW, rightW, first: window.first, bodyH, diffTotal: total, scroll: safeScroll, activePane: active }
+  while (body.length < listH) body.push(`${padRight('', leftW)}${separator} ${padRight('', rightW)}`)
+  if (body.length > listH) body.length = listH
+  for (const row of body) lines.push(side(row))
+  // Fullscreen mode covers the frame's own status line, so the dialog carries
+  // its key hints as a footer row behind a separator, like the tab line.
+  if (footer) {
+    lines.push(side('─'.repeat(contentW)))
+    lines.push(side(padRight(truncate(footer, contentW), contentW)))
+  }
+  lines.push(border(`└${'─'.repeat(inner)}┘`))
+  return {
+    lines,
+    leftW,
+    rightW,
+    first: window.first,
+    entryH,
+    diffTotal: total,
+    scroll: safeScroll,
+    activePane: active,
+    total: Array.isArray(entries) ? entries.length : 0,
+  }
 }
 
-// Focused-file summary for the detail line under the box: the diff size, or
-// why there is none. The key hints live in the status line, which knows which
-// pane is active.
+// Focused-entry summary for the detail line under the box while the overlay
+// is open: the entry label plus its diff size, or why there is none.
 /**
- * @param {{ files?: Array<{ code: string, path: string }>, cursor?: number, lineCount?: number|null, truncated?: boolean }} view
+ * @param {{ tab?: number, entries?: Array<{ code?: string, path?: string }>|null, cursor?: number, lineCount?: number|null, truncated?: boolean }} view
  * @returns {string}
  */
-export function buildDiffDetail({ files = [], cursor = 0, lineCount = null, truncated = false } = {}) {
-  const file = files[cursor]
-  if (!file) return ''
-  const label = `${c.cyan}${diffFileLabel(file)}${c.reset}`
+export function buildChangesDetail({ tab = 0, entries = [], cursor = 0, lineCount = null, truncated = false } = {}) {
+  const entry = Array.isArray(entries) ? entries[cursor] : null
+  if (!entry) return ''
+  const label = `${c.cyan}${changesEntryLabel({ entry })}${c.reset}`
   if (lineCount === null) return `${label}${c.dim} · no text diff${c.reset}`
   const size = truncated ? `first ${lineCount}` : `${lineCount}`
   return `${label}${c.dim} · ${size} diff lines${c.reset}`
@@ -356,7 +477,7 @@ export function currentOptions({ menuTab, checkedCount }) {
   if (menuTab === 0) {
     return [
       'Run command…',
-      'Show uncommitted changes…',
+      'Show changes…',
       'Interactive shell',
       `Delete checked (${checkedCount})`,
       'Delete focused',

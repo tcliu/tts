@@ -20,13 +20,17 @@
 // branch. Rows and the detail line under the box report each checkout's
 // uncommitted files, including the main one.
 //
-// Changes mode (`u`, menu: Show uncommitted changes) splits the box into two
-// panes: every changed file on the left with its porcelain status code, the
-// focused file's diff on the right. ←/→ move focus between the panes, so ↑/↓
-// either steps the file selection or walks the diff one line at a time;
-// PgUp/PgDn and the wheel scroll the diff, r re-reads the file list, Esc/q
-// closes, and clicking a pane focuses it (a click on a file name also selects
-// it). The focused pane's header carries the marker.
+// Changes mode (`u`, menu: Show changes…) stacks a fullscreen dialog over the
+// untouched list view with three tabs — Uncommitted, Ahead, Behind — over the
+// focused worktree: every tab lists changed files on the left (working-tree
+// files, files the branch changed vs the base, files the base changed vs the
+// branch) with the focused file's diff on the right. ←/→ switch tabs, Tab moves
+// focus between the entries and the diff (so ↑/↓ either steps the entries or
+// walks the diff one line at a time); 1/2/3 jump to a tab, PgUp/PgDn and the
+// wheel scroll the diff, r re-reads all three corpora, Esc/q closes back to
+// the list, and clicking a tab selects it while clicking a pane focuses it (a
+// click on an entry also selects it). The focused pane's header carries the
+// marker, and the dialog's footer row carries the key hints.
 // Worktree directory (`w`) stores a relative or absolute root in the project's
 // gitignored `.env.local` under WORKTREES_DIR, defaulting to `.worktrees`, and
 // re-scans the list after a change; it stays off the menu because it is a
@@ -53,6 +57,7 @@ import {
   countDirtyFiles,
   deleteBranch,
   findProcessesInPath,
+  getBranchFileDiff,
   getDirtyDetail,
   getFileDiff,
   getLastCommitTime,
@@ -61,6 +66,7 @@ import {
   isMergedToBase,
   isPathIgnored,
   isValidBranchName,
+  listBranchFiles,
   listDirtyFiles,
   listWorktrees,
   readBranchFromGitDir,
@@ -85,6 +91,8 @@ import {
 // bind terminal size and live state to it, so that module stays testable.
 import { createInputParser } from './_worktree-tui/input.mjs'
 import {
+  CHANGES_BODY_START,
+  CHANGES_TAB_ROW,
   CHECKBOX_FIRST_COL,
   CHECKBOX_LAST_COL,
   CONFIRM_NO_ROW,
@@ -92,13 +100,16 @@ import {
   DIALOG_OPTION_START,
   LIST_TOP_ROW,
   PRESET_COMMANDS,
-  buildDiffDetail,
+  buildChangesDetail,
+  buildChangesDialog,
   buildDirtyDetail,
+  changesFullscreenGeometry,
+  changesTabHitColumns,
+  changesTabLine,
   currentOptions,
   dialogColumns,
   dialogGeometry,
   dialogTop,
-  diffPaneWidths,
   formatRelativeTime,
   frameSplit,
   layout,
@@ -109,7 +120,6 @@ import {
   buildMenuDialog,
   buildWorktreesDirDialog,
   overlayRow,
-  renderDiffView,
   renderRows,
   tabHitColumns,
   wrapPaneLine,
@@ -159,6 +169,7 @@ function writeLines(lines) {
 function refreshList() {
   const root = state.mainRoot
   const { base, entries } = listWorktrees(root, state.worktreesDir)
+  state.base = base
   // One porcelain call covers both the dirty count and the preview files.
   const mainDetail = getDirtyDetail(root)
   const rows = [
@@ -213,23 +224,11 @@ function refreshList() {
 
 // ---- layout ----
 
-// The box body: worktree list rows, or the two-pane diff view while it is
-// open. Both renderers return rows sized to the box interior, so the frame
-// chrome around them never changes.
+// The box body is always the worktree list; the changes overlay draws on top
+// of it like every other dialog, so the frame chrome never changes.
 function renderBoxRows() {
   const { boxW } = currentLayout()
   const { boxH } = currentListWindow()
-  if (state.mode === 'diff' && state.diff) {
-    return renderDiffView({
-      files: state.diff.files,
-      cursor: state.diff.cursor,
-      diffLines: state.diff.diffLines,
-      scroll: state.diff.scroll,
-      activePane: state.diff.activePane,
-      boxW,
-      boxH,
-    })
-  }
   return renderRows({
     rows: state.rows,
     cursor: state.cursor,
@@ -279,6 +278,32 @@ function buildConfirm() {
     dialogW,
     listH,
   })
+}
+
+// The changes dialog stacks fullscreen over the list: it uses the whole
+// terminal (not the centered menu geometry) and carries its key hints as a
+// footer row, since it covers the frame's own status line. The builder clamps
+// the scroll to the rendered diff, so the state is kept in step here (same
+// contract as the command pane in `draw()`).
+function buildChanges() {
+  const { cols, rows } = currentLayout()
+  const { dialogW, listH } = changesFullscreenGeometry({ cols, rows })
+  const view = state.changes
+  const dg = buildChangesDialog({
+    context: changesContext(view),
+    tab: view.tab,
+    counts: changesCounts(view),
+    entries: changesEntries(view),
+    cursor: view.cursors[view.tab] ?? 0,
+    diffLines: view.diffLines,
+    scroll: view.scrolls[view.tab] ?? 0,
+    activePane: view.activePane,
+    footer: changesStatusText(),
+    dialogW,
+    listH,
+  })
+  view.scrolls[view.tab] = dg.scroll ?? view.scrolls[view.tab]
+  return dg
 }
 
 // ---- command pane ----
@@ -502,115 +527,229 @@ function runInWorktree(cmd, row) {
   redraw()
 }
 
-// ---- uncommitted-changes viewer ----
+// ---- changes overlay (`u`: uncommitted + ahead + behind file tabs) ----
 
-// Two-pane viewer over one worktree: every changed file on the left, the
-// focused file's diff on the right. Re-reads the file list from the worktree
-// rather than trusting the row's preview, which keeps only the first few
-// entries. A clean, unreadable, or empty worktree stays on the list and
-// reports why.
-function openDiffView(row = state.rows[state.cursor]) {
+// Active tab's file corpus: dirty files (0), files the branch changed vs the
+// base (1), files the base changed vs the branch (2).
+function changesEntries(view) {
+  if (!view) return []
+  if (view.tab === 1) return view.ahead
+  if (view.tab === 2) return view.behind
+  return view.files
+}
+
+function changesCounts(view) {
+  if (!view) return [null, null, null]
+  return [view.files?.length ?? null, view.ahead?.length ?? null, view.behind?.length ?? null]
+}
+
+function changesContext(view) {
+  if (!view) return ''
+  const label = view.row.main ? '(main)' : view.row.name
+  return `${label} (${view.row.branch ?? 'detached'}) vs ${view.base ?? '?'}`
+}
+
+// Fullscreen dialog over one worktree: every tab lists changed files with the
+// focused file's diff. Re-reads every corpus from git rather than trusting
+// the row's preview, which keeps only the first few dirty files and bare
+// ahead/behind counts. Opens when at least one corpus was read; a worktree
+// with nothing to show stays on the list and reports why.
+function openChangesView(row = state.rows[state.cursor]) {
   if (!row) {
     state.status = `${c.red}No worktree selected.${c.reset}`
     redraw()
     return
   }
-  const files = listDirtyFiles(row.path)
-  if (files === null) {
-    state.status = `${c.red}Cannot read uncommitted changes in ${row.name}.${c.reset}`
+  const corpora = readChangesCorpora(row)
+  if (corpora.files === null && corpora.ahead === null && corpora.behind === null) {
+    state.status = `${c.red}Cannot read changes in ${row.name}.${c.reset}`
     redraw()
     return
   }
-  if (files.length === 0) {
-    state.status = `${c.green}${row.name} has no uncommitted changes.${c.reset}`
+  if (allCorporaEmpty(corpora)) {
+    state.status = `${c.green}${row.name} is clean and up to date with ${state.base ?? 'the base branch'}.${c.reset}`
     redraw()
     return
   }
-  state.mode = 'diff'
-  state.diff = { row, files, cursor: 0, diffLines: null, truncated: false, scroll: 0, activePane: 'files' }
-  loadDiff()
+  // Open on the first tab holding files, so a clean tree with ahead changes
+  // lands on Ahead instead of an empty Uncommitted pane.
+  const tab = [corpora.files, corpora.ahead, corpora.behind].findIndex(c => (c?.length ?? 0) > 0)
+  state.mode = 'changes'
+  state.changes = {
+    row,
+    base: state.base,
+    tab: Math.max(0, tab),
+    ...corpora,
+    cursors: [0, 0, 0],
+    scrolls: [0, 0, 0],
+    diffLines: null,
+    truncated: false,
+    activePane: 'entries',
+  }
+  loadChangesDiff()
   state.fullClear = true
   redraw()
 }
 
+function readChangesCorpora(row) {
+  const files = listDirtyFiles(row.path)
+  const branchArgs = { root: state.mainRoot, base: state.base, branch: row.branch, registered: row.registered !== false }
+  const ahead = listBranchFiles({ ...branchArgs, direction: 'ahead' })
+  const behind = listBranchFiles({ ...branchArgs, direction: 'behind' })
+  return { files, ahead, behind }
+}
+
+// A corpus is empty only when git answered with no entries. `null` means the
+// read failed, so it must never be counted as "clean".
+function allCorporaEmpty({ files, ahead, behind }) {
+  const isEmpty = corpus => Array.isArray(corpus) && corpus.length === 0
+  return isEmpty(files) && isEmpty(ahead) && isEmpty(behind)
+}
+
 // One synchronous git read per focused file: a single-file diff is small
 // enough that the command pane's async machinery would only add state.
-function loadDiff() {
-  const view = state.diff
+function loadChangesDiff() {
+  const view = state.changes
   if (!view) return
-  const diff = getFileDiff({ worktreePath: view.row.path, file: view.files[view.cursor] })
+  const entries = changesEntries(view)
+  const cursor = view.cursors[view.tab] ?? 0
+  if (!Array.isArray(entries) || entries.length === 0) {
+    view.diffLines = []
+    view.truncated = false
+    view.scrolls[view.tab] = 0
+    return
+  }
+  const entry = entries[Math.max(0, Math.min(cursor, entries.length - 1))]
+  const diff =
+    view.tab === 0
+      ? getFileDiff({ worktreePath: view.row.path, file: entry })
+      : getBranchFileDiff({
+          root: state.mainRoot,
+          base: view.base,
+          branch: view.row.branch,
+          direction: view.tab === 1 ? 'ahead' : 'behind',
+          registered: view.row.registered !== false,
+          file: entry,
+        })
   // An empty result means there is nothing textually diffable (an untracked
-  // directory, a mode-only change), which the viewer reports instead of
+  // directory, a mode-only change), which the overlay reports instead of
   // showing a blank pane.
   view.diffLines = diff && diff.lines.length > 0 ? diff.lines : null
   view.truncated = Boolean(diff?.truncated && diff.lines.length > 0)
-  view.scroll = 0
+  view.scrolls[view.tab] = 0
 }
 
-function moveDiffCursor(delta) {
-  const view = state.diff
-  if (!view || view.files.length === 0) return
-  view.cursor = (view.cursor + delta + view.files.length) % view.files.length
-  loadDiff()
+function setChangesTab(tab) {
+  const view = state.changes
+  if (!view) return
+  const next = (tab + 3) % 3
+  if (view.tab === next) return
+  view.tab = next
+  loadChangesDiff()
   redraw()
 }
 
-// Left/right pick the pane the arrows drive: the file list on the left, the
-// diff text on the right. Direct mapping (not a cycle) so the key always means
-// the pane on its side.
-function setDiffPane(pane) {
-  const view = state.diff
+function moveChangesCursor(delta) {
+  const view = state.changes
+  if (!view) return
+  const entries = changesEntries(view)
+  if (!Array.isArray(entries) || entries.length === 0) return
+  const cursor = view.cursors[view.tab] ?? 0
+  view.cursors[view.tab] = (cursor + delta + entries.length) % entries.length
+  loadChangesDiff()
+  redraw()
+}
+
+function jumpChangesCursor(index) {
+  const view = state.changes
+  if (!view) return
+  const entries = changesEntries(view)
+  if (!Array.isArray(entries) || entries.length === 0) return
+  view.cursors[view.tab] = Math.max(0, Math.min(index, entries.length - 1))
+  loadChangesDiff()
+  redraw()
+}
+
+// Tab cycles the focused pane (entries vs diff); ←/→ switch tabs, so one key
+// always means one dimension.
+function cycleChangesPane() {
+  const view = state.changes
+  if (!view) return
+  view.activePane = view.activePane === 'diff' ? 'entries' : 'diff'
+  redraw()
+}
+
+function setChangesPane(pane) {
+  const view = state.changes
   if (!view || view.activePane === pane) return
   view.activePane = pane
   redraw()
 }
 
-function scrollDiff(delta) {
-  const view = state.diff
+function scrollChanges(delta) {
+  const view = state.changes
   if (!view) return
-  view.scroll = Math.max(0, view.scroll + delta)
+  view.scrolls[view.tab] = Math.max(0, (view.scrolls[view.tab] ?? 0) + delta)
   redraw()
 }
 
-// Re-read the file list and the focused diff without leaving the viewer, for
-// changes made outside the manager while it is open.
-function reloadDiffView() {
-  const view = state.diff
+// Jump the diff to one end (Home/End while the diff pane is focused). The
+// builder clamps the value to the rendered diff, so an arbitrarily large
+// number means "the last line".
+function scrollChangesEdge(edge) {
+  const view = state.changes
   if (!view) return
-  const files = listDirtyFiles(view.row.path)
-  if (files === null) {
-    state.status = `${c.red}Cannot read uncommitted changes in ${view.row.name}.${c.reset}`
-    redraw()
-    return
-  }
-  if (files.length === 0) {
-    closeDiffView()
-    state.status = `${c.green}${view.row.name} has no uncommitted changes.${c.reset}`
-    redraw()
-    return
-  }
-  view.files = files
-  view.cursor = Math.max(0, Math.min(view.cursor, files.length - 1))
-  loadDiff()
+  view.scrolls[view.tab] = edge === 'start' ? 0 : Number.MAX_SAFE_INTEGER
   redraw()
 }
 
-function closeDiffView() {
+// Re-read all three corpora and the focused diff without leaving the overlay,
+// for changes made outside the manager while it is open.
+function reloadChangesView() {
+  const view = state.changes
+  if (!view) return
+  const corpora = readChangesCorpora(view.row)
+  if (corpora.files === null && corpora.ahead === null && corpora.behind === null) {
+    closeChangesView()
+    state.status = `${c.red}Cannot read changes in ${view.row.name}.${c.reset}`
+    redraw()
+    return
+  }
+  if (allCorporaEmpty(corpora)) {
+    closeChangesView()
+    state.status = `${c.green}${view.row.name} is clean and up to date with ${state.base ?? 'the base branch'}.${c.reset}`
+    redraw()
+    return
+  }
+  Object.assign(view, corpora)
+  for (let tab = 0; tab < 3; tab++) {
+    const entries = tab === 0 ? view.files : tab === 1 ? view.ahead : view.behind
+    view.cursors[tab] = Array.isArray(entries) && entries.length > 0 ? Math.max(0, Math.min(view.cursors[tab] ?? 0, entries.length - 1)) : 0
+    if (!Array.isArray(entries)) view.scrolls[tab] = 0
+  }
+  loadChangesDiff()
+  redraw()
+}
+
+function closeChangesView() {
   state.mode = 'list'
-  state.diff = null
+  state.changes = null
   state.fullClear = true
   state.status = DEFAULT_STATUS
   redraw()
 }
 
-function diffStatusText() {
-  const view = state.diff
+// Footer/status line of the changes overlay. The keys come first and the
+// worktree context last: the dialog is fullscreen, so this is the only visible
+// key reference and a narrow terminal must drop the context, never the hints.
+function changesStatusText() {
+  const view = state.changes
   if (!view) return ''
   const truncated = view.truncated ? `${c.yellow}diff truncated${c.reset} · ` : ''
-  const pane = view.activePane === 'diff' ? 'diff pane · ↑↓ line' : 'files pane · ↑↓ file'
+  const arrows = view.activePane === 'diff' ? '↑↓ line' : '↑↓ entry'
   return (
-    `${truncated}${c.gray}${view.row.name}${c.reset}${c.dim} · ${pane}` +
-    ` · ←→ switch · PgUp/PgDn scroll · Esc or q closes${c.reset}`
+    `${truncated}${c.dim}${arrows} · ←→ tab · Tab pane · PgUp/PgDn · Esc/q close` +
+    ` · ${c.gray}${view.row.name}${c.reset}`
   )
 }
 
@@ -619,9 +758,6 @@ function diffStatusText() {
 function draw() {
   const { rows, cols, boxW, helpLines } = currentLayout()
   const box = renderBoxRows()
-  // The viewer clamps its own scroll to the rendered diff, so keep the state
-  // in step (same contract as the command pane below).
-  if (state.mode === 'diff' && state.diff) state.diff.scroll = box.scroll ?? state.diff.scroll
   const listLines = box.lines
   const { listH, cmdH } = currentFrameSplit()
   const border = s => `${c.cyan}${s}${c.reset}`
@@ -635,8 +771,7 @@ function draw() {
     `${c.dim}Focused:${c.reset} ${c.dim}${focused ? focused.path : ''}${c.reset}` +
     `  ${c.gray}checked: ${state.checked.size} · Ln ${state.cursor + 1}/${state.rows.length}${c.reset}`
 
-  const boxTitle = state.mode === 'diff' ? 'CHANGES' : 'WORKTREES'
-  const boxHead = `┌ ${boxTitle} `
+  const boxHead = '┌ WORKTREES '
   const lines = [header, subheader]
   lines.push(border(`${boxHead}${'─'.repeat(Math.max(1, boxW - displayWidth(boxHead) - 1))}┐`))
   for (let i = 0; i < listH; i++) {
@@ -673,15 +808,16 @@ function draw() {
   lines.push(border(`└${'─'.repeat(boxW - 2)}┘`))
   // Focused-row uncommitted detail: one stable line between the box and the
   // status, so cursor movement never shifts the frame. Placed after the box
-  // so list hit-testing (LIST_TOP_ROW + boxH) is unaffected; the viewer
-  // reports the focused file there instead.
+  // so list hit-testing (LIST_TOP_ROW + boxH) is unaffected; the overlay
+  // reports its focused entry there instead.
   const detail =
-    state.mode === 'diff' && state.diff
-      ? buildDiffDetail({
-          files: state.diff.files,
-          cursor: state.diff.cursor,
-          lineCount: state.diff.diffLines ? state.diff.diffLines.length : null,
-          truncated: state.diff.truncated,
+    state.mode === 'changes' && state.changes
+      ? buildChangesDetail({
+          tab: state.changes.tab,
+          entries: changesEntries(state.changes),
+          cursor: state.changes.cursors[state.changes.tab] ?? 0,
+          lineCount: state.changes.diffLines ? state.changes.diffLines.length : null,
+          truncated: state.changes.truncated,
         })
       : buildDirtyDetail({ row: focused })
   lines.push(truncate(detail, cols))
@@ -689,8 +825,8 @@ function draw() {
   let status
   if (state.mode === 'run' && state.pane) {
     status = truncate(paneStatusText(), cols)
-  } else if (state.mode === 'diff' && state.diff) {
-    status = truncate(diffStatusText(), cols)
+  } else if (state.mode === 'changes' && state.changes) {
+    status = truncate(changesStatusText(), cols)
   } else {
     status = truncate(state.status, cols)
   }
@@ -699,12 +835,22 @@ function draw() {
   while (lines.length < rows) lines.push('')
   if (lines.length > rows) lines.length = rows
 
-  if (state.mode === 'menu' || state.mode === 'confirm' || state.mode === 'create') {
+  if (state.mode === 'menu' || state.mode === 'confirm' || state.mode === 'create' || state.mode === 'changes') {
     const { dialogW: dw } = currentDialogGeometry()
-    const dg = state.mode === 'confirm' ? buildConfirm() : state.mode === 'create' ? buildCreate() : buildDialog()
+    const dg =
+      state.mode === 'confirm'
+        ? buildConfirm()
+        : state.mode === 'create'
+          ? buildCreate()
+          : state.mode === 'changes'
+            ? buildChanges()
+            : buildDialog()
     const dH = dg.lines.length
-    const top = dialogTop({ rows, dialogH: dH })
-    const { padLeft, rightLen } = dialogColumns({ cols, dialogW: dw })
+    // The changes dialog stacks fullscreen over the list; every other dialog
+    // floats centered.
+    const top = state.mode === 'changes' ? 0 : dialogTop({ rows, dialogH: dH })
+    const { padLeft, rightLen } =
+      state.mode === 'changes' ? { padLeft: 0, rightLen: 0 } : dialogColumns({ cols, dialogW: dw })
     for (let k = 0; k < dH; k++) {
       const r = top + k
       if (r >= rows) continue
@@ -862,7 +1008,7 @@ function activateMenuItem() {
         return
       case 1:
         closeMenu()
-        openDiffView()
+        openChangesView()
         return
       case 2:
         closeMenu()
@@ -1184,10 +1330,68 @@ function handleWheel(dir) {
     redraw()
   } else if (state.mode === 'run') {
     scrollOutput(-dir * 3) // wheel up reveals older output, wheel down newer
-  } else if (state.mode === 'diff') {
-    scrollDiff(dir * 3) // wheel down moves into the diff, wheel up toward its start
+  } else if (state.mode === 'changes') {
+    scrollChanges(dir * 3) // wheel down moves into the diff, wheel up toward its start
   }
   // confirm: wheel is a no-op so the highlight can't drift under the cursor.
+}
+
+// Left-click inside the changes overlay: a tab selects it, the pane header
+// row only takes focus, and the left column also selects the entry under the
+// pointer while the right column only takes focus.
+function handleChangesClick({ sr, sc, top, left, dg }) {
+  const view = state.changes
+  if (!view) return
+  const rel = sr - top
+  if (rel === CHANGES_TAB_ROW) {
+    const contentColumn = sc - (left + DIALOG_SIDE_PAD_COLS)
+    // Bound the hit test to the rendered tab text: on a narrow terminal the
+    // labels truncate, and clicks past the visible text must not select a tab.
+    const contentW = dg.leftW + dg.rightW + 2
+    const visibleW = displayWidth(truncate(changesTabLine({ tab: view.tab, counts: changesCounts(view) }), contentW))
+    if (contentColumn < 0 || contentColumn >= visibleW) {
+      redraw()
+      return
+    }
+    const hit = changesTabHitColumns({ counts: changesCounts(view) }).find(
+      ({ start, end }) => contentColumn >= start && contentColumn <= end,
+    )
+    if (hit) setChangesTab(hit.tab)
+    else redraw()
+    return
+  }
+  if (rel < CHANGES_BODY_START) {
+    redraw()
+    return
+  }
+  const contentColumn = sc - (left + DIALOG_SIDE_PAD_COLS)
+  if (contentColumn < 0) return
+  if (rel === CHANGES_BODY_START) {
+    setChangesPane(contentColumn >= dg.leftW ? 'diff' : 'entries')
+    return
+  }
+  // Entry rows follow the pane header; the footer and frame rows below them
+  // are inert.
+  if (rel < CHANGES_BODY_START + 1 || rel >= CHANGES_BODY_START + 1 + dg.entryH) {
+    redraw()
+    return
+  }
+  if (contentColumn >= dg.leftW) {
+    setChangesPane('diff')
+    return
+  }
+  const entries = changesEntries(view)
+  if (!Array.isArray(entries) || entries.length === 0) return
+  const entryIndex = dg.first + (rel - CHANGES_BODY_START - 1)
+  if (entryIndex < 0 || entryIndex >= entries.length) return
+  if (view.activePane !== 'entries') view.activePane = 'entries'
+  if (entryIndex === (view.cursors[view.tab] ?? 0)) {
+    redraw()
+    return
+  }
+  view.cursors[view.tab] = entryIndex
+  loadChangesDiff()
+  redraw()
 }
 
 function handleMouse({ button, x, y, release }) {
@@ -1202,10 +1406,13 @@ function handleMouse({ button, x, y, release }) {
   const { cols, rows: rr } = currentLayout()
   const { dialogW, listH } = currentDialogGeometry()
 
-  if (state.mode === 'menu' || state.mode === 'confirm' || state.mode === 'create') {
-    const dg = state.mode === 'confirm' ? buildConfirm() : state.mode === 'create' ? buildCreate() : buildDialog()
-    const top = dialogTop({ rows: rr, dialogH: dg.lines.length })
-    const left = dialogColumns({ cols, dialogW }).padLeft
+  if (state.mode === 'menu' || state.mode === 'confirm' || state.mode === 'create' || state.mode === 'changes') {
+    const dg =
+      state.mode === 'confirm' ? buildConfirm() : state.mode === 'create' ? buildCreate() : state.mode === 'changes' ? buildChanges() : buildDialog()
+    // Fullscreen: the changes dialog covers every row, so there is no
+    // outside to click.
+    const top = state.mode === 'changes' ? 0 : dialogTop({ rows: rr, dialogH: dg.lines.length })
+    const left = state.mode === 'changes' ? 0 : dialogColumns({ cols, dialogW }).padLeft
     const sr = y - 1
     const sc = x - 1
     if (sc < left || sr < top || sr >= top + dg.lines.length) {
@@ -1213,6 +1420,8 @@ function handleMouse({ button, x, y, release }) {
         closeMenu()
       } else if (state.mode === 'create') {
         cancelCreate()
+      } else if (state.mode === 'changes') {
+        closeChangesView()
       } else {
         state.mode = 'list'
         state.confirm = null
@@ -1221,6 +1430,10 @@ function handleMouse({ button, x, y, release }) {
       return
     }
     if (btn !== 0) return // right-click inside a dialog: no-op
+    if (state.mode === 'changes') {
+      handleChangesClick({ sr, sc, top, left, dg })
+      return
+    }
     if (state.mode === 'confirm') {
       // Like the menu, a single click decides: No cancels, Yes deletes.
       if (sr === top + CONFIRM_NO_ROW) resolveConfirm(false)
@@ -1250,41 +1463,12 @@ function handleMouse({ button, x, y, release }) {
     }
     return
   }
-  // List / command-pane / diff-view hit test. Dialog modes return above, so
-  // only list, run, and diff reach here.
+  // List / command-pane hit test. Dialog modes return above, so only list
+  // and run reach here.
   const { first, boxH } = currentListWindow()
   const sr = y - 1
   if (sr < LIST_TOP_ROW || sr >= LIST_TOP_ROW + boxH) return
   const idx = first + (sr - LIST_TOP_ROW)
-
-  if (state.mode === 'diff') {
-    // Either pane can be focused by clicking it: the left column also selects
-    // the file under the pointer, the right column only takes focus.
-    const view = state.diff
-    if (!view || btn !== 0) return
-    const { leftW } = diffPaneWidths({ boxW: currentLayout().boxW, files: view.files })
-    const column = x - 3 // 1-based screen column minus `│ `
-    if (column < 0) return
-    if (column >= leftW) {
-      setDiffPane('diff')
-      return
-    }
-    // Row 0 is the pane header, and the viewer's list window follows its own
-    // body height, so recompute `first` here rather than reuse the box one.
-    const bodyH = Math.max(1, boxH - 1)
-    const win = listWindow({ count: view.files.length, cursor: view.cursor, listH: bodyH })
-    const fileIndex = win.first + (sr - LIST_TOP_ROW - 1)
-    if (fileIndex < 0 || fileIndex >= view.files.length) return
-    if (view.activePane !== 'files') view.activePane = 'files'
-    if (fileIndex === view.cursor) {
-      redraw()
-      return
-    }
-    view.cursor = fileIndex
-    loadDiff()
-    redraw()
-    return
-  }
 
   if (idx < 0 || idx >= state.rows.length) return
   const row = state.rows[idx]
@@ -1380,11 +1564,11 @@ function applyInputEvent(event) {
       return
     case 'pageup':
       if (state.mode === 'run') scrollOutput(currentFrameSplit().cmdH - 1)
-      else if (state.mode === 'diff') scrollDiff(-(currentListWindow().boxH - 2))
+      else if (state.mode === 'changes') scrollChanges(-(changesFullscreenGeometry(currentLayout()).listH - 2))
       return
     case 'pagedown':
       if (state.mode === 'run') scrollOutput(-currentFrameSplit().cmdH + 1)
-      else if (state.mode === 'diff') scrollDiff(currentListWindow().boxH - 2)
+      else if (state.mode === 'changes') scrollChanges(changesFullscreenGeometry(currentLayout()).listH - 2)
       return
     case 'delete':
       handleDeleteKey()
@@ -1394,6 +1578,7 @@ function applyInputEvent(event) {
       return
     case 'tab':
       if (state.mode === 'list') openMenu()
+      else if (state.mode === 'changes') cycleChangesPane()
       return
     case 'enter':
       handleEnter()
@@ -1503,7 +1688,7 @@ function handleTextInput(value) {
     } else if (value === 'c') {
       startCommandInput()
     } else if (value === 'u') {
-      openDiffView()
+      openChangesView()
     } else if (value === 'w') {
       openWorktreesDir()
     } else if (value === 'x') {
@@ -1530,10 +1715,13 @@ function handleTextInput(value) {
     }
     return
   }
-  if (state.mode === 'diff') {
-    // A viewer owns `q` so leaving it never exits the whole manager.
-    if (value === 'q' || value === 'Q') closeDiffView()
-    else if (value === 'r') reloadDiffView()
+  if (state.mode === 'changes') {
+    // The overlay owns `q` so leaving it never exits the whole manager.
+    if (value === 'q' || value === 'Q') closeChangesView()
+    else if (value === 'r') reloadChangesView()
+    else if (value === '1') setChangesTab(0)
+    else if (value === '2') setChangesTab(1)
+    else if (value === '3') setChangesTab(2)
   }
 }
 
@@ -1542,10 +1730,10 @@ function handleArrowUp() {
     return
   } else if (cmdPromptActive()) {
     historyUp()
-  } else if (state.mode === 'diff') {
-    // ↑ acts on the active pane: the next file, or one diff line back.
-    if (state.diff?.activePane === 'diff') scrollDiff(-1)
-    else moveDiffCursor(-1)
+  } else if (state.mode === 'changes') {
+    // ↑ acts on the active pane: the next entry, or one diff line back.
+    if (state.changes?.activePane === 'diff') scrollChanges(-1)
+    else moveChangesCursor(-1)
   } else if (state.mode === 'menu') {
     state.menuCursor = Math.max(0, state.menuCursor - 1)
     redraw()
@@ -1562,9 +1750,9 @@ function handleArrowDown() {
     return
   } else if (cmdPromptActive()) {
     historyDown()
-  } else if (state.mode === 'diff') {
-    if (state.diff?.activePane === 'diff') scrollDiff(1)
-    else moveDiffCursor(1)
+  } else if (state.mode === 'changes') {
+    if (state.changes?.activePane === 'diff') scrollChanges(1)
+    else moveChangesCursor(1)
   } else if (state.mode === 'menu') {
     state.menuCursor = Math.min(currentMenuOptions().length - 1, state.menuCursor + 1)
     redraw()
@@ -1587,8 +1775,9 @@ function handleArrowLeft() {
   } else if (state.mode === 'confirm') {
     state.confirm.yes = 0
     redraw()
-  } else if (state.mode === 'diff') {
-    setDiffPane('files')
+  } else if (state.mode === 'changes') {
+    // ←/→ switch tabs (Tab switches the focused pane instead).
+    setChangesTab(((state.changes?.tab ?? 0) + 2) % 3)
   } else if (cmdPromptActive()) {
     moveCmdCaret(-1)
   }
@@ -1605,8 +1794,8 @@ function handleArrowRight() {
   } else if (state.mode === 'confirm') {
     state.confirm.yes = 1
     redraw()
-  } else if (state.mode === 'diff') {
-    setDiffPane('diff')
+  } else if (state.mode === 'changes') {
+    setChangesTab(((state.changes?.tab ?? 0) + 1) % 3)
   } else if (cmdPromptActive()) {
     moveCmdCaret(1)
   }
@@ -1617,7 +1806,10 @@ function handleHome() {
     state.create.caret = 0
     redraw()
   } else if (cmdPromptActive()) moveCmdCaret(-state.cmdCaret)
-  else if (state.mode === 'list') {
+  else if (state.mode === 'changes') {
+    if (state.changes?.activePane === 'diff') scrollChangesEdge('start')
+    else jumpChangesCursor(0)
+  } else if (state.mode === 'list') {
     state.cursor = 0
     redraw()
   }
@@ -1628,7 +1820,15 @@ function handleEnd() {
     state.create.caret = state.create.input.length
     redraw()
   } else if (cmdPromptActive()) moveCmdCaret(state.cmdInput.length - state.cmdCaret)
-  else if (state.mode === 'list') {
+  else if (state.mode === 'changes') {
+    if (state.changes?.activePane === 'diff') {
+      scrollChangesEdge('end')
+    } else {
+      const view = state.changes
+      const entries = changesEntries(view)
+      jumpChangesCursor(Array.isArray(entries) ? entries.length - 1 : 0)
+    }
+  } else if (state.mode === 'list') {
     state.cursor = Math.max(0, state.rows.length - 1)
     redraw()
   }
@@ -1661,8 +1861,8 @@ function handleEnter() {
     activateMenuItem()
   } else if (state.mode === 'confirm') {
     resolveConfirm(state.confirm ? state.confirm.yes === 1 : false)
-  } else if (state.mode === 'diff') {
-    closeDiffView()
+  } else if (state.mode === 'changes') {
+    closeChangesView()
   } else if (cmdPromptActive()) {
     submitCommand()
   } else if (state.mode === 'list') {
@@ -1684,8 +1884,8 @@ function handleBackspace() {
 function handleEscape() {
   if (state.mode === 'create') {
     cancelCreate()
-  } else if (state.mode === 'diff') {
-    closeDiffView()
+  } else if (state.mode === 'changes') {
+    closeChangesView()
   } else if (state.mode === 'run') {
     // Esc detaches: the child keeps running in the background. Ctrl-C kills.
     state.status = `${c.dim}Detached; command keeps running. Focus row + c to reattach.${c.reset}`
@@ -1709,6 +1909,7 @@ function handleEscape() {
 
 const state = {
   mainRoot: '',
+  base: null,
   rows: [],
   cursor: 0,
   checked: new Set(),
@@ -1717,7 +1918,7 @@ const state = {
   mode: 'list',
   confirm: null,
   create: null,
-  diff: null,
+  changes: null,
   worktreesDir: DEFAULT_WORKTREES_DIR,
   pane: null,
   procs: new Map(),

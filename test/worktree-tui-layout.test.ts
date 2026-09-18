@@ -1,36 +1,33 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CHANGES_BODY_START,
+  CHANGES_TAB_ROW,
+  CHANGES_TABS,
   HELP_MAX_LINES,
+  buildChangesDetail,
+  buildChangesDialog,
   buildCreateDialog,
-  buildDiffDetail,
   buildPromptDialog,
   buildWorktreesDirDialog,
+  changesEntryLabel,
+  changesFullscreenGeometry,
+  changesTabHitColumns,
+  changesTabLine,
   colorizeDiffLine,
   currentOptions,
   dialogGeometry,
   dialogTop,
-  diffPaneWidths,
   fitHelpLines,
   frameHeight,
   frameSplit,
   layout,
   listWindow,
-  renderDiffView,
+  paneWidthsForLabels,
 } from '../scripts/_worktree-tui/layout.mjs'
 
 type LayoutResult = { rows: number; cols: number; boxH: number; helpLines: string[]; boxW: number }
 type SplitResult = { listH: number; cmdH: number }
-type DiffView = {
-  lines: string[]
-  leftW: number
-  rightW: number
-  first: number
-  bodyH: number
-  diffTotal: number
-  scroll: number
-  activePane: 'files' | 'diff'
-}
 type Dialog = { lines: string[]; start: number; total: number }
 
 const ansi = /\x1b\[[0-9;]*m/g
@@ -131,8 +128,8 @@ describe('control hints', () => {
 describe('menu dialog geometry', () => {
   const options = currentOptions({ menuTab: 0, checkedCount: 2 })
 
-  it('offers the uncommitted-changes viewer and keeps settings off the menu', () => {
-    expect(options).toContain('Show uncommitted changes…')
+  it('offers the changes overlay and keeps settings off the menu', () => {
+    expect(options).toContain('Show changes…')
     // Reachable with `w` in the list instead: the menu lists actions only.
     expect(options).not.toContain('Worktrees dir…')
   })
@@ -190,21 +187,11 @@ describe('prompt dialogs', () => {
   })
 })
 
-describe('uncommitted-changes viewer', () => {
+describe('diff coloring and pane widths', () => {
   const files = [
     { code: 'M', path: 'src/lib/app.ts' },
     { code: 'M', path: 'scripts/very/long/path/to/a/file/name/that/should/not/eat/the/diff.ts' },
     { code: '??', path: 'notes.md' },
-  ]
-  const diffLines = [
-    'diff --git a/src/lib/app.ts b/src/lib/app.ts',
-    'index 111..222 100644',
-    '--- a/src/lib/app.ts',
-    '+++ b/src/lib/app.ts',
-    '@@ -1,4 +1,5 @@',
-    ' context',
-    '-removed',
-    '+added',
   ]
 
   it('colors additions, removals, hunks, and the preamble distinctly', () => {
@@ -215,89 +202,230 @@ describe('uncommitted-changes viewer', () => {
   })
 
   it('keeps the diff column usable next to a very long file name', () => {
-    const { leftW, rightW } = diffPaneWidths({ boxW: 80, files }) as { leftW: number; rightW: number }
-    expect(leftW + rightW + 2).toBe(76) // boxW - 4 chrome
+    const labels = files.map(entry => changesEntryLabel({ entry, tab: 0 }))
+    const { leftW, rightW } = paneWidthsForLabels({ contentW: 76, labels }) as { leftW: number; rightW: number }
+    expect(leftW + rightW + 2).toBe(76)
     expect(rightW).toBeGreaterThanOrEqual(leftW)
   })
+})
 
-  it('renders boxH rows of exactly the box interior width', () => {
-    for (const boxW of [60, 80, 120]) {
-      const view = renderDiffView({
-        files,
+type ChangesDialog = {
+  lines: string[]
+  leftW: number
+  rightW: number
+  first: number
+  entryH: number
+  diffTotal: number
+  scroll: number
+  activePane: 'entries' | 'diff'
+  total: number
+}
+
+describe('changes overlay', () => {
+  const files = [
+    { code: 'M', path: 'src/lib/app.ts' },
+    { code: '??', path: 'notes.md' },
+  ]
+  const branchFiles = [
+    { code: 'M', path: 'src/hooks.server.ts' },
+    { code: 'A', path: 'test/auto-scan.test.ts' },
+  ]
+  const diffLines = ['--- a/src/lib/app.ts', '+++ b/src/lib/app.ts', '+added']
+
+  it('labels entries as code path on every tab', () => {
+    expect(changesEntryLabel({ entry: files[0] })).toBe('M src/lib/app.ts')
+    expect(changesEntryLabel({ entry: branchFiles[1] })).toBe('A test/auto-scan.test.ts')
+    expect(changesEntryLabel({})).toBe('')
+  })
+
+  it('renders three tabs with counts, unknown as ?', () => {
+    const line = String(changesTabLine({ tab: 1, counts: [2, 1, null] }))
+    expect(CHANGES_TABS).toEqual(['Uncommitted', 'Ahead', 'Behind'])
+    expect(line.replace(ansi, '')).toBe('Uncommitted (2)  Ahead (1)  Behind (?)')
+    const cols = changesTabHitColumns({ counts: [2, 1, null] }) as Array<{ tab: number; start: number; end: number }>
+    expect(cols).toHaveLength(3)
+    expect(cols[1]).toEqual({ tab: 1, start: 'Uncommitted (2)  '.length, end: 'Uncommitted (2)  Ahead (1)'.length - 1 })
+    // Adjacent columns never overlap, so a click maps to exactly one tab.
+    expect(cols[0].end).toBeLessThan(cols[1].start)
+    expect(cols[1].end).toBeLessThan(cols[2].start)
+  })
+
+  it('is listH + 5 lines tall with every row at the dialog width', () => {
+    for (const dialogW of [64, 80, 96]) {
+      const dialog = buildChangesDialog({
+        context: 'wt (branch) vs master',
+        tab: 0,
+        counts: [2, 1, 0],
+        entries: files,
         cursor: 0,
         diffLines,
         scroll: 0,
-        boxW,
-        boxH: 10,
-      }) as DiffView
-      const contentW = boxW - 4
-      expect(view.lines).toHaveLength(10)
-      for (const line of view.lines) {
-        // Strip ANSI and box-drawing separators to measure visible columns.
-        expect(line.replace(ansi, '').length).toBeLessThanOrEqual(contentW + 2)
-      }
-      expect(view.lines[0].replace(ansi, '')).toContain('FILES (3)')
-      expect(view.lines[0].replace(ansi, '')).toContain('DIFF ·')
+        dialogW,
+        listH: 10,
+      }) as ChangesDialog
+      expect(dialog.lines).toHaveLength(15)
+      for (const line of dialog.lines) expect(line.replace(ansi, '').length).toBe(dialogW)
+      expect(dialog.total).toBe(2)
     }
   })
 
-  it('selects a file row and shows its path in the header', () => {
-    // Row 0 is the pane header, so the file rows start at index 1.
-    const view = renderDiffView({ files, cursor: 2, diffLines, scroll: 0, boxW: 80, boxH: 6 }) as DiffView
-    expect(view.lines[0].replace(ansi, '')).toContain('notes.md')
-    expect(view.lines[3].replace(ansi, '')).toContain('notes.md')
+  it('places the tab line and pane header at the hit-test rows', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [2, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines,
+      scroll: 0,
+      dialogW: 80,
+      listH: 8,
+    }) as ChangesDialog
+    expect(dialog.lines[CHANGES_TAB_ROW].replace(ansi, '')).toContain('Uncommitted (2)')
+    expect(dialog.lines[CHANGES_BODY_START].replace(ansi, '')).toContain('FILES (2)')
+    expect(dialog.lines[CHANGES_BODY_START].replace(ansi, '')).toContain('DIFF ·')
   })
 
-  it('explains an entry with no text diff instead of rendering nothing', () => {
-    const view = renderDiffView({ files, cursor: 0, diffLines: null, scroll: 0, boxW: 80, boxH: 6 }) as DiffView
-    expect(view.lines[1].replace(ansi, '')).toContain('No text diff')
+  it('lists branch files on the ahead/behind tabs like uncommitted files', () => {
+    for (const tab of [1, 2]) {
+      const dialog = buildChangesDialog({
+        context: 'wt',
+        tab,
+        counts: [0, 2, 0],
+        entries: branchFiles,
+        cursor: 1,
+        diffLines,
+        scroll: 0,
+        dialogW: 80,
+        listH: 8,
+      }) as ChangesDialog
+      expect(dialog.lines[CHANGES_BODY_START].replace(ansi, '')).toContain('FILES (2)')
+      expect(dialog.lines[CHANGES_BODY_START].replace(ansi, '')).toContain('A test/auto-scan.test.ts')
+      expect(dialog.lines.join('\n').replace(ansi, '')).toContain('M src/hooks.server.ts')
+    }
   })
 
-  it('opens at the top of the diff and clamps scrolling to the end', () => {
-    const top = renderDiffView({ files, cursor: 0, diffLines, scroll: 0, boxW: 80, boxH: 4 }) as DiffView
-    expect(top.scroll).toBe(0)
-    expect(top.lines[1].replace(ansi, '')).toContain('diff --git')
-    const clamped = renderDiffView({ files, cursor: 0, diffLines, scroll: 999, boxW: 80, boxH: 4 }) as DiffView
-    expect(clamped.scroll).toBe(Math.max(0, clamped.diffTotal - clamped.bodyH))
-    // The last visible row holds the last diff line once scrolled to the end.
-    const visible = clamped.lines.join('\n').replace(ansi, '')
-    expect(visible).toContain('+added')
+  it('leaves an empty corpus blank instead of explaining it', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 2,
+      counts: [0, 0, 0],
+      entries: [],
+      cursor: 0,
+      diffLines: [],
+      scroll: 0,
+      dialogW: 80,
+      listH: 6,
+    }) as ChangesDialog
+    const visible = dialog.lines.join('\n').replace(ansi, '')
+    expect(visible).not.toContain('No changed files')
+    expect(visible).not.toContain('Working tree clean')
+    const unreadable = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [null, 0, 0],
+      entries: null,
+      cursor: 0,
+      diffLines: null,
+      scroll: 0,
+      dialogW: 80,
+      listH: 6,
+    }) as ChangesDialog
+    expect(unreadable.lines.join('\n').replace(ansi, '')).toContain('Status unreadable')
   })
 
   it('marks the focused pane in the header row', () => {
-    const filesPane = renderDiffView({
-      files,
-      cursor: 0,
-      diffLines,
-      boxW: 100,
-      boxH: 6,
-      activePane: 'files',
-    }) as DiffView
-    expect(filesPane.activePane).toBe('files')
-    expect(filesPane.lines[0].replace(ansi, '').startsWith('▸ FILES')).toBe(true)
-    expect(filesPane.lines[0].replace(ansi, '')).toContain('  DIFF ·')
+    const base = { context: 'wt', tab: 0, counts: [2, 0, 0], entries: files, cursor: 0, diffLines, scroll: 0, dialogW: 100, listH: 6 }
+    const left = buildChangesDialog({ ...base, activePane: 'entries' }) as ChangesDialog
+    expect(left.lines[CHANGES_BODY_START].replace(ansi, '').startsWith('│ ▸ FILES')).toBe(true)
+    const right = buildChangesDialog({ ...base, activePane: 'diff' }) as ChangesDialog
+    expect(right.lines[CHANGES_BODY_START].replace(ansi, '')).toContain('▸ DIFF ·')
+    expect(right.lines.slice(CHANGES_BODY_START + 1)).toEqual(left.lines.slice(CHANGES_BODY_START + 1))
+  })
 
-    const diffPane = renderDiffView({
-      files,
+  it('opens at the top of the diff and clamps scrolling to the end', () => {
+    const top = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [2, 0, 0],
+      entries: files,
       cursor: 0,
       diffLines,
-      boxW: 100,
-      boxH: 6,
-      activePane: 'diff',
-    }) as DiffView
-    expect(diffPane.activePane).toBe('diff')
-    expect(diffPane.lines[0].replace(ansi, '').startsWith('  FILES')).toBe(true)
-    expect(diffPane.lines[0].replace(ansi, '')).toContain('▸ DIFF ·')
-    // Focus never changes what the panes show, only how the header reads.
-    expect(diffPane.lines.slice(1)).toEqual(filesPane.lines.slice(1))
+      scroll: 0,
+      dialogW: 80,
+      listH: 4,
+    }) as ChangesDialog
+    expect(top.scroll).toBe(0)
+    const clamped = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [2, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines,
+      scroll: 999,
+      dialogW: 80,
+      listH: 4,
+    }) as ChangesDialog
+    expect(clamped.scroll).toBe(Math.max(0, clamped.diffTotal - clamped.entryH))
   })
 
   it('reports the focused file and its diff size on the detail line', () => {
-    const detail = String(buildDiffDetail({ files, cursor: 0, lineCount: 8, truncated: false }))
-    expect(detail.replace(ansi, '')).toContain('M src/lib/app.ts')
+    const detail = String(buildChangesDetail({ tab: 1, entries: branchFiles, cursor: 0, lineCount: 8, truncated: false }))
+    expect(detail.replace(ansi, '')).toContain('M src/hooks.server.ts')
     expect(detail.replace(ansi, '')).toContain('8 diff lines')
-    const none = String(buildDiffDetail({ files, cursor: 0, lineCount: null }))
-    expect(none.replace(ansi, '')).toContain('no text diff')
-    expect(String(buildDiffDetail({ files: [], cursor: 0 }))).toBe('')
+    expect(String(buildChangesDetail({ tab: 0, entries: [], cursor: 0 }))).toBe('')
+  })
+
+  it('sizes the fullscreen dialog to exactly the terminal', () => {
+    for (const [rows, cols] of [[24, 80], [20, 60], [30, 100], [40, 120]] as Array<[number, number]>) {
+      const { dialogW, listH } = changesFullscreenGeometry({ cols, rows }) as { dialogW: number; listH: number }
+      expect(dialogW).toBe(Math.max(60, cols))
+      const dialog = buildChangesDialog({
+        context: 'wt',
+        tab: 0,
+        counts: [2, 0, 0],
+        entries: files,
+        cursor: 0,
+        diffLines,
+        scroll: 0,
+        dialogW,
+        listH,
+        footer: 'keys',
+      }) as ChangesDialog
+      expect(dialog.lines).toHaveLength(rows)
+      for (const line of dialog.lines) expect(line.replace(ansi, '').length).toBe(cols)
+    }
+  })
+
+  it('renders the footer row behind a separator above the bottom border', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [2, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines,
+      scroll: 0,
+      dialogW: 80,
+      listH: 8,
+      footer: 'Esc or q closes',
+    }) as ChangesDialog
+    expect(dialog.lines).toHaveLength(8 + 7)
+    const stripped = dialog.lines.map(line => line.replace(ansi, ''))
+    expect(stripped[stripped.length - 3]).toContain('─'.repeat(8))
+    expect(stripped[stripped.length - 2]).toContain('Esc or q closes')
+    const plain = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [2, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines,
+      scroll: 0,
+      dialogW: 80,
+      listH: 8,
+    }) as ChangesDialog
+    expect(plain.lines).toHaveLength(8 + 5)
   })
 })

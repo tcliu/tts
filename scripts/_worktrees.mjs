@@ -433,6 +433,121 @@ export function getFileDiff({ worktreePath, file, maxLines = FILE_DIFF_MAX_LINES
   return { lines: truncated ? lines.slice(0, maxLines) : lines, truncated }
 }
 
+// Files changed on one side of the base branch for the changes overlay.
+// `direction` 'ahead' lists files the branch changed vs the base
+// (`base...branch`, i.e. since the merge base); 'behind' lists files the base
+// changed vs the branch (`branch...base`). `{ code, path }` entries like
+// `listDirtyFiles` (renames surface as plain add/delete pairs via
+// `--no-renames`, so no source/dest ordering to misread), `[]` when the side
+// matches (including a branch checked out on the base itself), null when
+// unresolvable (missing base/branch, detached HEAD, or an unregistered dir
+// whose branch name comes from a foreign .git).
+/**
+ * @param {{ root: string, base?: string|null, branch?: string|null, direction?: string, registered?: boolean }} range
+ * @returns {Array<{ code: string, path: string }>|null}
+ */
+export function listBranchFiles({ root, base, branch, direction, registered = true }) {
+  const { range } = branchCommitRange({ base, branch, direction, registered })
+  if (!range || !root) {
+    return null
+  }
+  let out
+  try {
+    out = execFileSync('git', ['diff', '--no-renames', '--name-status', '-z', range], {
+      cwd: root,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      maxBuffer: 16 * 1024 * 1024,
+    })
+  } catch {
+    return null
+  }
+  return parseNameStatusZ(out)
+}
+
+// `git diff --name-status -z` output as `{ code, path }` entries. Every field
+// is NUL-separated, so status and path arrive as alternating records and paths
+// that need quoting survive intact; a rename/copy is already an add/delete
+// pair because callers pass `--no-renames`. Exported for the unit tests.
+/**
+ * @param {string} out
+ * @returns {Array<{ code: string, path: string }>}
+ */
+export function parseNameStatusZ(out) {
+  const records = out.split('\0')
+  const files = []
+  for (let i = 0; i + 1 < records.length; i += 2) {
+    const code = (records[i] ?? '').trim()
+    const filePath = records[i + 1] ?? ''
+    if (!/^[ACDMRTUX]+$/.test(code) || !filePath) {
+      continue
+    }
+    files.push({ code, path: filePath })
+  }
+  return files
+}
+
+// Revision range for one side of the base branch, or `{ range: null }` when
+// the side cannot be resolved. Shared by `listBranchFiles` and
+// `getBranchFileDiff`, so the base/detached/unregistered guard cannot drift
+// between callers. A branch checked out on the base resolves to an empty range
+// rather than null: the side legitimately matches, so it must render as 0, not
+// as unreadable.
+/**
+ * @param {{ base?: string|null, branch?: string|null, direction?: string, registered?: boolean }} range
+ * @returns {{ range: string|null }}
+ */
+export function branchCommitRange({ base, branch, direction, registered = true }) {
+  if (!base || !branch || branch === 'HEAD' || registered === false) {
+    return { range: null }
+  }
+  if (direction === 'ahead') {
+    return { range: `${base}...${branch}` }
+  }
+  if (direction === 'behind') {
+    return { range: `${branch}...${base}` }
+  }
+  return { range: null }
+}
+
+// Text diff of one branch-side file for the changes overlay: the same side's
+// range narrowed to the file. Capped like `getFileDiff` so a huge file cannot
+// lock the TUI. Returns `{ lines, truncated }`, or null when the file has no
+// readable diff.
+/**
+ * @param {{ root: string, base?: string|null, branch?: string|null, direction?: string, registered?: boolean, file?: { code?: string, path?: string }|null, maxLines?: number }} file
+ * @returns {{ lines: string[], truncated: boolean }|null}
+ */
+export function getBranchFileDiff({ root, base, branch, direction, file, registered = true, maxLines = FILE_DIFF_MAX_LINES }) {
+  const { range } = branchCommitRange({ base, branch, direction, registered })
+  if (!range || !root || !file?.path) {
+    return null
+  }
+  let out
+  try {
+    out = execFileSync('git', ['diff', '--no-color', '--binary', range, '--', file.path], {
+      cwd: root,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      maxBuffer: 32 * 1024 * 1024,
+    })
+  } catch (error) {
+    if (typeof error?.stdout !== 'string' || !error.stdout.trim()) {
+      return null
+    }
+    out = error.stdout
+  }
+  const lines = out.split('\n')
+  while (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop()
+  }
+  if (lines.length === 0) {
+    return null
+  }
+  const truncated = lines.length > maxLines
+  return { lines: truncated ? lines.slice(0, maxLines) : lines, truncated }
+}
+
 // Processes whose current working directory lies inside `worktreePath`.
 // Deleting a worktree out from under a running process half-removes it: the
 // checkout is unregistered but its files, branch, and server are left behind
