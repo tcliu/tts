@@ -5,7 +5,7 @@
   interface Props {
     variant?: 'primary' | 'secondary' | 'danger' | 'outline' | 'ghost'
     accent?: 'cyan' | 'emerald' | 'amber' | 'violet' | 'rose'
-    size?: 'sm' | 'md'
+    size?: 'xs' | 'sm' | 'md' | 'lg'
     disabled?: boolean
     pending?: boolean
     type?: 'button' | 'submit' | 'reset'
@@ -66,7 +66,42 @@
     rose: 'border border-rose-500/40 bg-rose-500/10 text-rose-200 hover:border-rose-400 hover:text-rose-100 focus:border-rose-400 focus:text-rose-100 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-rose-500',
   }
 
-  const iconSizeClass = $derived(size === 'sm' ? 'h-4 w-4' : 'h-5 w-5')
+  // Full xs–lg scale with literal classes (never interpolated) so the
+  // Tailwind scanner emits every size. sm/md reproduce the original sizing
+  // exactly; xs compacts below sm and lg expands past md. Hit-area insets
+  // mirror the nearest original tier.
+  const SIZE_CLASS = {
+    xs: {
+      iconBox: 'h-3 w-3',
+      iconOnly:
+        "p-1 relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-2 before:content-['']",
+      withChildren:
+        "px-2 py-1 text-xs relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-['']",
+    },
+    sm: {
+      iconBox: 'h-4 w-4',
+      iconOnly:
+        "p-1.5 relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-2 before:content-['']",
+      withChildren:
+        "px-2.5 py-1.5 text-sm relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-['']",
+    },
+    md: {
+      iconBox: 'h-5 w-5',
+      iconOnly:
+        "relative inline-flex items-center justify-center rounded-lg p-2.5 before:absolute before:-inset-0.5 before:content-['']",
+      withChildren:
+        "relative inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold before:absolute before:-inset-0.5 before:content-['']",
+    },
+    lg: {
+      iconBox: 'h-6 w-6',
+      iconOnly:
+        "relative inline-flex items-center justify-center rounded-lg p-3 before:absolute before:-inset-0.5 before:content-['']",
+      withChildren:
+        "relative inline-flex items-center justify-center rounded-lg px-5 py-3 text-base font-semibold before:absolute before:-inset-0.5 before:content-['']",
+    },
+  } as const
+
+  const iconSizeClass = $derived(SIZE_CLASS[size].iconBox)
 
   const disabledState = $derived(disabled || pending)
 
@@ -91,9 +126,7 @@
   // position utilities via `className` (`relative` outranks `absolute` in the
   // stylesheet, so the override silently loses). Position the Button with a wrapper or in-flow layout instead.
   const baseClass = $derived.by(() => {
-    const common = isIconOnly
-      ? `${size === 'sm' ? 'p-1.5 relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-2 before:content-[\'\']' : 'relative inline-flex items-center justify-center rounded-lg p-2.5 before:absolute before:-inset-0.5 before:content-[\'\']'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
-      : `${size === 'sm' ? 'px-2.5 py-1.5 text-sm relative inline-flex items-center justify-center rounded-md before:absolute before:-inset-1.5 before:content-[\'\']' : 'relative inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold before:absolute before:-inset-0.5 before:content-[\'\']'} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
+    const common = `${isIconOnly ? SIZE_CLASS[size].iconOnly : SIZE_CLASS[size].withChildren} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
     if (variant === 'primary') {
       return `${common} ${primaryClasses[accent]}`
     }

@@ -24,7 +24,8 @@
 // untouched list view with three tabs — Uncommitted, Ahead, Behind — over the
 // focused worktree: every tab lists changed files on the left (working-tree
 // files, files the branch changed vs the base, files the base changed vs the
-// branch) with the focused file's diff on the right. ←/→ switch tabs, Tab moves
+// branch) with the focused file's diff on the right — unified by default, or
+// side-by-side before/after subpanes after `v`. ←/→ switch tabs, Tab moves
 // focus between the entries and the diff (so ↑/↓ either steps the entries or
 // walks the diff one line at a time); 1/2/3 jump to a tab, PgUp/PgDn and the
 // wheel scroll the diff, r re-reads all three corpora, Esc/q closes back to
@@ -75,6 +76,7 @@ import {
   resolveWorktreesDir,
   setWorktreesDir,
   setupWorktree,
+  terminateProcessesInPath,
 } from './_worktrees.mjs'
 
 import {
@@ -289,6 +291,7 @@ function buildChanges() {
   const { cols, rows } = currentLayout()
   const { dialogW, listH } = changesFullscreenGeometry({ cols, rows })
   const view = state.changes
+  const [beforeLabel, afterLabel] = changesSideLabels(view)
   const dg = buildChangesDialog({
     context: changesContext(view),
     tab: view.tab,
@@ -299,6 +302,9 @@ function buildChanges() {
     scroll: view.scrolls[view.tab] ?? 0,
     activePane: view.activePane,
     footer: changesStatusText(),
+    viewMode: view.viewMode,
+    beforeLabel,
+    afterLabel,
     dialogW,
     listH,
   })
@@ -543,6 +549,18 @@ function changesCounts(view) {
   return [view.files?.length ?? null, view.ahead?.length ?? null, view.behind?.length ?? null]
 }
 
+// Branch names over the side-by-side subpanes, following the diff's own
+// sides: uncommitted diffs HEAD against the worktree, ahead diffs the base
+// against the branch, behind diffs the branch against the base.
+function changesSideLabels(view) {
+  if (!view) return ['', '']
+  const base = view.base ?? '?'
+  const branch = view.row.branch ?? '?'
+  if (view.tab === 1) return [base, branch]
+  if (view.tab === 2) return [branch, base]
+  return ['HEAD', branch]
+}
+
 function changesContext(view) {
   if (!view) return ''
   const label = view.row.main ? '(main)' : view.row.name
@@ -585,6 +603,7 @@ function openChangesView(row = state.rows[state.cursor]) {
     diffLines: null,
     truncated: false,
     activePane: 'entries',
+    viewMode: 'unified',
   }
   loadChangesDiff()
   state.fullClear = true
@@ -679,6 +698,15 @@ function cycleChangesPane() {
   redraw()
 }
 
+// Flip the diff pane between the unified diff and side-by-side before/after
+// subpanes. The builder clamps the kept scroll to the re-rendered rows.
+function toggleChangesView() {
+  const view = state.changes
+  if (!view) return
+  view.viewMode = view.viewMode === 'side' ? 'unified' : 'side'
+  redraw()
+}
+
 function setChangesPane(pane) {
   const view = state.changes
   if (!view || view.activePane === pane) return
@@ -748,7 +776,7 @@ function changesStatusText() {
   const truncated = view.truncated ? `${c.yellow}diff truncated${c.reset} · ` : ''
   const arrows = view.activePane === 'diff' ? '↑↓ line' : '↑↓ entry'
   return (
-    `${truncated}${c.dim}${arrows} · ←→ tab · Tab pane · PgUp/PgDn · Esc/q close` +
+    `${truncated}${c.dim}${arrows} · ←→ tab · Tab pane · v view · PgUp/PgDn · Esc/q close` +
     ` · ${c.gray}${view.row.name}${c.reset}`
   )
 }
@@ -944,9 +972,9 @@ function historyDown() {
   redraw()
 }
 
-function startConfirm({ rows, message, detail }) {
+function startConfirm({ rows, message, detail, terminate = false }) {
   state.mode = 'confirm'
-  state.confirm = { rows, message, detail, yes: 0 }
+  state.confirm = { rows, message, detail, yes: 0, terminate }
   redraw()
 }
 
@@ -1076,9 +1104,11 @@ function activateMenuItem() {
 }
 
 function confirmDeleteFlow(targets) {
-  // Refuse before opening the dialog: deleting a worktree out from under a
-  // running process half-removes it (unregistered, files/branch/server left
-  // behind), and the synchronous batch would freeze the UI on the dialog.
+  // Guarded checkouts are offered a terminate-and-delete confirm instead of
+  // being refused outright: deleting a worktree out from under a running
+  // process half-removes it (unregistered, files/branch/server left behind).
+  // Targets with an unreadable process status stay refused — with no PID list
+  // there is nothing explicit to confirm.
   const blocked = []
   const unknown = []
   for (const target of targets) {
@@ -1100,8 +1130,12 @@ function confirmDeleteFlow(targets) {
   if (blocked.length > 0) {
     const names = [...new Set(blocked.map(b => b.target.name))].join(', ')
     const pids = blocked.map(b => `${b.proc.pid}${b.proc.cmd ? ` (${b.proc.cmd})` : ''}`).join(', ')
-    state.status = `${c.red}Cannot delete: ${names} has running process(es) (${pids}). Stop them first.${c.reset}`
-    redraw()
+    startConfirm({
+      rows: targets,
+      message: `Terminate ${blocked.length} process(es) and delete ${targets.length} worktree(s)?`,
+      detail: `kill ${pids} in ${names}; force removes files, branches will be deleted`,
+      terminate: true,
+    })
     return
   }
   startConfirm({
@@ -1254,16 +1288,39 @@ function scanDeprecated() {
 // Close the confirm dialog before deleting: a failing delete must never
 // leave the overlay stuck open (or throw out of the input handler with the
 // terminal frozen on the dialog frame). Failures surface as status text.
-function resolveConfirm(confirmed) {
+// Fire-and-forget: callers ignore the return, and every await sits inside the
+// try so a rejection can never escape as an unhandled rejection.
+async function resolveConfirm(confirmed) {
   const cfm = state.confirm
   state.mode = 'list'
   state.confirm = null
-  if (confirmed && cfm) {
-    try {
-      executeBatchDelete(cfm.rows)
-    } catch (e) {
-      state.status = `${c.red}Delete failed: ${e?.message ?? e}${c.reset}`
+  if (!confirmed || !cfm) {
+    redraw()
+    return
+  }
+  try {
+    if (cfm.terminate) {
+      state.status = `${c.yellow}Terminating processes…${c.reset}`
+      redraw()
+      const failures = []
+      for (const row of cfm.rows) {
+        if (row.main) continue
+        const { skipped } = await terminateProcessesInPath(row.path)
+        for (const s of skipped) {
+          failures.push(`${row.name}${s.pid ? ` (pid ${s.pid}: ${s.reason})` : ` (${s.reason})`}`)
+        }
+      }
+      if (failures.length > 0) {
+        state.status = `${c.red}Cannot delete: ${failures.join(', ')}.${c.reset}`
+        redraw()
+        return
+      }
+      // Survivors-free targets flow into the batch below, whose per-row
+      // guard re-check fails anything that restarted mid-terminate.
     }
+    executeBatchDelete(cfm.rows)
+  } catch (e) {
+    state.status = `${c.red}Delete failed: ${e?.message ?? e}${c.reset}`
   }
   redraw()
 }
@@ -1370,9 +1427,10 @@ function handleChangesClick({ sr, sc, top, left, dg }) {
     setChangesPane(contentColumn >= dg.leftW ? 'diff' : 'entries')
     return
   }
-  // Entry rows follow the pane header; the footer and frame rows below them
-  // are inert.
-  if (rel < CHANGES_BODY_START + 1 || rel >= CHANGES_BODY_START + 1 + dg.entryH) {
+  // Entry rows follow the pane header (plus the border and branch-label rows
+  // in side-by-side mode); the footer and frame rows below them are inert.
+  const entryStart = dg.entryStart ?? 1
+  if (rel < CHANGES_BODY_START + entryStart || rel >= CHANGES_BODY_START + entryStart + dg.entryH) {
     redraw()
     return
   }
@@ -1382,7 +1440,7 @@ function handleChangesClick({ sr, sc, top, left, dg }) {
   }
   const entries = changesEntries(view)
   if (!Array.isArray(entries) || entries.length === 0) return
-  const entryIndex = dg.first + (rel - CHANGES_BODY_START - 1)
+  const entryIndex = dg.first + (rel - CHANGES_BODY_START - entryStart)
   if (entryIndex < 0 || entryIndex >= entries.length) return
   if (view.activePane !== 'entries') view.activePane = 'entries'
   if (entryIndex === (view.cursors[view.tab] ?? 0)) {
@@ -1719,6 +1777,7 @@ function handleTextInput(value) {
     // The overlay owns `q` so leaving it never exits the whole manager.
     if (value === 'q' || value === 'Q') closeChangesView()
     else if (value === 'r') reloadChangesView()
+    else if (value === 'v' || value === 'V') toggleChangesView()
     else if (value === '1') setChangesTab(0)
     else if (value === '2') setChangesTab(1)
     else if (value === '3') setChangesTab(2)

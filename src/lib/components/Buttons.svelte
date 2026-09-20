@@ -19,7 +19,10 @@
 
   let { align = 'left', className, children }: Props = $props()
 
-  const resolvedClassName = $derived(className ?? `flex shrink-0 flex-wrap items-center gap-3 ${alignClasses[align]}`)
+  // `w-full` gives `justify-*` free space to work with: without it the row
+  // hugs its content inside flex parents (e.g. the showcase demo row) and
+  // `align` has no visible effect.
+  const resolvedClassName = $derived(className ?? `flex w-full shrink-0 flex-wrap items-center gap-3 ${alignClasses[align]}`)
 </script>
 
 <div class={resolvedClassName}>

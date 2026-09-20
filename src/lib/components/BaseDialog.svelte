@@ -6,6 +6,7 @@
   import { browser } from '$app/environment';
   import { onDestroy, onMount, tick } from 'svelte'
   import CloseIcon from '$lib/icons/CloseIcon.svelte'
+  import { positionPanel } from '$lib/position-panel.svelte'
   import { getI18nContext } from '$lib/i18n.svelte'
   const i18n = getI18nContext()
 
@@ -165,7 +166,12 @@
   })
 </script>
 
-<div class="fixed inset-0 z-40 @container dialog">
+<!-- Sheet-portal to document.body so the dialog is never clipped or trapped
+  by an ancestor stacking context (e.g. the showcase's paint-contained demo
+  row); the dialog stays mounted here for focus and teardown bookkeeping. -->
+<div
+  use:positionPanel={() => ({ getTrigger: () => null, getOpen: () => true, presentation: 'sheet' })}
+  class="fixed inset-0 z-40 @container dialog">
   <button
     type="button"
     data-testid="dialog-overlay"

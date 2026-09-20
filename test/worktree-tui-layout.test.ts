@@ -14,6 +14,7 @@ import {
   changesFullscreenGeometry,
   changesTabHitColumns,
   changesTabLine,
+  pairDiffLines,
   colorizeDiffLine,
   currentOptions,
   dialogGeometry,
@@ -215,6 +216,7 @@ type ChangesDialog = {
   rightW: number
   first: number
   entryH: number
+  entryStart: number
   diffTotal: number
   scroll: number
   activePane: 'entries' | 'diff'
@@ -427,5 +429,240 @@ describe('changes overlay', () => {
       listH: 8,
     }) as ChangesDialog
     expect(plain.lines).toHaveLength(8 + 5)
+  })
+
+  it('pairs unified lines into before/after rows', () => {
+    const rows = pairDiffLines([
+      'diff --git a/f b/f',
+      '--- a/f',
+      '+++ b/f',
+      '@@ -1,2 +1,2 @@',
+      ' ctx',
+      '-old',
+      '+new',
+      '-gone',
+      ' tail',
+    ]) as Array<{ before: string; after: string; beforeKind: string; afterKind: string }>
+    expect(rows).toEqual([
+      { before: 'diff --git a/f b/f', after: '', beforeKind: 'meta', afterKind: 'blank' },
+      { before: '--- a/f', after: '+++ b/f', beforeKind: 'meta', afterKind: 'meta' },
+      { before: '@@ -1,2 +1,2 @@', after: '', beforeKind: 'meta', afterKind: 'blank' },
+      { before: 'ctx', after: 'ctx', beforeKind: 'context', afterKind: 'context' },
+      { before: 'old', after: 'new', beforeKind: 'del', afterKind: 'add' },
+      { before: 'gone', after: '', beforeKind: 'del', afterKind: 'blank' },
+      { before: 'tail', after: 'tail', beforeKind: 'context', afterKind: 'context' },
+    ])
+  })
+
+  it('zips uneven del/add runs with blanks on the short side', () => {
+    const rows = pairDiffLines(['-a', '+b', '+c']) as Array<{ before: string; after: string }>
+    expect(rows.map(r => [r.before, r.after])).toEqual([
+      ['a', 'b'],
+      ['', 'c'],
+    ])
+  })
+
+  it('renders before and after on one visual row per pair', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [1, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines: ['@@ -1 +1 @@', ' ctx', '-old', '+new'],
+      scroll: 0,
+      dialogW: 100,
+      listH: 10,
+      viewMode: 'side',
+    }) as ChangesDialog
+    const stripped = dialog.lines.map(line => line.replace(ansi, ''))
+    expect(stripped[CHANGES_BODY_START]).toContain('(side-by-side)')
+    const pair = stripped.find(line => line.includes('old') && line.includes('new'))
+    expect(pair).toBeDefined()
+    // The before cell precedes the after cell on that row.
+    expect(pair!.indexOf('old')).toBeLessThan(pair!.indexOf('new'))
+    for (const line of dialog.lines) expect(line.replace(ansi, '').length).toBe(100)
+  })
+
+  it('keeps wrapped pairs aligned to the taller side', () => {
+    const long = `-${'x'.repeat(60)}`
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [1, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines: ['@@ -1 +1 @@', long, '+y'],
+      scroll: 0,
+      dialogW: 80,
+      listH: 12,
+      viewMode: 'side',
+    }) as ChangesDialog
+    // rightW is small next to the entries pane, so the 60-char removal wraps
+    // to several rows while the one-char addition stays on one.
+    expect(dialog.diffTotal).toBeGreaterThan(3)
+    const pair = dialog.lines
+      .map(line => line.replace(ansi, ''))
+      .find(line => line.includes('xxxxxxxxxx') && line.includes('y'))
+    expect(pair).toBeDefined()
+  })
+
+  it('inserts a border and centered branch names under the DIFF header in side mode', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 1,
+      counts: [0, 2, 0],
+      entries: files,
+      cursor: 0,
+      diffLines: ['-old', '+new'],
+      scroll: 0,
+      dialogW: 100,
+      listH: 10,
+      viewMode: 'side',
+      beforeLabel: 'master',
+      afterLabel: 'feat/x',
+    }) as ChangesDialog
+    const stripped = dialog.lines.map(line => line.replace(ansi, ''))
+    expect(dialog.entryStart).toBe(3)
+    // Border row spans the content width directly under the pane header.
+    expect(stripped[CHANGES_BODY_START + 1].replace(/[│ ]/g, '')).toMatch(/^─+$/)
+    // Branch names sit over their subpane, before on the left.
+    const labelRow = stripped[CHANGES_BODY_START + 2]
+    expect(labelRow).toContain('master')
+    expect(labelRow).toContain('feat/x')
+    expect(labelRow.indexOf('master')).toBeLessThan(labelRow.indexOf('feat/x'))
+    for (const line of dialog.lines) expect(line.replace(ansi, '').length).toBe(100)
+  })
+
+  it('keeps the unified layout free of side-mode rows', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [2, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines: ['-old', '+new'],
+      scroll: 0,
+      dialogW: 100,
+      listH: 10,
+    }) as ChangesDialog
+    expect(dialog.entryStart).toBe(1)
+    expect(dialog.entryH).toBe(9)
+  })
+
+  it('trades two entry rows for the side-mode header rows without changing dialog height', () => {
+    const base = {
+      context: 'wt',
+      tab: 0,
+      counts: [2, 0, 0] as Array<number | null>,
+      entries: files,
+      cursor: 0,
+      diffLines: ['-old', '+new'],
+      scroll: 0,
+      dialogW: 100,
+      listH: 10,
+    }
+    const unified = buildChangesDialog({ ...base }) as ChangesDialog
+    const side = buildChangesDialog({ ...base, viewMode: 'side' }) as ChangesDialog
+    expect(side.entryH).toBe(unified.entryH - 2)
+    expect(side.lines).toHaveLength(unified.lines.length)
+  })
+
+  it('truncates overlong branch names to their subpane', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [1, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines: ['-old', '+new'],
+      scroll: 0,
+      dialogW: 80,
+      listH: 8,
+      viewMode: 'side',
+      beforeLabel: 'a-very-long-branch-name-that-cannot-possibly-fit',
+      afterLabel: 'other',
+    }) as ChangesDialog
+    for (const line of dialog.lines) expect(line.replace(ansi, '').length).toBe(80)
+  })
+
+  it('renders a changeless diff exactly like unified, without border or subpanes', () => {
+    const base = {
+      context: 'wt',
+      tab: 0,
+      counts: [1, 0, 0] as Array<number | null>,
+      entries: files,
+      cursor: 0,
+      diffLines: ['diff --git a/f b/f', 'index 111..222 100644'],
+      scroll: 0,
+      dialogW: 100,
+      listH: 10,
+    }
+    const side = buildChangesDialog({ ...base, viewMode: 'side' }) as ChangesDialog
+    const unified = buildChangesDialog({ ...base, viewMode: 'unified' }) as ChangesDialog
+    expect(side.entryStart).toBe(1)
+    expect(side.lines).toEqual(unified.lines)
+    const empty = buildChangesDialog({ ...base, diffLines: [] }) as ChangesDialog
+    expect(buildChangesDialog({ ...base, diffLines: [], viewMode: 'side' }).lines).toEqual(empty.lines)
+  })
+
+  it('keeps the change color on every wrapped visual row', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [1, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines: [`-${'x'.repeat(60)}`, `+${'y'.repeat(60)}`],
+      scroll: 0,
+      dialogW: 80,
+      listH: 14,
+      viewMode: 'side',
+    }) as ChangesDialog
+    // The 60-char sides wrap to several visual rows; each one carries its
+    // side's color instead of only the first.
+    expect(dialog.diffTotal).toBeGreaterThan(2)
+    const pairRows = dialog.lines.slice(CHANGES_BODY_START + 3, CHANGES_BODY_START + 3 + dialog.diffTotal)
+    expect(pairRows.length).toBeGreaterThan(2)
+    for (const row of pairRows) {
+      expect(row).toContain('[31m')
+      expect(row).toContain('[32m')
+    }
+  })
+
+  it('keeps the change color on wrapped rows in unified mode too', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [1, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines: [`+${'y'.repeat(60)}`],
+      scroll: 0,
+      dialogW: 80,
+      listH: 12,
+    }) as ChangesDialog
+    const stripped = dialog.lines.map(line => line.replace(ansi, ''))
+    const wrapped = dialog.lines.filter((_, i) => stripped[i].includes('y'))
+    expect(wrapped.length).toBeGreaterThan(1)
+    for (const row of wrapped) expect(row).toContain('[32m')
+  })
+
+  it('falls back to unified when the diff pane is too narrow to split', () => {
+    const dialog = buildChangesDialog({
+      context: 'wt',
+      tab: 0,
+      counts: [1, 0, 0],
+      entries: files,
+      cursor: 0,
+      diffLines: ['-old', '+new'],
+      scroll: 0,
+      dialogW: 44,
+      listH: 8,
+      viewMode: 'side',
+    }) as ChangesDialog
+    // leftW floors at 20, leaving rightW under the split minimum.
+    expect(dialog.lines[CHANGES_BODY_START].replace(ansi, '')).not.toContain('side-by-side')
+    expect(dialog.lines.join('\n').replace(ansi, '')).toContain('-old')
   })
 })

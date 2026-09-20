@@ -1,6 +1,7 @@
 <script lang="ts" generics="T">
   import type { Snippet } from 'svelte'
   import Checkbox from './Checkbox.svelte'
+  import ColumnChooser, { type ChooserColumn } from './ColumnChooser.svelte'
   import Pagination from './Pagination.svelte'
   import SearchInput from './SearchInput.svelte'
   import Spinner from './Spinner.svelte'
@@ -52,12 +53,19 @@
     loading?: boolean
     emptyMessage?: string
     searchValue?: string
-    searchAriaLabel: string
+    searchAriaLabel?: string
     searchPlaceholder?: string
     showSearch?: boolean
     searchKeys?: string[]
     onSearchInput?: (event: Event) => void
     onSearchKeydown?: (event: KeyboardEvent) => void
+    // Column selector + reset icons rendered in the toolbar after the search
+    // box. The chooser is omitted entirely when `chooserColumns` is undefined.
+    chooserColumns?: ChooserColumn[]
+    chooserLabel?: string
+    chooserResetLabel?: string
+    onToggleColumn?: (key: string, checked: boolean) => void
+    onResetColumns?: () => void
     selectable?: boolean
     selectedIds?: Set<string>
     onToggleSelection?: (id: string, checked: boolean) => void
@@ -74,6 +82,10 @@
     containerClass?: string
     tableClass?: string
     fillHeight?: boolean
+    // Splits the header into a fixed band outside the scrollport (only with
+    // fillHeight): the body wrapper scrolls while the header mirrors its
+    // horizontal scroll, so the vertical scrollbar spans body rows only.
+    bodyScroll?: boolean
     // Renders the pagination footer. Set false for short summary tables that
     // always fit one page (the dashboard breakdowns).
     showPagination?: boolean
@@ -90,6 +102,9 @@
     paginationPageSizeLabel?: string
     paginationCurrentLabel?: string
     paginationLabel?: string
+    // Arbitrary content for the pagination row's right edge, forwarded to
+    // the Pagination `trailing` placeholder. Omitted when undefined.
+    paginationTrailing?: Snippet
     // Adds draggable (and arrow-key) resize handles to each data column header.
     // Off by default; the selectable checkbox column stays fixed.
     resizable?: boolean
@@ -122,6 +137,11 @@
     searchKeys = $bindable([] as string[]),
     onSearchInput,
     onSearchKeydown,
+    chooserColumns,
+    chooserLabel,
+    chooserResetLabel,
+    onToggleColumn,
+    onResetColumns,
     selectable = false,
     selectedIds,
     onToggleSelection,
@@ -136,8 +156,9 @@
     onPageChange,
     onPageSizeChange,
     containerClass = 'max-h-[min(70vh,44rem)] overflow-auto rounded-xl border border-slate-800 bg-slate-950/50 contain-layout',
-    tableClass = 'min-w-[60rem]',
+    tableClass = 'min-w-0',
     fillHeight = false,
+    bodyScroll = false,
     showPagination = true,
     dense = false,
     sortKey = $bindable(null as string | null),
@@ -150,6 +171,7 @@
     paginationPageSizeLabel,
     paginationCurrentLabel,
     paginationLabel,
+    paginationTrailing,
     resizable = false,
     storageKey,
     resetWidthsSignal = 0,
@@ -159,12 +181,67 @@
 
   const resolvedEmptyMessage = $derived(emptyMessage ?? 'No rows')
   const resolvedSearchPlaceholder = $derived(searchPlaceholder ?? 'Search')
+  const resolvedSearchAriaLabel = $derived(searchAriaLabel ?? 'Search')
+  const resolvedChooserLabel = $derived(chooserLabel ?? 'Choose columns')
+  const resolvedChooserResetLabel = $derived(chooserResetLabel ?? 'Reset columns')
   const resolvedSelectAllAriaLabel = $derived(selectAllAriaLabel ?? 'Select all')
 
   const columnCount = $derived(columns.length + (selectable ? 1 : 0))
 
   const FILL_CONTAINER_CLASS =
     'min-h-0 overflow-auto rounded-xl border border-slate-800 bg-slate-950/50 contain-layout'
+
+  // Split header/body mode: the header lives in a fixed band outside the
+  // scrollport and only the body wrapper scrolls (requires fillHeight, which
+  // provides the bounded flex height). Off by default so existing callers
+  // keep the single-table sticky-header rendering.
+  const splitHeader = $derived(bodyScroll && fillHeight)
+
+  const SPLIT_FRAME_CLASS =
+    'flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/50 contain-layout'
+
+  let headerWrapper = $state<HTMLElement | null>(null)
+
+  // The header band never scrolls on its own (its wrapper clips with
+  // overflow-hidden): mirror the body wrapper's horizontal scroll into it and
+  // forward wheel events so scrolling still works while the pointer is over
+  // the header.
+  $effect(() => {
+    if (!splitHeader) return
+    const body = tableContainer
+    const header = headerWrapper
+    if (!body || !header) return
+    const onScroll = () => {
+      header.scrollLeft = body.scrollLeft
+    }
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY !== 0) body.scrollTop += event.deltaY
+      if (event.deltaX !== 0) body.scrollLeft += event.deltaX
+    }
+    body.addEventListener('scroll', onScroll, { passive: true })
+    header.addEventListener('wheel', onWheel, { passive: true })
+    return () => {
+      body.removeEventListener('scroll', onScroll)
+      header.removeEventListener('wheel', onWheel)
+    }
+  })
+
+  // The body wrapper's vertical scrollbar narrows its visible width; pad the
+  // header wrapper by the same amount so the header table keeps the body's
+  // width once columns overflow.
+  $effect(() => {
+    if (!splitHeader) return
+    const body = tableContainer
+    const header = headerWrapper
+    if (!body || !header) return
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      const scrollbarWidth = body.offsetWidth - body.clientWidth
+      header.style.paddingRight = scrollbarWidth > 0 ? `${scrollbarWidth}px` : ''
+    })
+    observer.observe(body)
+    return () => observer.disconnect()
+  })
 
   const resolvedColumns = $derived.by(() => resolveColumnWidths(columns))
 
@@ -200,7 +277,7 @@
   // (not position) whenever the visible set changes, so toggling a column
   // never shifts its neighbours' widths.
   let widthKeys = $state<string[]>([])
-  let tableContainer: HTMLElement | null = null
+  let tableContainer = $state<HTMLElement | null>(null)
   let headerEls = $state<(HTMLElement | null)[]>([])
 
   const managedWidths = $derived(resizable && columnWidths.length > 0)
@@ -212,6 +289,14 @@
     }
     return sum
   })
+
+  // Both split tables share one column template so their columns stay
+  // aligned: managed pixel widths once resized, otherwise the declared
+  // widths (fixed layout governs both tables in split mode).
+  const splitTableClass = $derived(managedWidths ? 'min-w-full' : `w-full ${tableClass}`)
+  const splitTableStyle = $derived(
+    managedWidths ? `table-layout:fixed;min-width:100%;width:${totalWidth}px;` : 'table-layout:fixed;',
+  )
 
   function columnMinWidth(i: number): number {
     const mw = columns[i]?.minWidth
@@ -305,32 +390,89 @@
 
 <svelte:window onmouseup={resize.handleResizeMouseUp} onmousemove={resize.handleResizeMouseMove} />
 
-<div class="flex flex-col gap-2 {fillHeight ? 'min-h-0 flex-1' : ''}">
-  {#if showSearch}
-    <SearchInput
-      bind:value={searchValue}
-      oninput={onSearchInput}
-      onkeydown={onSearchKeydown}
-      ariaLabel={searchAriaLabel}
-      placeholder={resolvedSearchPlaceholder}
-      wrapperClass={fillHeight ? 'shrink-0' : ''} />
+<div class="flex min-w-0 w-full flex-col gap-2 {fillHeight ? 'min-h-0 flex-1' : ''}">
+  {#if showSearch || chooserColumns}
+    <div class="flex flex-wrap items-center gap-2 {fillHeight ? 'shrink-0' : ''}">
+      {#if showSearch}
+        <SearchInput
+          bind:value={searchValue}
+          oninput={onSearchInput}
+          onkeydown={onSearchKeydown}
+          ariaLabel={resolvedSearchAriaLabel}
+          placeholder={resolvedSearchPlaceholder}
+          wrapperClass="min-w-0 flex-1" />
+      {/if}
+      {#if chooserColumns}
+        <ColumnChooser
+          label={resolvedChooserLabel}
+          resetLabel={resolvedChooserResetLabel}
+          columns={chooserColumns}
+          onToggle={(key, checked) => onToggleColumn?.(key, checked)}
+          onReset={() => onResetColumns?.()} />
+      {/if}
+    </div>
   {/if}
 
-  <div tabindex="-1" class={`${fillHeight ? FILL_CONTAINER_CLASS : containerClass} outline-none`} bind:this={tableContainer}>
-    <table
-      class="border-separate border-spacing-0 text-sm [&_tr:last-child_td]:border-b-0 {managedWidths ? 'min-w-full' : `w-full ${tableClass}`}"
-      style={managedWidths ? `table-layout:fixed;min-width:100%;width:${totalWidth}px;` : ''}>
-      {#if managedWidths}
-        <colgroup>
+  {#snippet tableColgroup()}
+    {#if managedWidths}
+      <colgroup>
+        {#if selectable}
+          <col style="width:{SELECT_COLUMN_WIDTH}px;" />
+        {/if}
+        {#each Array.from({ length: columns.length }) as _, i}
+          <col style="width:{columnWidths[i]}px;" />
+        {/each}
+      </colgroup>
+    {:else if splitHeader}
+      <colgroup>
+        {#if selectable}
+          <col style="width:{SELECT_COLUMN_WIDTH}px;" />
+        {/if}
+        {#each resolvedColumns as column (column.key)}
+          <col style={column.widthStyle} />
+        {/each}
+      </colgroup>
+    {/if}
+  {/snippet}
+
+  {#snippet tableBody()}
+    {#if loading && rows.length === 0}
+      <tr>
+        <td colspan={columnCount} class="px-3 py-10">
+          <div class="flex justify-center">
+            <Spinner className="h-6 w-6" />
+          </div>
+        </td>
+      </tr>
+    {:else if rows.length === 0}
+      <tr>
+        <td colspan={columnCount} class="px-3 py-10 text-center text-sm text-slate-400">{resolvedEmptyMessage}</td>
+      </tr>
+    {:else}
+      {#each rows as row (rowId(row))}
+        <tr class="hover:bg-slate-900/40">
           {#if selectable}
-            <col style="width:{SELECT_COLUMN_WIDTH}px;" />
+            <td class="border-b border-slate-800/50 px-3 py-2">
+              <Checkbox
+                checked={selectedIds?.has(rowId(row)) ?? false}
+                ariaLabel={rowSelectAriaLabel?.(row) ?? 'Select row'}
+                onChange={checked => onToggleSelection?.(rowId(row), checked)} />
+            </td>
           {/if}
-          {#each Array.from({ length: columns.length }) as _, i}
-            <col style="width:{columnWidths[i]}px;" />
+          {#each resolvedColumns as column (column.key)}
+            <td
+              class="border-b border-slate-800/50 px-3 py-2 {managedWidths ? '' : column.minWidthClass} {column.cellClass}"
+              style={[managedWidths ? '' : column.minWidthStyle, dense ? 'padding: 4px 8px; font-size: 12px' : ''].filter(Boolean).join('; ')}>
+              {@render column.cell?.(row)}
+              {#if !column.cell && renderCellHtml}{@html renderCellHtml(column.key, row)}{/if}
+            </td>
           {/each}
-        </colgroup>
-      {/if}
-      <thead>
+        </tr>
+      {/each}
+    {/if}
+  {/snippet}
+
+      {#snippet headerRow()}
         <tr class="text-left text-sm font-medium text-slate-400">
           {#if selectable}
             <th
@@ -397,45 +539,46 @@
             </th>
           {/each}
         </tr>
-      </thead>
-      <tbody>
-        {#if loading && rows.length === 0}
-          <tr>
-            <td colspan={columnCount} class="px-3 py-10">
-              <div class="flex justify-center">
-                <Spinner className="h-6 w-6" />
-              </div>
-            </td>
-          </tr>
-        {:else if rows.length === 0}
-          <tr>
-            <td colspan={columnCount} class="px-3 py-10 text-center text-sm text-slate-400">{resolvedEmptyMessage}</td>
-          </tr>
-        {:else}
-          {#each rows as row (rowId(row))}
-            <tr class="hover:bg-slate-900/40">
-              {#if selectable}
-                <td class="border-b border-slate-800/50 px-3 py-2">
-                  <Checkbox
-                    checked={selectedIds?.has(rowId(row)) ?? false}
-                    ariaLabel={rowSelectAriaLabel?.(row) ?? 'Select row'}
-                    onChange={checked => onToggleSelection?.(rowId(row), checked)} />
-                </td>
-              {/if}
-              {#each resolvedColumns as column (column.key)}
-                <td
-                  class="border-b border-slate-800/50 px-3 py-2 {managedWidths ? '' : column.minWidthClass} {column.cellClass}"
-                  style={[managedWidths ? '' : column.minWidthStyle, dense ? 'padding: 4px 8px; font-size: 12px' : ''].filter(Boolean).join('; ')}>
-                  {@render column.cell?.(row)}
-                  {#if !column.cell && renderCellHtml}{@html renderCellHtml(column.key, row)}{/if}
-                </td>
-              {/each}
-            </tr>
-          {/each}
-        {/if}
-      </tbody>
-    </table>
-  </div>
+      {/snippet}
+
+  {#if splitHeader}
+    <div class={SPLIT_FRAME_CLASS}>
+      <div class="flex-none overflow-hidden" bind:this={headerWrapper}>
+        <table
+          class="border-separate border-spacing-0 text-sm [&_tr:last-child_td]:border-b-0 {splitTableClass}"
+          style={splitTableStyle}>
+          {@render tableColgroup()}
+          <thead>
+            {@render headerRow()}
+          </thead>
+        </table>
+      </div>
+      <div tabindex="-1" class="min-h-0 flex-1 overflow-auto outline-none" bind:this={tableContainer}>
+        <table
+          class="border-separate border-spacing-0 text-sm [&_tr:last-child_td]:border-b-0 {splitTableClass}"
+          style={splitTableStyle}>
+          {@render tableColgroup()}
+          <tbody>
+            {@render tableBody()}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {:else}
+    <div tabindex="-1" class={`${fillHeight ? FILL_CONTAINER_CLASS : containerClass} outline-none`} bind:this={tableContainer}>
+      <table
+        class="border-separate border-spacing-0 text-sm [&_tr:last-child_td]:border-b-0 {managedWidths ? 'min-w-full' : `w-full ${tableClass}`}"
+        style={managedWidths ? `table-layout:fixed;min-width:100%;width:${totalWidth}px;` : ''}>
+        {@render tableColgroup()}
+        <thead>
+          {@render headerRow()}
+        </thead>
+        <tbody>
+          {@render tableBody()}
+        </tbody>
+      </table>
+    </div>
+  {/if}
 
   {#if showPagination}
     <div class="shrink-0">
@@ -449,7 +592,8 @@
         nextLabel={paginationNextLabel}
         pageSizeLabel={paginationPageSizeLabel}
         currentPageLabel={paginationCurrentLabel}
-        paginationLabel={paginationLabel} />
+        paginationLabel={paginationLabel}
+        trailing={paginationTrailing} />
     </div>
   {/if}
 </div>

@@ -1,12 +1,19 @@
 <script lang="ts">
+  type IconSize = 'xs' | 'sm' | 'md' | 'lg'
+
   interface Props {
     className?: string
+    size?: IconSize
   }
 
-  let { className = '' }: Props = $props()
+  // Width/height attributes (not classes) so `size` composes with `className`:
+  // explicit size classes in className still win, since CSS beats attributes.
+  const SIZE_PX: Record<IconSize, number> = { xs: 12, sm: 16, md: 20, lg: 24 }
+
+  let { className = '', size = 'md' }: Props = $props()
 </script>
 
-<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class={className}>
+<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" width={SIZE_PX[size]} height={SIZE_PX[size]} class={className}>
   <path
     d="M3.28 2.22a.75.75 0 0 0-1.06 1.06l1.845 1.845A8.977 8.977 0 0 0 1.6 9.697a1 1 0 0 0 0 .606 8.02 8.02 0 0 0 12.513 4.152l2.607 2.607a.75.75 0 1 0 1.06-1.06l-14.5-14.5Zm7.63 7.63a2.75 2.75 0 0 1-3.76-3.76l3.76 3.76Zm2.128 2.128A6.52 6.52 0 0 1 3.1 10a7.49 7.49 0 0 1 2.04-3.205l1.036 1.036a4.25 4.25 0 0 0 6 6l.862.862Zm1.822-1.822-1.03-1.03a4.25 4.25 0 0 0-5.956-5.956l-1.03-1.03A8.018 8.018 0 0 1 18.4 9.697a1 1 0 0 1 0 .606 7.934 7.934 0 0 1-3.54 3.853Z" />
 </svg>

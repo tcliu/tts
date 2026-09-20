@@ -5,7 +5,9 @@
   import { useListSelection, revealInScrollport } from '$lib/actions/use-list-selection.svelte'
   import { positionPanel } from '$lib/position-panel.svelte'
   import { TEXT_SIZE, type TextSize } from '$lib/text-size'
+  import Button from '$lib/components/Button.svelte'
   import ChevronDownIcon from '$lib/icons/ChevronDownIcon.svelte'
+  import CloseIcon from '$lib/icons/CloseIcon.svelte'
   import type { DropdownPanelProps } from '$lib/dropdown-chrome'
 
   interface Option {
@@ -25,6 +27,13 @@
     controlClass?: string
     optionClass?: string
     emptyLabel?: string
+    // Appends a cross button that clears the value while one is set. Off by
+    // default so existing callers are unchanged.
+    clearable?: boolean
+    // Accessible name for the clear button.
+    clearLabel?: string
+    // Clear handler; falls back to onSelect('') when omitted.
+    onClear?: () => void
   }
 
   let {
@@ -41,6 +50,9 @@
     controlClass,
     optionClass,
     emptyLabel,
+    clearable = false,
+    clearLabel,
+    onClear,
     panelClass = 'w-max max-w-xs max-h-[min(50vh,20rem)] overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-slate-950/60 backdrop-blur',
   }: Props = $props()
 
@@ -75,6 +87,7 @@
   )
 
   const emptyClass = $derived(`px-3 ${SIZE_CLASS[size].pad} ${TEXT_SIZE[size]} text-slate-400`)
+  const resolvedClearLabel = $derived(clearLabel ?? 'Clear selection')
   let open = $state(false)
   const selection = useListSelection()
   let containerRef = $state<HTMLDivElement | null>(null)
@@ -165,6 +178,21 @@
     if (!open) {
       openPanel()
     }
+  }
+
+  // Clearing hides the cross with the value, so return focus to the trigger
+  // instead of dropping it to the body.
+  function handleClear() {
+    close()
+    if (onClear) {
+      onClear()
+    } else {
+      onSelect('')
+    }
+    if (filterable && inputRef) {
+      filterText = ''
+    }
+    void tick().then(() => controlRef?.focus())
   }
 
   async function select(value: string) {
@@ -258,44 +286,62 @@
   data-escape-capture={open ? '' : null}
   onfocusout={handleFocusOut}
 >
-  {#if filterable}
-    <div class="relative w-fit" bind:this={controlRef}>
-      <input
-        bind:this={inputRef}
-        type="text"
-        bind:value={filterText}
+  {#snippet triggerControl()}
+    {#if filterable}
+      <div class="relative w-fit" bind:this={controlRef}>
+        <input
+          bind:this={inputRef}
+          type="text"
+          bind:value={filterText}
+          role="combobox"
+          aria-label={ariaLabel}
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          aria-activedescendant={open && filteredOptions[selection.index]
+            ? `${panelId}-option-${selection.index}`
+            : undefined}
+          onfocus={handleControlFocus}
+          onclick={handleControlClick}
+          onkeydown={handleControlKeydown}
+          class={resolvedControlClass} />
+        <ChevronDownIcon className="pointer-events-none absolute right-1.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      </div>
+    {:else}
+      <button
+        type="button"
+        bind:this={controlRef}
         role="combobox"
         aria-label={ariaLabel}
-        aria-autocomplete="list"
+        aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         aria-activedescendant={open && filteredOptions[selection.index]
           ? `${panelId}-option-${selection.index}`
           : undefined}
-        onfocus={handleControlFocus}
-        onclick={handleControlClick}
+        onclick={toggle}
         onkeydown={handleControlKeydown}
-        class={resolvedControlClass} />
-      <ChevronDownIcon className="pointer-events-none absolute right-1.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-    </div>
+        class={resolvedButtonClass}>
+        <span class="min-w-0 flex-1 truncate">{buttonLabel}</span>
+        <ChevronDownIcon className="ml-auto h-4 w-4 shrink-0 text-slate-500" />
+      </button>
+    {/if}
+  {/snippet}
+  {#snippet closeIcon()}
+    <CloseIcon className="h-4 w-4" />
+  {/snippet}
+  {#if clearable && activeValue !== ''}
+    <span class="inline-flex items-center gap-1">
+      {@render triggerControl()}
+      <Button
+        variant="ghost"
+        size="xs"
+        icon={closeIcon}
+        ariaLabel={resolvedClearLabel}
+        onClick={handleClear} />
+    </span>
   {:else}
-    <button
-      type="button"
-      bind:this={controlRef}
-      role="combobox"
-      aria-label={ariaLabel}
-      aria-haspopup="listbox"
-      aria-expanded={open}
-      aria-controls={open ? panelId : undefined}
-      aria-activedescendant={open && filteredOptions[selection.index]
-        ? `${panelId}-option-${selection.index}`
-        : undefined}
-      onclick={toggle}
-      onkeydown={handleControlKeydown}
-      class={resolvedButtonClass}>
-      <span class="min-w-0 flex-1 truncate">{buttonLabel}</span>
-      <ChevronDownIcon className="ml-auto h-4 w-4 shrink-0 text-slate-500" />
-    </button>
+    {@render triggerControl()}
   {/if}
   {#if open}
     <div

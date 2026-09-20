@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import { spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-import { branchCommitRange, parseNameStatusZ } from '../scripts/_worktrees.mjs'
+import {
+  branchCommitRange,
+  listProtectedPids,
+  parseNameStatusZ,
+  terminateProcessesInPath,
+} from '../scripts/_worktrees.mjs'
 
 type Entry = { code: string; path: string }
 type Range = { range: string | null }
@@ -52,5 +61,60 @@ describe('branchCommitRange', () => {
       (branchCommitRange({ base: 'master', branch: 'feat/x', direction: 'ahead', registered: false }) as Range).range,
     ).toBeNull()
     expect((branchCommitRange({ base: 'master', branch: 'feat/x', direction: 'sideways' }) as Range).range).toBeNull()
+  })
+})
+
+describe('listProtectedPids', () => {
+  it('always contains the current process', () => {
+    expect((listProtectedPids() as Set<number>).has(process.pid)).toBe(true)
+  })
+})
+
+type TerminateResult = { killed: { pid: number }[]; skipped: { pid: number | null; reason: string }[] }
+
+// /proc-gated: the terminate helper resolves process roots through /proc,
+// which only exists on Linux. Elsewhere the scan is unreadable by design.
+const itLinux = existsSync('/proc') ? it : it.skip
+
+describe('terminateProcessesInPath', () => {
+  itLinux('terminates a spawned sleeper rooted in the target dir', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'terminate-probe-'))
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: dir })
+    const pid = child.pid
+    if (pid === undefined) {
+      child.kill('SIGKILL')
+      rmSync(dir, { recursive: true, force: true })
+      throw new Error('sleeper failed to spawn')
+    }
+    try {
+      const { killed, skipped } = (await terminateProcessesInPath(dir, { graceMs: 50 })) as TerminateResult
+      expect(skipped).toEqual([])
+      expect(killed.map(k => k.pid)).toContain(pid)
+      let alive = true
+      try {
+        process.kill(pid, 0)
+      } catch {
+        alive = false
+      }
+      expect(alive).toBe(false)
+    } finally {
+      try {
+        process.kill(pid, 'SIGKILL')
+      } catch {
+        // Already terminated by the helper.
+      }
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  itLinux('is a no-op when nothing is rooted in the target dir', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'terminate-empty-'))
+    try {
+      const { killed, skipped } = (await terminateProcessesInPath(dir, { graceMs: 10 })) as TerminateResult
+      expect(killed).toEqual([])
+      expect(skipped).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

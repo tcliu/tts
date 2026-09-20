@@ -259,16 +259,171 @@ export function changesFullscreenGeometry({ cols, rows }) {
   return { dialogW, listH }
 }
 
+// ---- side-by-side diff pairs (`v` in the changes dialog) ----
+
+// Minimum right-pane width worth splitting: below this each subpane would be
+// too narrow to read, so the dialog falls back to the unified view.
+export const SIDE_BY_SIDE_MIN_RIGHT_W = 24
+
+// One before/after row pair of a unified diff. Kinds drive the cell colors:
+// `del`/`add` for changed lines, `context` for shared lines, `meta` for
+// headers (`diff`, `index`, `---`/`+++`, `@@`), `blank` for the empty half of
+// an unpaired change.
+function isDelLine(line) {
+  return line.startsWith('-') && !line.startsWith('--- ')
+}
+
+function isAddLine(line) {
+  return line.startsWith('+') && !line.startsWith('+++ ')
+}
+
+// Pair unified diff lines into before/after rows: context lines render on
+// both sides, del/add runs zip pairwise (unpaired halves stay blank), the
+// `---`/`+++` pair splits across the sides, and every other header lands on
+// the before side. Pure, so the pairing is unit-testable on its own.
+/**
+ * @param {string[]} diffLines
+ * @returns {Array<{ before: string, after: string, beforeKind: string, afterKind: string }>}
+ */
+export function pairDiffLines(diffLines = []) {
+  const rows = []
+  let i = 0
+  while (i < diffLines.length) {
+    const line = diffLines[i]
+    if (line.startsWith('--- ') && i + 1 < diffLines.length && diffLines[i + 1].startsWith('+++ ')) {
+      rows.push({ before: line, after: diffLines[i + 1], beforeKind: 'meta', afterKind: 'meta' })
+      i += 2
+    } else if (
+      line.startsWith('--- ') ||
+      line.startsWith('+++ ') ||
+      line.startsWith('diff ') ||
+      line.startsWith('index ') ||
+      line.startsWith('@@') ||
+      line.startsWith('Binary ')
+    ) {
+      rows.push({ before: line, after: '', beforeKind: 'meta', afterKind: 'blank' })
+      i += 1
+    } else if (isDelLine(line) || isAddLine(line)) {
+      const dels = []
+      while (i < diffLines.length && isDelLine(diffLines[i])) {
+        dels.push(diffLines[i].slice(1))
+        i += 1
+      }
+      const adds = []
+      while (i < diffLines.length && isAddLine(diffLines[i])) {
+        adds.push(diffLines[i].slice(1))
+        i += 1
+      }
+      const n = Math.max(dels.length, adds.length)
+      for (let k = 0; k < n; k++) {
+        rows.push({
+          before: dels[k] ?? '',
+          after: adds[k] ?? '',
+          beforeKind: k < dels.length ? 'del' : 'blank',
+          afterKind: k < adds.length ? 'add' : 'blank',
+        })
+      }
+    } else {
+      const text = line.startsWith(' ') ? line.slice(1) : line
+      rows.push({ before: text, after: text, beforeKind: 'context', afterKind: 'context' })
+      i += 1
+    }
+  }
+  return rows
+}
+
+function colorizeSideCell(text, kind) {
+  if (kind === 'del') return `${c.red}${text}${c.reset}`
+  if (kind === 'add') return `${c.green}${text}${c.reset}`
+  if (kind === 'meta') return colorizeDiffLine(text)
+  return text
+}
+
+// Subpane widths inside a `rightW`-wide side-by-side diff pane: the before
+// cell, one separator column, one space, then the after cell. Shared by the
+// row renderer and the branch-label row so the labels sit over their subpane.
+export function sidePaneWidths({ rightW }) {
+  const beforeW = Math.max(1, Math.floor((rightW - 3) / 2))
+  const afterW = Math.max(1, rightW - 3 - beforeW)
+  return { beforeW, afterW }
+}
+
+// Center plain text in `width` columns (branch names over their subpane).
+// Truncates first so an overlong name cannot push the row wide.
+function centerText(text, width) {
+  const label = truncate(String(text ?? ''), Math.max(0, width))
+  const pad = Math.max(0, width - displayWidth(label))
+  const left = Math.floor(pad / 2)
+  return ' '.repeat(left) + label + ' '.repeat(pad - left)
+}
+
+// Wrap one raw unified diff line, repainting the line's color on every visual
+// row: colorizing before wrapping would leave the SGR opener in the first row
+// and the continuation rows uncolored (same fix as the side-by-side cells).
+// Single-row lines keep the exact `colorizeDiffLine` rendering.
+function wrapUnifiedLine(line, width) {
+  const rows = wrapPaneLine(line, width)
+  if (rows.length <= 1) {
+    return [colorizeDiffLine(line)]
+  }
+  let paint = ''
+  if (line.startsWith('@@')) {
+    paint = c.cyan
+  } else if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ')) {
+    paint = c.dim
+  } else if (isAddLine(line)) {
+    paint = c.green
+  } else if (isDelLine(line)) {
+    paint = c.red
+  }
+  if (!paint) {
+    return rows
+  }
+  return rows.map(row => `${paint}${row}${c.reset}`)
+}
+
+// One pair as aligned visual rows inside a `rightW`-wide diff pane: each cell
+// wraps to its subpane and the pair emits as many rows as the taller side, so
+// before/after lines never drift apart. Every returned row is exactly
+// `rightW` visible columns wide.
+/**
+ * @param {{ pairs?: Array<{ before: string, after: string, beforeKind: string, afterKind: string }>, rightW: number }} pane
+ * @returns {{ rows: string[], beforeW: number, afterW: number }}
+ */
+export function renderSideBySideRows({ pairs = [], rightW }) {
+  const { beforeW, afterW } = sidePaneWidths({ rightW })
+  const separator = `${c.cyan}│${c.reset}`
+  const rows = []
+  for (const pair of pairs) {
+    // Wrap the raw text first, then colorize every visual row: colorizing
+    // before wrapping would leave the SGR opener in the first row and the
+    // continuation rows uncolored (`wrapPaneLine` carries escapes forward but
+    // never re-emits the active style).
+    const before = wrapPaneLine(pair.before, beforeW).map(line => colorizeSideCell(line, pair.beforeKind))
+    const after = wrapPaneLine(pair.after, afterW).map(line => colorizeSideCell(line, pair.afterKind))
+    const n = Math.max(before.length, after.length)
+    for (let k = 0; k < n; k++) {
+      rows.push(
+        `${padRight(before[k] ?? '', beforeW)}${separator} ${padRight(after[k] ?? '', afterW)}`,
+      )
+    }
+  }
+  return { rows, beforeW, afterW }
+}
+
 // The changes dialog: the same cyan frame as every other overlay, a context
 // line (worktree + branch + base), the tab line, then a two-pane body with
 // the entries on the left and the focused entry's diff on the right. `entries` is the active tab's file corpus or null
 // when it could not be read; `diffLines` is the focused entry's raw diff or
 // null. `listH` counts the body rows including the pane header, so the dialog
 // is `listH + 5` lines tall (title + context + tabs + separator + bottom),
-// plus a separator and a footer row when `footer` is non-empty.
+// plus a separator and a footer row when `footer` is non-empty. `viewMode`
+// selects the right pane's rendering: `unified` (one diff column) or `side`
+// (before/after subpanes); narrow panes and changeless diffs fall back to
+// unified, rendering byte-identically to it.
 /**
- * @param {{ context?: string, tab?: number, counts?: Array<number|null>, entries?: Array<{ code?: string, path?: string }>|null, cursor?: number, diffLines?: string[]|null, scroll?: number, dialogW: number, listH: number, activePane?: 'entries'|'diff', footer?: string }} view
- * @returns {{ lines: string[], leftW: number, rightW: number, first: number, entryH: number, diffTotal: number, scroll: number, activePane: 'entries'|'diff', total: number }}
+ * @param {{ context?: string, tab?: number, counts?: Array<number|null>, entries?: Array<{ code?: string, path?: string }>|null, cursor?: number, diffLines?: string[]|null, scroll?: number, dialogW: number, listH: number, activePane?: 'entries'|'diff', footer?: string, viewMode?: 'unified'|'side', beforeLabel?: string, afterLabel?: string }} view
+ * @returns {{ lines: string[], leftW: number, rightW: number, first: number, entryH: number, entryStart: number, diffTotal: number, scroll: number, activePane: 'entries'|'diff', total: number }}
  */
 export function buildChangesDialog({
   context = '',
@@ -282,6 +437,9 @@ export function buildChangesDialog({
   listH,
   activePane = 'entries',
   footer = '',
+  viewMode = 'unified',
+  beforeLabel = '',
+  afterLabel = '',
 }) {
   const inner = dialogW - 2
   const contentW = inner - 2
@@ -302,21 +460,42 @@ export function buildChangesDialog({
   const header = (text, pane) =>
     pane === active ? `▸ ${c.bold}${c.cyan}${text}${c.reset}` : `  ${c.dim}${text}${c.reset}`
   const focusedLabel = Array.isArray(entries) && entries[cursor] ? labels[cursor] : 'none'
+  // A changeless diff (headers only, or empty) renders exactly like unified —
+  // there is nothing to split, so no border or subpane labels either.
+  const pairs = viewMode === 'side' && diffLines !== null ? pairDiffLines(diffLines) : null
+  const hasChanges = pairs !== null && pairs.some(p => p.beforeKind === 'del' || p.afterKind === 'add')
+  const sideActive = pairs !== null && hasChanges && rightW >= SIDE_BY_SIDE_MIN_RIGHT_W
+  const diffTitle = sideActive ? `DIFF · ${focusedLabel} (side-by-side)` : `DIFF · ${focusedLabel}`
   body.push(
     `${padRight(truncate(header(`${paneName} (${labels.length})`, 'entries'), leftW), leftW)}${separator} ` +
-      padRight(truncate(header(`DIFF · ${focusedLabel}`, 'diff'), rightW), rightW),
+      padRight(truncate(header(diffTitle, 'diff'), rightW), rightW),
   )
+  // Side-by-side inserts two fixed rows under the pane header — a full-width
+  // border, then the centered branch names over their subpane — and the pairs
+  // area shrinks by the same two rows, so the dialog keeps its exact height.
+  // `entryStart` tells hit-testing how many rows past the pane header the
+  // entry rows begin (1 unified, 3 side-by-side).
+  const entryStart = sideActive ? 3 : 1
+  if (sideActive) {
+    const { beforeW, afterW } = sidePaneWidths({ rightW })
+    body.push('─'.repeat(contentW))
+    const labelCells = `${centerText(beforeLabel, beforeW)}${separator} ${centerText(afterLabel, afterW)}`
+    body.push(`${padRight('', leftW)}${separator} ${padRight(labelCells, rightW)}`)
+  }
   const entryH = Math.max(1, listH - 1)
+  const pairsH = Math.max(1, entryH - (entryStart - 1))
   const wrapped = []
   if (diffLines === null) {
     wrapped.push(`${c.yellow}No text diff for this entry.${c.reset}`)
+  } else if (sideActive) {
+    wrapped.push(...renderSideBySideRows({ pairs, rightW }).rows)
   } else {
-    for (const line of diffLines) wrapped.push(...wrapPaneLine(colorizeDiffLine(line), rightW))
+    for (const line of diffLines) wrapped.push(...wrapUnifiedLine(line, rightW))
   }
   const total = wrapped.length
-  const maxScroll = Math.max(0, total - entryH)
+  const maxScroll = Math.max(0, total - pairsH)
   const safeScroll = Math.max(0, Math.min(scroll, maxScroll))
-  const window = listWindow({ count: labels.length, cursor, listH: Math.max(1, entryH) })
+  const window = listWindow({ count: labels.length, cursor, listH: Math.max(1, pairsH) })
 
   if (!Array.isArray(entries) || entries.length === 0) {
     const note = changesEmptyNote({ tab, entries })
@@ -327,9 +506,11 @@ export function buildChangesDialog({
       const tone = entries === null ? c.yellow : c.dim
       body.push(padRight(truncate(`${tone}${note}${c.reset}`, contentW), contentW))
     }
-    for (let i = body.length - 1; i < entryH; i++) body.push(`${padRight('', leftW)}${separator} ${padRight('', rightW)}`)
+    for (let i = body.length - entryStart; i < pairsH; i++) {
+      body.push(`${padRight('', leftW)}${separator} ${padRight('', rightW)}`)
+    }
   } else {
-    for (let i = 0; i < entryH; i++) {
+    for (let i = 0; i < pairsH; i++) {
       const entryIndex = window.first + i
       const entry = entries[entryIndex]
       let left = ''
@@ -360,7 +541,8 @@ export function buildChangesDialog({
     leftW,
     rightW,
     first: window.first,
-    entryH,
+    entryH: pairsH,
+    entryStart,
     diffTotal: total,
     scroll: safeScroll,
     activePane: active,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import NumberInput from './NumberInput.svelte'
   import SelectDropdown from './SelectDropdown.svelte'
   import ChevronLeftIcon from '$lib/icons/ChevronLeftIcon.svelte'
@@ -20,6 +21,9 @@
     pageSizeLabel?: string
     currentPageLabel?: string
     paginationLabel?: string
+    // Arbitrary trailing content pinned to the pagination row's right edge
+    // (e.g. a row total). Omitted when undefined.
+    trailing?: Snippet
   }
 
   let {
@@ -36,6 +40,7 @@
     pageSizeLabel,
     currentPageLabel,
     paginationLabel,
+    trailing,
   }: Props = $props()
 
   // Derived (not plain consts) so locale switches re-resolve the labels.
@@ -251,4 +256,7 @@
       emptyLabel={i18n.t('dropdown.noOptions')} />
     </div>
   </div>
+  {#if trailing}
+    <span class="ml-auto">{@render trailing()}</span>
+  {/if}
 </nav>

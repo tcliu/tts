@@ -595,6 +595,140 @@ function readProcessCmd(pid) {
   }
 }
 
+// PIDs that must never be signaled: this process plus every ancestor up to
+// init (PID 1). A shell running the delete flow from inside the target would
+// otherwise match `findProcessesInPath` and terminating it would kill the
+// invoker's own session. Linux-only; an unreadable chain fails closed (the
+// set then holds only what was resolved, and callers treat unknown PIDs as
+// unkillable because identity cannot be verified either).
+export function listProtectedPids() {
+  const guarded = new Set([process.pid])
+  let pid = process.pid
+  for (;;) {
+    const ppid = readParentPid(pid)
+    if (ppid === null || ppid <= 1 || guarded.has(ppid)) break
+    guarded.add(ppid)
+    pid = ppid
+  }
+  return guarded
+}
+
+// Parent PID from /proc stat. `comm` (the 2nd field) may itself contain
+// spaces or parens, so the fields are read after the last ')' instead.
+function readParentPid(pid) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    const fields = stat
+      .slice(stat.lastIndexOf(')') + 1)
+      .trim()
+      .split(/\s+/)
+    const ppid = Number(fields[1])
+    return Number.isFinite(ppid) ? ppid : null
+  } catch {
+    return null
+  }
+}
+
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    // ESRCH: exited. EPERM: alive but owned by another user — still guarding.
+    return error?.code !== 'ESRCH'
+  }
+}
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+// Grace period between SIGTERM and SIGKILL when terminating guarding
+// processes: a dev server shuts down cleanly on TERM within this window, and
+// only survivors take KILL. Tunable per caller without code edits.
+export const TERMINATE_GRACE_MS = 2000
+
+// Explicit terminate-and-delete step shared by the manager TUI and
+// delete-worktrees.mjs: SIGTERM every process rooted in `worktreePath`, then
+// SIGKILL the survivors. Only ever signals individual PIDs (never a process
+// group — a foreign process may share its group with the invoker's shell),
+// never touches the invoker's own process chain, and re-verifies PID identity
+// (cwd + command) immediately before signaling so a recycled PID is never
+// killed. Fail-closed: anything unverifiable, unkillable, or still running
+// lands in `skipped` and the caller must not delete that target.
+export async function terminateProcessesInPath(worktreePath, { graceMs = TERMINATE_GRACE_MS } = {}) {
+  const root = path.resolve(worktreePath)
+  const found = findProcessesInPath(root)
+  if (found === null) {
+    return { killed: [], skipped: [{ pid: null, cmd: null, reason: 'process status unreadable' }] }
+  }
+  const forbidden = listProtectedPids()
+  const killed = []
+  const skipped = []
+  const candidates = []
+  for (const proc of found) {
+    if (forbidden.has(proc.pid)) {
+      skipped.push({ ...proc, reason: 'own process chain — stop it manually' })
+      continue
+    }
+    // Re-verify identity: the PID may have been recycled since the scan, or
+    // the process may have left the worktree (in which case it no longer
+    // guards anything, but a changed command means the PID is not what was
+    // listed, so it is never signaled).
+    let cwd = null
+    try {
+      cwd = readlinkSync(`/proc/${proc.pid}/cwd`)
+    } catch {
+      continue // exited between scan and kill: already resolved
+    }
+    if (cwd !== root && !cwd.startsWith(root + path.sep)) {
+      skipped.push({ ...proc, reason: 'left the worktree during terminate' })
+      continue
+    }
+    if (readProcessCmd(proc.pid) !== proc.cmd) {
+      skipped.push({ ...proc, reason: 'process changed during terminate' })
+      continue
+    }
+    candidates.push(proc)
+  }
+  const signaled = []
+  for (const proc of candidates) {
+    try {
+      process.kill(proc.pid, 'SIGTERM')
+      signaled.push(proc)
+    } catch (error) {
+      if (error?.code === 'ESRCH') continue // exited first: resolved
+      skipped.push({ ...proc, reason: error?.code === 'EPERM' ? 'permission denied' : 'signal failed' })
+    }
+  }
+  await sleep(graceMs)
+  const survivors = []
+  for (const proc of signaled) {
+    if (processAlive(proc.pid)) {
+      survivors.push(proc)
+    } else {
+      killed.push(proc)
+    }
+  }
+  for (const proc of survivors) {
+    try {
+      process.kill(proc.pid, 'SIGKILL')
+    } catch {
+      // ESRCH (exited) and EPERM (denied) both resolve below: the alive
+      // check decides, and a denied survivor lands in `skipped`.
+    }
+  }
+  if (survivors.length > 0) {
+    await sleep(graceMs)
+  }
+  for (const proc of survivors) {
+    if (processAlive(proc.pid)) {
+      skipped.push({ ...proc, reason: 'still running after SIGKILL' })
+    } else {
+      killed.push(proc)
+    }
+  }
+  return { killed, skipped }
+}
+
 export function registerWorktree(root, worktreePath, branch) {
   execFileSync('git', ['worktree', 'add', worktreePath, '-b', branch], {
     cwd: root,

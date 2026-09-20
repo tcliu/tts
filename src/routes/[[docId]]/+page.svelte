@@ -496,12 +496,13 @@
     {/if}
   {/snippet}
 
-  <header bind:this={headerRef} class="flex shrink-0 items-center justify-between gap-4 border-b border-slate-800 px-3 py-3 sm:px-4">
+  <header bind:this={headerRef} class="flex flex-none items-center justify-between gap-4 border-b border-slate-800 px-3 py-3 sm:px-4">
     <div class="flex items-center gap-2">
       <Button
         bind:buttonEl={drawerButtonRef}
         variant="secondary"
         size="sm"
+        className="-ml-1"
         ariaLabel={i18n.t('documents.label')}
         ariaExpanded={drawerVisible}
         tooltip={i18n.t('documents.label')}
@@ -510,7 +511,7 @@
           <MenuIcon className="h-4 w-4" />
         {/snippet}
       </Button>
-      <h1 class="text-base font-semibold tracking-tight sm:text-lg">{i18n.t('app.appShortTitle')}</h1>
+      <h1 class="text-base font-semibold tracking-tight text-slate-200 sm:text-lg">{i18n.t('app.appShortTitle')}</h1>
     </div>
     <div class="flex items-center gap-2">
       <Menu

@@ -81,6 +81,10 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
     }
     const rect = trigger.getBoundingClientRect()
     const maxWidth = window.innerWidth - VIEWPORT_MARGIN * 2
+    // Floor the panel at the trigger width so a narrow option list never
+    // renders a sliver beside a wide control; re-measured with the trigger
+    // (ResizeObserver below) so the two stay in sync while open.
+    node.style.minWidth = `${rect.width}px`
     const panelWidth = Math.min(node.offsetWidth, maxWidth)
     const panelHeight = node.offsetHeight
     if (panelWidth < node.offsetWidth) node.style.maxWidth = `${maxWidth}px`
@@ -119,6 +123,7 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
     node.style.left = ''
     node.style.top = ''
     node.style.maxWidth = ''
+    node.style.minWidth = ''
     restorePanelParent()
   }
 
@@ -134,6 +139,7 @@ export function positionPanel(node: HTMLElement, options: () => PositionPanelOpt
       node.style.left = ''
       node.style.top = ''
       node.style.maxWidth = ''
+      node.style.minWidth = ''
       restorePanelParent()
       return
     }
