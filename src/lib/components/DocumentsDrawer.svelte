@@ -90,7 +90,7 @@
   style:touch-action={isDocked ? undefined : 'pan-y'}
   style:will-change={dragging ? 'transform' : undefined}
   use:dragCloseLeft={dragCloseOptions}>
-  <div class="flex flex-none flex-col gap-2 pl-2 pr-3 sm:pl-3 sm:pr-4">
+  <div class="flex flex-none flex-col gap-2 px-3 sm:px-4">
     <Button variant="outline" accent="cyan" size="sm" onClick={onNew} className="justify-center">
       {#snippet icon()}
         <PlusIcon className="h-4 w-4" />
@@ -99,7 +99,7 @@
     </Button>
     <SearchInput bind:value={search} bind:inputRef={inputRef} ariaLabel={i18n.t('documents.search')} placeholder={i18n.t('documents.search')} />
   </div>
-  <div tabindex="-1" class="min-h-0 flex-1 overflow-y-auto pl-2 pr-3 outline-none sm:pl-3 sm:pr-4">
+  <div tabindex="-1" class="min-h-0 flex-1 overflow-y-auto px-3 outline-none sm:px-4">
     {#if syncErrorText}
       <p class="mb-2 text-xs text-amber-200/90" role="status">{syncErrorText}</p>
     {/if}

@@ -163,7 +163,7 @@
   {#if paneVisible}
     <div in:slide={slideParams} out:slide={slideParams} class="flex min-h-0 flex-col md:flex-row">
       <aside
-        class={`flex min-h-0 flex-col gap-2 border-b border-slate-800 p-3 sm:px-4 md:shrink-0 md:border-b-0 md:border-r ${paneClassName}`}
+        class={`flex min-h-0 flex-col gap-2 border-b border-slate-800 md:shrink-0 md:border-b-0 md:border-r ${paneClassName}`}
         style={`flex-basis: ${effectiveSize}px`}
         tabindex="-1">
         {@render leftPane?.()}

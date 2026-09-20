@@ -156,6 +156,8 @@ Project-specific development conventions for the TTS web app.
 - Dialogs containing `DataTable` keep a fixed outer height via the `BaseDialog`
   `height` preset with the table `fillHeight` filling the remaining space and
   pagination pinned; the dialog itself never scrolls.
+- Keep pane/drawer horizontal gutters symmetric per `~/.agents/references/tailwind.md`
+  (Symmetric gutters) and aligned with the shell `px-3 sm:px-4` gutter.
 
 ## Theming
 
