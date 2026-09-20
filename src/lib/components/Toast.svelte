@@ -5,8 +5,9 @@
 </script>
 
 <script lang="ts">
-  import Button from './Button.svelte'
+  import Button from '$lib/components/Button.svelte'
   import CloseIcon from '$lib/icons/CloseIcon.svelte'
+  import { positionPanel } from '$lib/position-panel.svelte'
 
   interface Props {
     message: string
@@ -71,7 +72,10 @@
   })
 </script>
 
+<!-- Sheet-portal to document.body so the toast is never clipped or trapped
+  by an ancestor stacking context (see BaseDialog). -->
 <div
+  use:positionPanel={() => ({ getTrigger: () => null, getOpen: () => true, presentation: 'sheet' })}
   role="status"
   aria-live="polite"
   class={`fixed z-40 flex items-start gap-3 rounded-md px-4 py-3 shadow-lg shadow-slate-950/25 backdrop-blur-sm ${typeClasses[type]} ${positionClasses[position]}`}>
