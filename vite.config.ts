@@ -95,6 +95,15 @@ export default defineConfig(async ({ command, mode }) => {
             globals: true,
           },
         },
+        {
+          extends: true,
+          test: {
+            name: "scripts",
+            include: ["scripts/**/*.test.mjs"],
+            environment: "node",
+            globals: true,
+          },
+        },
       ],
     },
   };

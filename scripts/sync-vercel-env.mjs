@@ -14,6 +14,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { formatCommand } from './_terminal.mjs'
 
 const TARGET = 'production'
 const SOURCE_FILES = ['.env.vercel']
@@ -52,6 +53,7 @@ function loadDesiredEnv() {
 
 function spawnVercelBin(bin, args) {
   return new Promise((resolve, reject) => {
+    console.log(formatCommand(bin, args))
     const child = spawn(bin, args, {
       cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
