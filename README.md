@@ -32,6 +32,14 @@ deploy to Vercel.
    npx vercel link
    ```
 
+   Or skip the manual step: set `VERCEL_PROJECT=<slug>` in `.env.vercel`
+   (or pass `npm run deploy -- --project <slug>`). The deploy auto-links an
+   unlinked checkout — prompting when the name is unknown and saving the
+   answer to `.env.vercel` before syncing env — creating the remote project
+   when it does not exist yet. Updating the slug and redeploying switches
+   the link interactively after confirmation; a non-interactive run requires
+   an explicit `--project <name>` to opt in.
+
 3. Push environment variables (optional; the cache works without them):
 
    Create `.env.vercel` (git-ignored; see `.env.example` for the documented

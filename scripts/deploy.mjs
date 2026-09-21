@@ -4,16 +4,27 @@
 // points the project's production domain at APP_BASE_URL.
 //
 // Usage:
-//   node scripts/deploy.mjs [--profile dev|prod] [--target vercel]
+//   node scripts/deploy.mjs [--profile dev|prod] [--target vercel] [--project <name>]
 //     [--sync-env|--no-sync-env] [--apply-schema|--no-apply-schema]
+// A missing .vercel/project.json is linked automatically, and a --project /
+// VERCEL_PROJECT value that differs from the linked project switches the
+// link (confirmed interactively): --project, VERCEL_PROJECT in .env.vercel,
+// or an interactive prompt (persisted to .env.vercel before the env sync).
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { parseEnvFile } from './env-file.mjs'
-import { c } from './_terminal.mjs'
+import { ask, c, formatCommand, promptYesNo } from './_terminal.mjs'
 import { interactiveShell } from './_interactive-shell.mjs'
+import {
+  decideLinkAction,
+  defaultProjectName,
+  normalizeProjectName,
+  resolveProjectName,
+  upsertEnvLine,
+} from './vercel-project.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = join(SCRIPT_DIR, '..')
@@ -45,7 +56,7 @@ function formatElapsedTime(totalSeconds) {
 
 function usage() {
   console.log(`Usage:
-  node scripts/deploy.mjs [--profile dev|prod] [--target vercel] [--sync-env|--no-sync-env] [--apply-schema|--no-apply-schema]
+  node scripts/deploy.mjs [--profile dev|prod] [--target vercel] [--project <name>] [--sync-env|--no-sync-env] [--apply-schema|--no-apply-schema]
 
 Targets (--target, prod profile only):
   vercel   Deploy the app to Vercel.
@@ -56,6 +67,14 @@ Options:
                        Missing and non-interactive: abort.
   --target vercel      Deploy target; only valid with the prod profile
                        (dev has no deploy target). Defaults to vercel.
+  --project <name>     Vercel project to link when .vercel/project.json is
+                       missing or names a different project (also read from
+                       $VERCEL_PROJECT and .env.vercel). A mismatch switches
+                       the link interactively after confirmation; in a
+                       non-interactive run the flag itself is the opt-in.
+                       Missing and interactive: prompt (default package
+                       name), persisted to .env.vercel before the env sync.
+                       Missing and non-interactive: abort.
   --sync-env           Sync .env.vercel to Vercel production env before a prod deploy.
   --no-sync-env        Skip the env sync. prod without a flag asks interactively
                        (default yes); non-interactive defaults to skip.
@@ -66,6 +85,7 @@ Options:
 Examples:
   npm run deploy -- --profile prod --target vercel --sync-env
   npm run deploy -- --profile prod --target vercel --sync-env --apply-schema
+  npm run deploy -- --project codepg-tts
   PROFILE=prod node scripts/deploy.mjs --target vercel --no-sync-env`)
 }
 
@@ -81,6 +101,7 @@ function runVercelCli(args, { cwd = ROOT_DIR, capture = false } = {}) {
   const bin = vercelBin()
   const command = bin ?? 'npx'
   const fullArgs = bin ? args : ['vercel@latest', ...args]
+  console.log(formatCommand(command, fullArgs))
   if (!capture) {
     const result = spawnSync(command, fullArgs, { cwd, stdio: 'inherit' })
     return { status: result.status ?? 1, output: '' }
@@ -114,6 +135,149 @@ function projectId() {
     return String(data.projectId || '')
   } catch {
     return ''
+  }
+}
+
+function linkedProjectName() {
+  try {
+    const data = JSON.parse(readFileSync(join(ROOT_DIR, '.vercel', 'project.json'), 'utf8'))
+    return String(data.projectName || '')
+  } catch {
+    return ''
+  }
+}
+
+function mergedProjectEnv() {
+  return {
+    ...parseEnvFile(join(ROOT_DIR, '.env')),
+    ...parseEnvFile(join(ROOT_DIR, '.env.local')),
+    ...parseEnvFile(join(ROOT_DIR, '.env.vercel')),
+    ...process.env,
+  }
+}
+
+function packageDefaultProjectName() {
+  try {
+    const data = JSON.parse(readFileSync(join(ROOT_DIR, 'package.json'), 'utf8'))
+    return defaultProjectName(data.name)
+  } catch {
+    return ''
+  }
+}
+
+async function promptProjectName() {
+  const fallback = packageDefaultProjectName()
+  const hint = fallback ? ` [${fallback}]` : ''
+  for (;;) {
+    const answer = await ask(`${c.cyan}Vercel project name${c.reset}${hint}: `, process.stderr)
+    const raw = String(answer ?? '').trim()
+    if (raw.toLowerCase() === 'q') {
+      fail('Deploy cancelled.')
+    }
+    const name = normalizeProjectName(raw || fallback)
+    if (name) {
+      return name
+    }
+    console.error(
+      `Invalid project name ${JSON.stringify(raw)}: use lowercase letters, numbers, and hyphens.`,
+    )
+  }
+}
+
+function persistProjectName(name) {
+  const file = join(ROOT_DIR, '.env.vercel')
+  let current = ''
+  try {
+    current = String(parseEnvFile(file).VERCEL_PROJECT || '').trim()
+  } catch {
+    current = ''
+  }
+  if (current === name) {
+    return
+  }
+  let content = ''
+  try {
+    content = existsSync(file) ? readFileSync(file, 'utf8') : ''
+  } catch {
+    content = ''
+  }
+  writeFileSync(file, upsertEnvLine(content, 'VERCEL_PROJECT', name))
+  console.log('-> Saved VERCEL_PROJECT to .env.vercel for future deploys.')
+}
+
+function ensureRemoteProject(name) {
+  const inspect = runVercelCli(['projects', 'inspect', name], { capture: true })
+  if (inspect.status === 0) {
+    return
+  }
+  console.log(`-> Creating Vercel project ${name}...`)
+  const created = runVercelCli(['projects', 'add', name])
+  if (created.status !== 0) {
+    fail(`Failed to create Vercel project ${name}. Create it in the dashboard and retry.`)
+  }
+}
+
+// Link a checkout with no .vercel/project.json, or switch the link when
+// --project / VERCEL_PROJECT names a different project than the linked one:
+// resolve the name (--project, then $VERCEL_PROJECT / .env files, then an
+// interactive prompt persisted to .env.vercel ahead of the env sync), confirm
+// a switch interactively, create the remote project when absent, and link.
+// A matching link (or nothing requested on a linked checkout) keeps the
+// existing link untouched.
+async function ensureVercelLink(projectFlag) {
+  const projectFile = join(ROOT_DIR, '.vercel', 'project.json')
+  const linked = existsSync(projectFile) ? normalizeProjectName(linkedProjectName()) : ''
+  let requested = ''
+  try {
+    requested = resolveProjectName({ flag: projectFlag, env: mergedProjectEnv() })
+  } catch (error) {
+    // A stale or malformed VERCEL_PROJECT must not block a checkout that is
+    // already linked and was not explicitly targeted with --project.
+    if (projectFlag || !linked) {
+      fail(error?.message || error)
+    }
+    console.error(`-> ${error?.message || error} Keeping the existing link to ${linked}.`)
+  }
+  const decision = decideLinkAction({ linked, requested })
+  if (decision.action === 'keep') {
+    return
+  }
+  checkVercelAuth()
+  if (decision.action === 'switch') {
+    if (process.stdin.isTTY) {
+      const ok = await promptYesNo(
+        `Switch Vercel link from ${decision.from} to ${decision.name}`,
+        true,
+        process.stderr,
+      )
+      if (!ok) {
+        fail('Deploy cancelled: Vercel link unchanged.')
+      }
+    } else if (!projectFlag) {
+      // An env-only change must not silently re-point production for
+      // non-interactive callers; the explicit flag is the opt-in.
+      fail(
+        `Refusing to switch the Vercel link from ${decision.from} to ${decision.name} non-interactively. Re-run with --project ${decision.name} to confirm.`,
+      )
+    }
+  }
+  let name = decision.name
+  if (!name && process.stdin.isTTY) {
+    name = await promptProjectName()
+  }
+  if (!name) {
+    fail('Vercel project is not linked: pass --project <name>, set VERCEL_PROJECT in .env.vercel, or run interactively.')
+  }
+  persistProjectName(name)
+  ensureRemoteProject(name)
+  console.log(
+    decision.action === 'switch'
+      ? `-> Switching link to Vercel project ${name}...`
+      : `-> Linking to Vercel project ${name}...`,
+  )
+  const linkedNow = runVercelCli(['link', '--yes', '--project', name])
+  if (linkedNow.status !== 0 || !existsSync(projectFile)) {
+    fail(`Failed to link Vercel project ${name}. Run 'vercel link' from the repo root and retry.`)
   }
 }
 
@@ -567,7 +731,7 @@ function resolveProdConfirmSync(profile, flag, skipNotice) {
 }
 
 function parseArgs(argv) {
-  const options = { profileFlag: '', targetFlag: '', syncEnvFlag: '', applySchemaFlag: '' }
+  const options = { profileFlag: '', targetFlag: '', projectFlag: '', syncEnvFlag: '', applySchemaFlag: '' }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     const next = argv[i + 1]
@@ -580,6 +744,11 @@ function parseArgs(argv) {
       options.targetFlag = arg.slice('--target='.length)
     } else if (arg === '--target') {
       options.targetFlag = next || ''
+      if (next !== undefined) i++
+    } else if (arg.startsWith('--project=')) {
+      options.projectFlag = arg.slice('--project='.length)
+    } else if (arg === '--project') {
+      options.projectFlag = next || ''
       if (next !== undefined) i++
     } else if (arg === '--sync-env') {
       options.syncEnvFlag = 'yes'
@@ -603,6 +772,7 @@ function parseArgs(argv) {
 }
 
 function runScript(script, env = process.env) {
+  console.log(formatCommand('node', [`scripts/${script}`]))
   const result = spawnSync('node', [join(SCRIPT_DIR, script)], { cwd: ROOT_DIR, stdio: 'inherit', env })
   if (result.status !== 0) {
     process.exit(result.status ?? 1)
@@ -624,7 +794,9 @@ async function deployVercelWithTarget(options) {
   if (target !== 'vercel') {
     fail(`Unknown target: ${target}`)
   }
-  // Explicit invalid sources fail fast; the interview only fills gaps.
+  // Explicit invalid sources fail fast; the interview only fills gaps. The
+  // Vercel link (a side effect: project creation, .env.vercel write) is
+  // deferred to runDeployFlow so no flag error can touch Vercel.
   if (options.profileFlag && options.profileFlag !== 'dev' && options.profileFlag !== 'prod') {
     fail('PROFILE is mandatory: pass --profile dev|prod, set $PROFILE, or run interactively.')
   }
@@ -639,7 +811,7 @@ async function deployVercelWithTarget(options) {
     (seededProfile === '' || !options.syncEnvFlag || !options.applySchemaFlag)
   ) {
     const answers = await runDeployInterview(options)
-    await runDeployFlow(answers.profile, answers.syncEnv, answers.applySchema)
+    await runDeployFlow(answers.profile, answers.syncEnv, answers.applySchema, options.projectFlag)
     return
   }
   const profileValue = resolveProfileSync(options.profileFlag)
@@ -656,12 +828,13 @@ async function deployVercelWithTarget(options) {
     options.applySchemaFlag,
     '-> Non-interactive prod deploy without --apply-schema: skipping schema apply.',
   )
-  await runDeployFlow(profileValue, syncEnv, applySchema)
+  await runDeployFlow(profileValue, syncEnv, applySchema, options.projectFlag)
 }
 
-async function runDeployFlow(profileValue, syncEnv, applySchema) {
+async function runDeployFlow(profileValue, syncEnv, applySchema, projectFlag) {
   let appVersion = 'unknown'
   try {
+    console.log(formatCommand('git', ['-C', ROOT_DIR, 'rev-parse', 'HEAD']))
     const result = spawnSync('git', ['-C', ROOT_DIR, 'rev-parse', 'HEAD'], { encoding: 'utf8' })
     if (result.status === 0 && result.stdout.trim()) {
       appVersion = result.stdout.trim()
@@ -672,9 +845,9 @@ async function runDeployFlow(profileValue, syncEnv, applySchema) {
   const baseUrl = configuredBaseUrl()
   const startedAt = Date.now()
 
-  if (!existsSync(join(ROOT_DIR, '.vercel', 'project.json'))) {
-    fail(`Missing .vercel/project.json in ${ROOT_DIR}. Run 'vercel link' from the repo root first.`)
-  }
+  // Link only after every flag is validated, and before the env sync so a
+  // prompted project name is persisted to .env.vercel in time.
+  await ensureVercelLink(projectFlag)
 
   checkVercelAuth()
 
