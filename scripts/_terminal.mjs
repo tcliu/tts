@@ -234,7 +234,8 @@ export async function selectOne(items, options) {
 // executing it so logs show what ran. Only values whose key names a secret,
 // key, password, or credential print as asterisks; ordinary values stay
 // visible so logs stay debuggable.
-const SECRET_KEY_PATTERN = /SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL|PRIVATE|DATABASE_URL|API_KEY|AUTH_KEY|ACCESS_KEY|CLIENT_SECRET|(^|_)KEY(_|$)/i
+const SECRET_KEY_PATTERN =
+  /SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL|PRIVATE|DATABASE_URL|API_KEY|AUTH_KEY|ACCESS_KEY|CLIENT_SECRET|(^|_)KEY(_|$)/i
 
 export function isSecretKey(key) {
   return SECRET_KEY_PATTERN.test(String(key ?? '').trim())
@@ -243,9 +244,13 @@ export function isSecretKey(key) {
 export function maskArgv(argv) {
   const out = [...(argv ?? [])].map(String)
   const addAt = out.indexOf('add')
-  const key = addAt >= 0 && addAt + 1 < out.length ? out[addAt + 1] : ''
-  // Fail closed: mask when the key is unknown or names a secret.
-  if (addAt >= 0 && !isSecretKey(key)) {
+  const candidate = addAt >= 0 && addAt + 1 < out.length ? out[addAt + 1] : ''
+  // A flag (or nothing) after `add` means no key was given, so the value that
+  // follows must stay masked.
+  const key = candidate.startsWith('-') ? '' : candidate
+  // Fail closed: mask when the key is unknown or names a secret; only a known,
+  // non-secret key leaves its value visible for debuggability.
+  if (addAt >= 0 && key && !isSecretKey(key)) {
     return out
   }
   for (let i = 0; i < out.length; i++) {

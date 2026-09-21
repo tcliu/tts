@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest'
 
 import { formatCommand, isSecretKey, maskArgv } from './_terminal.mjs'
@@ -56,6 +57,17 @@ describe('maskArgv', () => {
   it('handles a trailing --value and empty input', () => {
     expect(maskArgv(['env', 'add', '--value'])).toEqual(['env', 'add', '--value'])
     expect(maskArgv([])).toEqual([])
+  })
+
+  it('masks the value when the key after add is a flag or missing', () => {
+    expect(maskArgv(['env', 'add', '--value', 's3cr3t'])).toEqual(['env', 'add', '--value', '***'])
+    expect(maskArgv(['env', 'add', '--force', '--value', 's3cr3t'])).toEqual([
+      'env',
+      'add',
+      '--force',
+      '--value',
+      '***',
+    ])
   })
 })
 
