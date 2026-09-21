@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -111,9 +112,7 @@ describe('upsertEnvLine', () => {
   })
 
   it('appends a missing entry and keeps the trailing newline singular', () => {
-    expect(upsertEnvLine('PROFILE=prod\n', 'VERCEL_PROJECT', 'ui-lib')).toBe(
-      'PROFILE=prod\nVERCEL_PROJECT=ui-lib\n',
-    )
+    expect(upsertEnvLine('PROFILE=prod\n', 'VERCEL_PROJECT', 'ui-lib')).toBe('PROFILE=prod\nVERCEL_PROJECT=ui-lib\n')
     expect(upsertEnvLine('', 'VERCEL_PROJECT', 'ui-lib')).toBe('VERCEL_PROJECT=ui-lib\n')
   })
 

@@ -68,9 +68,10 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// Line-preserving KEY=value upsert for .env.vercel: an existing uncommented
-// entry is replaced in place (comments and ordering untouched), otherwise the
-// entry is appended. Always ends the file with exactly one newline.
+// Line-preserving KEY=value upsert for a dotenv file: an existing
+// uncommented entry is replaced in place (comments and ordering untouched),
+// otherwise the entry is appended. Always ends the file with exactly one
+// newline.
 export function upsertEnvLine(content, key, value) {
   const lines = String(content ?? '').split('\n')
   if (lines.length > 0 && lines[lines.length - 1] === '') {
