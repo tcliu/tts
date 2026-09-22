@@ -80,9 +80,18 @@ function splitSqlStatements(sql) {
   return statements
 }
 
-const profile = resolveScriptProfile()
-const sql = await readFile(new URL('../sql/schema.sql', import.meta.url), 'utf8')
 const startedAt = Date.now()
+const profile = resolveScriptProfile()
+let sql
+try {
+  sql = await readFile(new URL('../sql/schema.sql', import.meta.url), 'utf8')
+} catch (error) {
+  logEvent({
+    action: 'schema_apply_error',
+    details: { profile, source: 'sql/schema.sql', elapsed_ms: Date.now() - startedAt, error: errorMessage(error) },
+  })
+  process.exit(1)
+}
 
 if (profile === 'dev') {
   const path = getSqlitePath()

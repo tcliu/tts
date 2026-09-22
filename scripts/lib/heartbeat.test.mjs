@@ -9,6 +9,7 @@ import {
   disableCronJobHeartbeat,
   isHeartbeatConfigurable,
   isHeartbeatSupported,
+  shouldAskHeartbeat,
   syncCronJobHeartbeat,
 } from './heartbeat.mjs'
 
@@ -48,6 +49,20 @@ describe('applyHeartbeat', () => {
     await expect(applyHeartbeat('skip', steps)).rejects.toThrow('Unknown heartbeat')
     expect(calls).toHaveLength(0)
   })
+
+  it('forwards options to the steps', async () => {
+    const seen = []
+    const steps = {
+      syncCronJobHeartbeat: async (target, options) => void seen.push([target, options]),
+      disableCronJobHeartbeat: async (target, options) => void seen.push([target, options]),
+    }
+    await applyHeartbeat('cron-job', steps, 'cloudflare', { baseUrl: 'https://x.pages.dev' })
+    await applyHeartbeat('none', steps, 'cloudflare', { baseUrl: 'https://x.pages.dev' })
+    expect(seen).toEqual([
+      ['cloudflare', { baseUrl: 'https://x.pages.dev' }],
+      ['cloudflare', { baseUrl: 'https://x.pages.dev' }],
+    ])
+  })
 })
 
 describe('confirmScanJobOverwrite', () => {
@@ -81,6 +96,28 @@ describe('isHeartbeatConfigurable', () => {
     expect(isHeartbeatConfigurable({ apiKey: 'key' })).toBe(true)
     expect(isHeartbeatConfigurable({ apiKey: '  ' })).toBe(false)
     expect(isHeartbeatConfigurable({ apiKey: '' })).toBe(false)
+  })
+})
+
+describe('shouldAskHeartbeat', () => {
+  const endpointRoot = fixtureRoot({ withEndpoint: true })
+  const bareRoot = fixtureRoot()
+
+  it('asks when wiring is possible and no choice was given', () => {
+    expect(shouldAskHeartbeat({ heartbeat: '', root: endpointRoot, apiKey: 'key' })).toBe(true)
+  })
+
+  it('stays silent without a cron endpoint', () => {
+    expect(shouldAskHeartbeat({ heartbeat: '', root: bareRoot, apiKey: 'key' })).toBe(false)
+  })
+
+  it('stays silent without the operator API key', () => {
+    expect(shouldAskHeartbeat({ heartbeat: '', root: endpointRoot, apiKey: '' })).toBe(false)
+  })
+
+  it('stays silent on an explicit provider choice', () => {
+    expect(shouldAskHeartbeat({ heartbeat: 'cron-job', root: endpointRoot, apiKey: 'key' })).toBe(false)
+    expect(shouldAskHeartbeat({ heartbeat: 'none', root: endpointRoot, apiKey: '' })).toBe(false)
   })
 })
 

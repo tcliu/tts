@@ -7,6 +7,8 @@
 // Missing and interactive: arrow-key picker (default cron-job).
 // Missing and non-interactive: abort.
 import { applyHeartbeat, HEARTBEAT_CHOICES, HEARTBEAT_PROVIDERS, renderOptionPicker } from './lib/heartbeat.mjs'
+import { resolveCloudflareAppUrl } from './lib/cloudflare.mjs'
+import { loadTargetEnv } from './lib/target-env.mjs'
 import { c } from './_terminal.mjs'
 import { interactiveShell } from './_interactive-shell.mjs'
 
@@ -106,7 +108,21 @@ async function main() {
     provider = await pickProvider()
   }
   try {
-    await applyHeartbeat(provider, undefined, target)
+    // The Cloudflare live URL is the Pages production domain derived from
+    // the project: resolve it instead of reading APP_BASE_URL (absent on
+    // that target). Wrangler authenticates from the process env, so seed
+    // the operator token from .env.local first — shell values always win.
+    let baseUrl
+    if (target === 'cloudflare') {
+      const merged = loadTargetEnv('cloudflare', process.cwd())
+      for (const key of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
+        if (!process.env[key] && String(merged[key] || '').trim()) {
+          process.env[key] = String(merged[key]).trim()
+        }
+      }
+      baseUrl = resolveCloudflareAppUrl()
+    }
+    await applyHeartbeat(provider, undefined, target, { baseUrl })
   } catch (error) {
     fail(error?.message || error)
   }

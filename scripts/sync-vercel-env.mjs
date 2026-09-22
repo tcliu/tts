@@ -37,7 +37,7 @@ function loadDesiredEnv() {
   // the exclusion existed.
   for (const key of LOCAL_ONLY_ENV_KEYS) {
     if (key in merged) {
-      console.log(`skipped ${key} (local-only; never synced)`)
+      logEvent({ action: 'vercel_env_local_skip', details: { key } })
       delete merged[key]
     }
   }
@@ -117,6 +117,8 @@ async function removeVercelEnv(key) {
 }
 
 async function main() {
+  const startedAt = Date.now()
+  logEvent({ action: 'vercel_env_sync_start', details: { target: TARGET } })
   const desiredEnv = loadDesiredEnv()
   const desiredKeys = new Set(Object.keys(desiredEnv))
   const existingKeys = await listVercelEnvKeys()
@@ -142,7 +144,7 @@ async function main() {
     // Empty merged values never blank the remote: fill the key in
     // .env.prod (shared) or .env.vercel (Vercel-only) and re-run the sync.
     if (!value) {
-      console.log(`skipped ${key} (empty in .env files; remote value kept)`)
+      logEvent({ action: 'vercel_env_empty_skip', details: { key } })
       continue
     }
     if (remote && remote[key] === value) {
@@ -156,7 +158,7 @@ async function main() {
       ([key, value]) =>
         async () => {
           await upsertVercelEnv(key, value)
-          console.log(`synced ${key}`)
+          logEvent({ action: 'vercel_env_synced', details: { key } })
           return key
         },
     ),
@@ -172,22 +174,20 @@ async function main() {
         key =>
           async () => {
             await removeVercelEnv(key)
-            console.log(`removed ${key}`)
+            logEvent({ action: 'vercel_env_removed', details: { key } })
             return key
           },
       ),
       UPSERT_CONCURRENCY,
     )
   } else if (orphans.length > 0) {
-    console.log(
-      `Skipped ${orphans.length} unmanaged env var(s) (${orphans.join(', ')}). ` +
-        'Re-run with --prune to remove them.',
-    )
+    logEvent({ action: 'vercel_env_prune_skip', details: { keys: orphans, hint: 're-run with --prune to remove them' } })
   }
 
-  console.log(
-    `Synced ${syncedCount} of ${desiredKeys.size} env vars to Vercel ${TARGET} (${unchangedCount} unchanged)`,
-  )
+  logEvent({
+    action: 'vercel_env_sync_end',
+    details: { target: TARGET, synced: syncedCount, total: desiredKeys.size, unchanged: unchangedCount, elapsed_ms: Date.now() - startedAt },
+  })
 }
 
 main().catch(error => {

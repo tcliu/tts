@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url'
 
 import { parseD1TableNames, planD1Bootstrap, translateSchemaForD1 } from './d1-schema.mjs'
 import { defaultWranglerRunner, resolveD1DatabaseName } from './lib/cloudflare.mjs'
+import { errorMessage, logEvent } from './log-event.mjs'
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
 const LIST_TABLES_SQL = "select name from sqlite_master where type = 'table'"
@@ -75,6 +76,7 @@ function applySchema(database, sql, runner) {
 }
 
 function main() {
+  const startedAt = Date.now()
   const database = resolveD1DatabaseName(process.env)
   if (!database) {
     fail('CLOUDFLARE_D1_DATABASE is empty: set it to the D1 database name to bootstrap.')
@@ -85,7 +87,16 @@ function main() {
   } catch (error) {
     fail(error.message)
   }
-  const schema = readFileSync(join(ROOT_DIR, 'sql', 'schema.sql'), 'utf8')
+  let schema
+  try {
+    schema = readFileSync(join(ROOT_DIR, 'sql', 'schema.sql'), 'utf8')
+  } catch (error) {
+    logEvent({
+      action: 'd1_schema_error',
+      details: { database, source: 'sql/schema.sql', elapsed_ms: Date.now() - startedAt, error: errorMessage(error) },
+    })
+    process.exit(1)
+  }
   const qualifier = parseSchemaQualifier(schema)
   const plan = planD1Bootstrap({
     schema,
@@ -94,16 +105,16 @@ function main() {
     qualifier,
   })
   if (plan.action === 'skip') {
-    console.log(`D1 database ${database} already carries the required tables; skipping (no data wiped).`)
+    logEvent({ action: 'd1_schema_skip', details: { database, reason: 'tables already carry the required schema' } })
     return
   }
-  console.log(`-> Applying sql/schema.sql to D1 database ${database}...`)
+  logEvent({ action: 'd1_schema_apply', details: { database, source: 'sql/schema.sql' } })
   try {
     applySchema(database, plan.sql, defaultWranglerRunner)
   } catch (error) {
     fail(error.message)
   }
-  console.log(`Applied the D1 schema to ${database}.`)
+  logEvent({ action: 'd1_schema_end', details: { database, elapsed_ms: Date.now() - startedAt } })
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
