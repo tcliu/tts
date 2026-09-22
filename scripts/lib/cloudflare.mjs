@@ -6,8 +6,11 @@
 // The runner is injectable so tests can stub wrangler without network; the
 // default uses spawnSync like the other scripts.
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { LOCAL_ONLY_ENV_KEYS } from '../env-file.mjs'
+import { loadTargetEnv } from './target-env.mjs'
 
 // Generated wrangler config must sit at the project root under a standard
 // name: `wrangler pages deploy` rejects a custom `--config` path and only
@@ -148,6 +151,40 @@ export function resolveCloudflareProjectName(merged = {}, generatedName = '') {
     return fromOverlay
   }
   return String(generatedName || '').trim()
+}
+
+// Project name from the last generated config: fallback so a checkout that
+// predates CLOUDFLARE_PROJECT keeps working. Shared by the env sync and the
+// deploy/heartbeat flows so the fallback cannot drift.
+export function generatedWranglerProjectName(root = process.cwd()) {
+  try {
+    const content = readFileSync(join(root, GENERATED_WRANGLER_CONFIG), 'utf8')
+    return /^name\s*=\s*"([^"]+)"/m.exec(content)?.[1] || ''
+  } catch {
+    return ''
+  }
+}
+
+// Production app URL for the Cloudflare target, derived from the Pages
+// project instead of APP_BASE_URL: the live hostname is the production
+// domain (the account may suffix the subdomain), so no overlay key can
+// disagree with it. `env` is injectable so tests stay hermetic (the default
+// reads the real target env, shell included); the wrangler runner is
+// injectable for the same reason. Throws when the project or its production
+// domain cannot be resolved.
+export function resolveCloudflareAppUrl({ root = process.cwd(), runner = defaultWranglerRunner, env } = {}) {
+  const merged = env ?? loadTargetEnv('cloudflare', root)
+  const project = resolveCloudflareProjectName(merged, generatedWranglerProjectName(root))
+  if (!project) {
+    throw new Error('Missing CLOUDFLARE_PROJECT in .env.cloudflare: set it to the Pages project name.')
+  }
+  const host = getPagesProjectDomain(project, runner, root)
+  if (!host) {
+    throw new Error(
+      `Could not resolve the Pages production domain for project ${project}: check wrangler auth and retry.`,
+    )
+  }
+  return `https://${host}`
 }
 
 // Splits a file-env merge into the generator inputs: `project` from the

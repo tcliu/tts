@@ -2,7 +2,8 @@
 // Production deploy to Vercel or Cloudflare Pages: syncs the target env
 // (.env.prod overlaid by .env.vercel / .env.cloudflare), optionally applies
 // Neon schema, deploys with `vercel deploy --prod`, waits for READY, then
-// points the project's production domain at APP_BASE_URL.
+// points the Vercel project's production domain at APP_BASE_URL (the
+// Cloudflare live URL derives from CLOUDFLARE_PROJECT instead).
 //
 // Usage:
 //   node scripts/deploy.mjs [--profile dev|prod] [--target vercel|cloudflare] [--project <name>]
@@ -21,13 +22,13 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { parseEnvFile } from './env-file.mjs'
 import { errorMessage, logEvent } from './log-event.mjs'
+import { hasNeonSchema } from './db-config.mjs'
 import {
   applyHeartbeat,
   HEARTBEAT_CHOICES,
   HEARTBEAT_PROVIDERS,
-  isHeartbeatConfigurable,
-  isHeartbeatSupported,
   renderOptionPicker,
+  shouldAskHeartbeat,
 } from './lib/heartbeat.mjs'
 import {
   CLOUDFLARE_FORBIDDEN_KEYS,
@@ -69,7 +70,7 @@ const PROFILES = [
 
 const TARGETS = [
   { value: 'vercel', description: 'Deploy the app to Vercel' },
-  { value: 'cloudflare', description: 'Deploy the app to Cloudflare Pages (D1 backend + Cloudflare scan)' },
+  { value: 'cloudflare', description: 'Deploy the app to Cloudflare Pages (live URL derived from CLOUDFLARE_PROJECT; D1 backend + Cloudflare scan)' },
 ]
 
 // Vercel stays the default target so existing invocations behave as before.
@@ -138,9 +139,9 @@ Options:
 
 Step isolation: each target runs as named steps (vercel: link, auth,
 env-sync, schema, domains, heartbeat, deploy, ready; cloudflare: auth,
-project, env-sync, isolation, d1, schema, domain, heartbeat, build, deploy). A step
-failure no longer aborts the run: interactive callers are asked
-whether to continue (default No); non-interactive callers fail fast.
+project, env-sync, isolation, d1, schema, heartbeat, build, deploy). A step
+failure no longer aborts the run: interactive callers are asked whether to
+continue (default No); non-interactive callers fail fast.
 Parallel runs are not transactional: a fatal error or a declined prompt
 in one target stops the whole run.
 
@@ -290,16 +291,9 @@ function persistProjectName(name) {
 // Prompt loop for a fresh APP_BASE_URL: validates the input as an absolute
 // URL, persists it to the target overlay file, and returns the raw value.
 // `q`/empty cancels the deploy. Serialized through withPrompt so parallel
-// flows never share stdin. Vercel-only: the Cloudflare claim loop persists
-// after the API confirms (persist-after-attach), so it uses askBaseUrl.
+// flows never share stdin. Vercel-only: the Cloudflare target derives its
+// live URL from the Pages project and takes no APP_BASE_URL.
 async function promptBaseUrl(label, file) {
-  const raw = await askBaseUrl(label)
-  persistEnvValue(file, label, 'APP_BASE_URL', raw)
-  return raw
-}
-
-// Prompt without persist: the caller saves only what the platform accepts.
-async function askBaseUrl(label = '.env.cloudflare') {
   const answer = await withPrompt(() => ask(`New APP_BASE_URL for ${label} (full URL, q to cancel): `, process.stderr))
   const raw = String(answer ?? '').trim()
   if (!raw || raw.toLowerCase() === 'q') {
@@ -313,8 +307,9 @@ async function askBaseUrl(label = '.env.cloudflare') {
   }
   if (!host) {
     console.error(`Invalid URL (need https://host/...): ${raw}`)
-    return askBaseUrl(label)
+    return promptBaseUrl(label, file)
   }
+  persistEnvValue(file, label, 'APP_BASE_URL', raw)
   return raw
 }
 
@@ -847,14 +842,31 @@ function buildDeployGraph() {
       message: 'Apply sql/schema.sql to the Neon database before deploy?',
       async process(ctx) {
         if (ctx.applySchema !== 'yes' && ctx.applySchema !== 'no') {
-          const picked = await ctx.selectOne(APPLY_SCHEMA_CHOICES, {
-            defaultValue: DEFAULT_CONFIRM,
-            render: renderOptionPicker(),
-          })
-          if (!picked) {
-            fail('Deploy cancelled.')
+          // No schema file, no question: asking would offer a dead choice
+          // (both apply flows read sql/schema.sql and fail without it).
+          if (!hasNeonSchema(ROOT_DIR)) {
+            ctx.applySchema = 'skip'
+            logEvent({ action: 'neon_schema_skip', details: { reason: 'missing sql/schema.sql' } })
+          } else {
+            const picked = await ctx.selectOne(APPLY_SCHEMA_CHOICES, {
+              defaultValue: DEFAULT_CONFIRM,
+              render: renderOptionPicker(),
+            })
+            if (!picked) {
+              fail('Deploy cancelled.')
+            }
+            ctx.applySchema = picked.value
           }
-          ctx.applySchema = picked.value
+        }
+        // Bypass the heartbeat node when there is nothing to ask: the
+        // interview chrome prints every entered node's message, so entering
+        // it just to skip would show a phantom question. The node keeps its
+        // own guard as a safety net.
+        if (!shouldAskHeartbeat({ heartbeat: ctx.heartbeat })) {
+          if (!ctx.heartbeat) {
+            ctx.heartbeat = 'skip'
+          }
+          return null
         }
         return graph.heartbeat
       },
@@ -865,12 +877,13 @@ function buildDeployGraph() {
         // An explicit flag always reaches the step (which skips with a notice
         // on unsupported apps and throws on missing secrets). Otherwise skip
         // without prompting when there is nothing to wire: no cron endpoint
-        // in the app, or no operator API key to manage the job with.
-        if (['cron-job', 'none'].includes(ctx.heartbeat)) {
-          return null
-        }
-        if (!isHeartbeatSupported(ROOT_DIR) || !isHeartbeatConfigurable()) {
-          ctx.heartbeat = 'skip'
+        // in the app, or no operator API key to manage the job with. (The
+        // apply-schema node normally bypasses this node entirely in that
+        // case so no phantom question prints; this guard is the safety net.)
+        if (!shouldAskHeartbeat({ heartbeat: ctx.heartbeat })) {
+          if (!ctx.heartbeat) {
+            ctx.heartbeat = 'skip'
+          }
           return null
         }
         const picked = await ctx.selectOne(HEARTBEAT_CHOICES, {
@@ -1078,11 +1091,15 @@ async function deployWithTarget(options) {
   if (options.heartbeatFlag && !HEARTBEAT_PROVIDERS.includes(options.heartbeatFlag)) {
     fail(`Unknown heartbeat: ${options.heartbeatFlag} (expected cron-job|none).`)
   }
+  // An explicit apply demand needs the file both apply flows read; without
+  // it the schema step would crash on a missing sql/schema.sql.
+  if (options.applySchemaFlag === 'yes' && !hasNeonSchema(ROOT_DIR)) {
+    fail('sql/schema.sql not found: cannot apply the schema. Re-run with --no-apply-schema.')
+  }
   const seededProfile = options.profileFlag || process.env.PROFILE || ''
   // The heartbeat answer only gates the interview when wiring is possible:
-  // without an endpoint or an API key the node skips silently.
-  const needsHeartbeatAnswer =
-    !resolveHeartbeatFlag(options) && isHeartbeatSupported(ROOT_DIR) && isHeartbeatConfigurable()
+  // without an endpoint or an API key the node is bypassed silently.
+  const needsHeartbeatAnswer = shouldAskHeartbeat({ heartbeat: resolveHeartbeatFlag(options) })
   if (
     process.stdin.isTTY &&
     seededProfile !== 'dev' &&
@@ -1190,27 +1207,6 @@ function cloudflareEnv() {
   return loadTargetEnv('cloudflare', ROOT_DIR)
 }
 
-function cloudflareBaseUrl() {
-  const baseUrl = String(cloudflareEnv().APP_BASE_URL || '').trim()
-  if (!baseUrl) {
-    fail('Missing APP_BASE_URL in shell env, .env, or .env.cloudflare.')
-  }
-  try {
-    void new URL(baseUrl).hostname
-  } catch {
-    fail(`APP_BASE_URL must be a valid absolute URL. Received: ${baseUrl}`)
-  }
-  return baseUrl
-}
-
-function hostOf(url) {
-  try {
-    return new URL(String(url || '')).hostname
-  } catch {
-    return ''
-  }
-}
-
 async function cloudflareApi(path, { method = 'GET', body } = {}) {
   const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim()
   if (!token) {
@@ -1223,12 +1219,6 @@ async function cloudflareApi(path, { method = 'GET', body } = {}) {
   })
   const payload = await response.json().catch(() => ({}))
   return { ok: response.ok && payload.success !== false, payload }
-}
-
-function pagesDomainNames(payload) {
-  const result = payload?.result
-  const list = Array.isArray(result) ? result : []
-  return list.map(entry => String(entry?.name || '').trim()).filter(Boolean)
 }
 
 // Production branch of the Pages project. `pages project list --json` omits
@@ -1246,45 +1236,6 @@ async function cloudflareProductionBranch(project) {
     throw new Error(`Failed to read Pages project ${project} (production branch).`)
   }
   return String(response.payload?.result?.production_branch || '').trim()
-}
-
-// Attaches a custom hostname to the Pages project. Returns a discriminated
-// status: 'attached' when the hostname is (or becomes) on the project,
-// 'conflict' when the API refused because it is taken elsewhere (caller
-// retries with a fresh URL), 'error' otherwise (auth, permission, network) —
-// a permission failure must never masquerade as a taken hostname and trap the
-// caller in a prompt loop that cannot help.
-const CF_DOMAIN_CONFLICT_PATTERN = /already|in use|is taken|unavailable|reserved|used by|duplicate/i
-
-async function claimCloudflareCustomDomain(project, host) {
-  const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
-  if (!accountId) {
-    throw new Error('CLOUDFLARE_ACCOUNT_ID is empty: cannot manage Pages custom domains.')
-  }
-  const base = `/accounts/${accountId}/pages/projects/${project}/domains`
-  const listed = await cloudflareApi(base)
-  if (listed.ok && pagesDomainNames(listed.payload).includes(host)) {
-    return { status: 'attached' }
-  }
-  const added = await cloudflareApi(base, { method: 'POST', body: { name: host } })
-  if (!added.ok) {
-    const detail = (added.payload?.errors || []).map(error => error?.message).filter(Boolean).join('; ')
-    if (CF_DOMAIN_CONFLICT_PATTERN.test(detail)) {
-      logEvent({ action: 'cloudflare_domain_conflict', details: { project, domain: host } })
-      return { status: 'conflict' }
-    }
-    logEvent({
-      action: 'cloudflare_domain_attach_error',
-      details: { project, domain: host, error: detail || 'unknown Cloudflare API error' },
-    })
-    return { status: 'error', message: detail || 'unknown Cloudflare API error' }
-  }
-  const verify = await cloudflareApi(base)
-  if (verify.ok && pagesDomainNames(verify.payload).includes(host)) {
-    logEvent({ action: 'cloudflare_domain_attach', details: { project, domain: host } })
-    return { status: 'attached' }
-  }
-  return { status: 'error', message: 'added but not listed' }
 }
 
 function cloudflareProjectName() {
@@ -1476,9 +1427,9 @@ async function verifyCloudflareEnvVars() {
 
 async function runCloudflareFlow(syncEnv, applySchema, heartbeat, d1Mode) {
   const startedAt = Date.now()
-  const state = { baseUrl: '', deploymentUrl: '', productionHost: '', productionBranch: '', customClaimed: false, d1: null }
-  // Pre-flight validation stays fatal: without a base URL no step can work.
-  state.baseUrl = cloudflareBaseUrl()
+  const state = { appUrl: '', deploymentUrl: '', productionHost: '', productionBranch: '', d1: null }
+  // The auth step resolves the live URL from the Pages project (below); no
+  // APP_BASE_URL exists on this target.
   // The auth step caches the production host (one `pages project list
   // --json`) so the domain and deploy steps never list again.
   await runSteps('cloudflare', [
@@ -1493,11 +1444,14 @@ async function runCloudflareFlow(syncEnv, applySchema, heartbeat, d1Mode) {
         const project = cloudflareProjectName()
         state.productionHost = getPagesProjectDomain(project)
         if (!state.productionHost) {
-          logEvent({
-            action: 'cloudflare_production_host_unresolved',
-            details: { level: 'WARN' },
-          })
+          throw new Error(
+            `Could not resolve the Pages production domain for project ${project}: check wrangler auth and retry.`,
+          )
         }
+        // The live URL is the production domain: derived, never configured —
+        // heartbeat and the final report below use this. There is no
+        // custom-domain claim step and no APP_BASE_URL on this target.
+        state.appUrl = `https://${state.productionHost}`
         state.productionBranch = await cloudflareProductionBranch(project)
         if (!state.productionBranch) {
           logEvent({
@@ -1575,79 +1529,15 @@ async function runCloudflareFlow(syncEnv, applySchema, heartbeat, d1Mode) {
       },
     },
     {
-      // Custom-domain claim before heartbeat (mirrors the Vercel domains
-      // step): when APP_BASE_URL names the auto production domain there is
-      // nothing to claim. A `*.pages.dev` that is NOT the production host is
-      // unclaimable by type (Cloudflare-owned) — fail fast, never POST, never
-      // prompt-persist. Otherwise attach the custom host; the claim is
-      // persisted to .env.cloudflare only after the API confirms it, and the
-      // heartbeat step below re-reads the files, so the scan job always
-      // targets the final URL.
-      name: 'domain',
-      run: async () => {
-        const project = cloudflareProjectName()
-        let productionHost = state.productionHost || getPagesProjectDomain(project)
-        state.productionHost = productionHost
-        let baseHost = hostOf(state.baseUrl)
-        if (!baseHost) {
-          return
-        }
-        if (!productionHost) {
-          throw new Error(
-            'Could not resolve the Pages production domain; set APP_BASE_URL in .env.cloudflare to the production hostname and retry.',
-          )
-        }
-        if (baseHost === productionHost) {
-          return
-        }
-        if (baseHost.endsWith('.pages.dev')) {
-          throw new Error(
-            `APP_BASE_URL ${state.baseUrl} is a pages.dev hostname that does not belong to Pages project ${project} ` +
-              `(production https://${productionHost}). pages.dev hostnames are Cloudflare-owned and cannot be claimed ` +
-              `as custom domains: point APP_BASE_URL at https://${productionHost} or at a custom domain you control.`,
-          )
-        }
-        for (;;) {
-          const claimed = await claimCloudflareCustomDomain(project, baseHost)
-          if (claimed.status === 'attached') {
-            state.customClaimed = true
-            return
-          }
-          if (claimed.status === 'error') {
-            throw new Error(`Failed to attach custom domain ${baseHost}: ${claimed.message}`)
-          }
-          logEvent({ action: 'cloudflare_domain_unavailable', details: { domain: baseHost, level: 'WARN' } })
-          if (!process.stdin.isTTY) {
-            throw new Error(
-              `Custom domain ${baseHost} is unavailable; set APP_BASE_URL in .env.cloudflare to an available hostname and retry.`,
-            )
-          }
-          const raw = await askBaseUrl()
-          const candidate = hostOf(raw)
-          if (!candidate || candidate === productionHost) {
-            state.baseUrl = raw
-            return
-          }
-          if (candidate.endsWith('.pages.dev')) {
-            logEvent({ action: 'cloudflare_domain_unclaimable', details: { domain: candidate, level: 'WARN' } })
-            continue
-          }
-          // Persist only after the API confirms the claim: a rejected guess
-          // must never corrupt the overlay (see the prompt-loop it caused).
-          persistEnvValue(join(ROOT_DIR, '.env.cloudflare'), '.env.cloudflare', 'APP_BASE_URL', raw)
-          state.baseUrl = raw
-          baseHost = candidate
-        }
-      },
-    },
-    {
+      // The scan job targets the derived production URL: heartbeatSecrets
+      // has no APP_BASE_URL on this target, so pass it explicitly.
       name: 'heartbeat',
       run: async () => {
         if (heartbeat === 'skip') {
           logEvent({ action: 'heartbeat_skip', details: { target: 'cloudflare' } })
           return
         }
-        await applyHeartbeat(heartbeat, undefined, 'cloudflare')
+        await applyHeartbeat(heartbeat, undefined, 'cloudflare', { baseUrl: state.appUrl })
       },
     },
     {
@@ -1662,17 +1552,13 @@ async function runCloudflareFlow(syncEnv, applySchema, heartbeat, d1Mode) {
         state.deploymentUrl = runCloudflareDeploy(state.productionBranch)
         // The deploy output carries the one-off preview URL; the stable site
         // is the production domain (the account may suffix the subdomain, so
-        // resolve it from the project instead of trusting APP_BASE_URL).
-        state.productionHost = getPagesProjectDomain(cloudflareProjectName())
-        if (state.productionHost) {
-          logEvent({ action: 'cloudflare_production_domain', details: { domain: state.productionHost } })
-          const baseHost = hostOf(state.baseUrl)
-          if (baseHost && baseHost !== state.productionHost && !state.customClaimed) {
-            logEvent({
-              action: 'cloudflare_base_url_mismatch',
-              details: { app_base_url: state.baseUrl, production_domain: state.productionHost, level: 'WARN' },
-            })
-          }
+        // re-resolve it from the project instead of trusting the auth step's
+        // cached host).
+        const productionHost = getPagesProjectDomain(cloudflareProjectName())
+        if (productionHost) {
+          state.productionHost = productionHost
+          state.appUrl = `https://${productionHost}`
+          logEvent({ action: 'cloudflare_production_domain', details: { domain: productionHost } })
         }
         await verifyCloudflareEnvVars()
       },
@@ -1680,11 +1566,10 @@ async function runCloudflareFlow(syncEnv, applySchema, heartbeat, d1Mode) {
   ])
 
   const elapsed = Math.floor((Date.now() - startedAt) / 1000)
-  const liveUrl = state.productionHost ? `https://${state.productionHost}` : state.baseUrl
   console.log(
-    `OK Cloudflare deploy complete -> ${liveUrl} (preview ${state.deploymentUrl || 'unknown'}, app ${state.baseUrl}, ${formatElapsedTime(elapsed)})`,
+    `OK Cloudflare deploy complete -> ${state.appUrl} (preview ${state.deploymentUrl || 'unknown'}, ${formatElapsedTime(elapsed)})`,
   )
-  return liveUrl
+  return state.appUrl
 }
 
 async function runDeployFlow(profileValue, syncEnv, applySchema, heartbeat, projectFlag) {
