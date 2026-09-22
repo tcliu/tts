@@ -5,12 +5,28 @@
 //
 // Hard failures throw (callers turn them into their own fail path). Secrets
 // pass in memory only, never via argv, and are never printed.
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { loadTargetEnv } from './target-env.mjs'
+import { logEvent } from '../log-event.mjs'
 import { c, promptYesNo } from '../_terminal.mjs'
 import { setScanJobEnabled, syncScanJob } from './cron-job.mjs'
 import { withPrompt } from './prompt-queue.mjs'
 
+const LIB_DIR = dirname(fileURLToPath(import.meta.url))
+const DEFAULT_ROOT = join(LIB_DIR, '..', '..')
+
 export const HEARTBEAT_PROVIDERS = ['cron-job', 'none']
+
+// Whether this app serves the heartbeat endpoint the scan job calls. Apps
+// without the cron route (no scan domain) skip heartbeat wiring entirely so
+// one deploy shape fits every project; a present route with missing secrets
+// still fails fast in the sync below. `root` is injectable so tests can point
+// at a fixture dir; production callers omit it (repo root).
+export function isHeartbeatSupported(root = DEFAULT_ROOT) {
+  return existsSync(join(root, 'src', 'routes', 'api', 'cron', 'scan', '+server.ts'))
+}
 
 export const HEARTBEAT_CHOICES = [
   { value: 'cron-job', label: 'cron-job.org', description: 'upsert + enable the scan job (needs CRONJOB_API_KEY)' },
@@ -48,6 +64,16 @@ export function scanEndpointUrl(baseUrl) {
   return `${baseUrl.replace(/\/$/, '')}/api/cron/scan`
 }
 
+// Whether heartbeat wiring can do anything: without the operator API key no
+// job can be created, read, or disabled, so callers skip the interview node
+// and the wiring instead of prompting for a dead choice. With no argument the
+// key comes from the merged target env (shell, .env.local); tests inject it
+// directly to stay hermetic.
+export function isHeartbeatConfigurable({ apiKey } = {}) {
+  const key = apiKey === undefined ? heartbeatSecrets().apiKey : apiKey
+  return String(key || '').trim() !== ''
+}
+
 // Interactive guard for the sync below: a differing job prompts before the
 // PATCH (the diff names fields only, never secret values). Non-interactive
 // callers keep the overwrite so `--heartbeat cron-job` stays deterministic.
@@ -69,8 +95,12 @@ export async function confirmScanJobOverwrite({ existing, diff }) {
 // a differing match back to canonical (prompting first when interactive),
 // and skips the PATCH when the match is already canonical. Throws: an
 // explicit choice with no working job would silently leave prod without a
-// heartbeat.
-export async function syncCronJobHeartbeat(target = 'vercel', { confirmOverwrite = confirmScanJobOverwrite } = {}) {
+// heartbeat. Unsupported apps (no cron endpoint) skip with a notice instead.
+export async function syncCronJobHeartbeat(target = 'vercel', { confirmOverwrite = confirmScanJobOverwrite, root = DEFAULT_ROOT } = {}) {
+  if (!isHeartbeatSupported(root)) {
+    logEvent({ action: 'heartbeat_unsupported_skip', details: { operation: 'sync' } })
+    return
+  }
   const { cronSecret, baseUrl, apiKey } = heartbeatSecrets(target)
   if (!apiKey) {
     throw new Error('CRONJOB_API_KEY is empty: set it in the shell env or .env.local (cron-job.org console Settings > API key; .env.local is never synced to Vercel).')
@@ -79,7 +109,7 @@ export async function syncCronJobHeartbeat(target = 'vercel', { confirmOverwrite
     throw new Error('CRON_SECRET or APP_BASE_URL is empty: the scan job needs both.')
   }
   const url = scanEndpointUrl(baseUrl)
-  console.log(`-> Syncing cron-job.org scan job -> ${url}...`)
+  logEvent({ action: 'heartbeat_sync', details: { url, target } })
   try {
     const { jobId, created, updated, reason } = await syncScanJob(
       { apiKey, url, cronSecret, enabled: true, target },
@@ -92,22 +122,29 @@ export async function syncCronJobHeartbeat(target = 'vercel', { confirmOverwrite
         : reason === 'declined'
           ? 'kept (overwrite declined)'
           : 'already up to date'
-    console.log(`-> cron-job.org scan job ${outcome} (jobId ${jobId ?? 'unknown'}, every minute UTC).`)
+    logEvent({ action: 'heartbeat_synced', details: { jobId, outcome, target } })
   } catch (error) {
     throw new Error(`Failed to sync the cron-job.org scan job: ${error?.message || error}`)
   }
 }
 
 // Disable for the none provider. A missing job is a clean
-// no-op.
-export async function disableCronJobHeartbeat(target = 'vercel') {
+// no-op. Unsupported apps (no cron endpoint) skip with a notice instead.
+export async function disableCronJobHeartbeat(target = 'vercel', { root = DEFAULT_ROOT } = {}) {
+  if (!isHeartbeatSupported(root)) {
+    logEvent({ action: 'heartbeat_unsupported_skip', details: { operation: 'disable' } })
+    return
+  }
   const { baseUrl, apiKey } = heartbeatSecrets(target)
   if (!apiKey) {
-    console.error('-> CRONJOB_API_KEY is empty; skipping cron-job.org disable (switch the scan job off in the console if it exists).')
+    logEvent({
+      action: 'heartbeat_disable_skip',
+      details: { reason: 'missing CRONJOB_API_KEY', level: 'WARN' },
+    })
     return
   }
   if (!baseUrl) {
-    console.error('-> APP_BASE_URL is empty; skipping cron-job.org disable.')
+    logEvent({ action: 'heartbeat_disable_skip', details: { reason: 'missing APP_BASE_URL', level: 'WARN' } })
     return
   }
   try {
@@ -118,14 +155,12 @@ export async function disableCronJobHeartbeat(target = 'vercel') {
       target,
     })
     if (jobId === null) {
-      console.log('-> No cron-job.org scan job found; nothing to disable.')
-    } else if (changed) {
-      console.log(`-> cron-job.org scan job disabled (jobId ${jobId}).`)
+      logEvent({ action: 'heartbeat_disabled', details: { jobId: null, changed: false, note: 'no job found' } })
     } else {
-      console.log(`-> cron-job.org scan job already disabled (jobId ${jobId}).`)
+      logEvent({ action: 'heartbeat_disabled', details: { jobId, changed } })
     }
   } catch (error) {
-    console.error(`-> Failed to disable the cron-job.org scan job: ${error?.message || error}. Switch it off in the console.`)
+    logEvent({ action: 'heartbeat_disable_error', details: { error: error?.message || error } })
   }
 }
 

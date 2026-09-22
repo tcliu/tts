@@ -1,11 +1,15 @@
 #!/usr/bin/env node
-// Production deploy to Vercel: syncs .env.vercel, optionally applies the
+// Production deploy to Vercel or Cloudflare Pages: syncs the target env
+// (.env.prod overlaid by .env.vercel / .env.cloudflare), optionally applies
 // Neon schema, deploys with `vercel deploy --prod`, waits for READY, then
 // points the project's production domain at APP_BASE_URL.
 //
 // Usage:
-//   node scripts/deploy.mjs [--profile dev|prod] [--target vercel] [--project <name>]
+//   node scripts/deploy.mjs [--profile dev|prod] [--target vercel|cloudflare] [--project <name>]
 //     [--sync-env|--no-sync-env] [--apply-schema|--no-apply-schema]
+//     [--heartbeat cron-job|none]
+// --heartbeat syncs the cron-job.org auto-scan heartbeat (default cron-job);
+// none disables the scan job.
 // A missing .vercel/project.json is linked automatically, and a --project /
 // VERCEL_PROJECT value that differs from the linked project switches the
 // link (confirmed interactively): --project, VERCEL_PROJECT in .env.vercel,
@@ -16,6 +20,31 @@ import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { parseEnvFile } from './env-file.mjs'
+import { errorMessage, logEvent } from './log-event.mjs'
+import {
+  applyHeartbeat,
+  HEARTBEAT_CHOICES,
+  HEARTBEAT_PROVIDERS,
+  isHeartbeatConfigurable,
+  isHeartbeatSupported,
+  renderOptionPicker,
+} from './lib/heartbeat.mjs'
+import {
+  CLOUDFLARE_FORBIDDEN_KEYS,
+  desiredPagesVars,
+  ensureD1Database,
+  ensurePagesProject,
+  GENERATED_WRANGLER_CONFIG,
+  getPagesProjectDomain,
+  renderWranglerConfig,
+  resolveCloudflareProjectName,
+  resolveD1DatabaseName,
+  splitCloudflareEnv,
+  wranglerBin,
+} from './lib/cloudflare.mjs'
+import { loadTargetEnv, loadTargetFileEnv } from './lib/target-env.mjs'
+import { diffDesiredVars, fetchPagesEnvState } from './lib/cloudflare-pages-env.mjs'
+import { withPrompt } from './lib/prompt-queue.mjs'
 import { ask, c, formatCommand, promptYesNo } from './_terminal.mjs'
 import { interactiveShell } from './_interactive-shell.mjs'
 import {
@@ -35,10 +64,16 @@ const DEPLOY_WAIT_TIMEOUT = '5m'
 
 const PROFILES = [
   { value: 'dev', description: 'Local SQLite backend (ephemeral storage on Vercel)' },
-  { value: 'prod', description: 'Neon Postgres via DATABASE_URL (syncs .env.vercel first)' },
+  { value: 'prod', description: 'Neon Postgres via DATABASE_URL (syncs the target env first)' },
 ]
 
-const TARGETS = [{ value: 'vercel', description: 'Deploy the app to Vercel' }]
+const TARGETS = [
+  { value: 'vercel', description: 'Deploy the app to Vercel' },
+  { value: 'cloudflare', description: 'Deploy the app to Cloudflare Pages (D1 backend + Cloudflare scan)' },
+]
+
+// Vercel stays the default target so existing invocations behave as before.
+const DEFAULT_TARGET = 'vercel'
 
 function fail(message) {
   console.error(message)
@@ -56,45 +91,79 @@ function formatElapsedTime(totalSeconds) {
 
 function usage() {
   console.log(`Usage:
-  node scripts/deploy.mjs [--profile dev|prod] [--target vercel] [--project <name>] [--sync-env|--no-sync-env] [--apply-schema|--no-apply-schema]
+  node scripts/deploy.mjs [--profile dev|prod] [--target vercel|cloudflare|all] [--project <name>] [--sync-env|--no-sync-env] [--apply-schema|--no-apply-schema] [--heartbeat cron-job|none]
 
-Targets (--target, prod profile only):
-  vercel   Deploy the app to Vercel.
+Targets (--target, prod profile only; repeatable, comma-separated, or all):
+  vercel       Deploy the app to Vercel.
+  cloudflare   Deploy the app to Cloudflare Pages (reads .env.prod +
+               .env.cloudflare, syncs vars/secrets via wrangler,
+               removes forbidden keys, builds with CF_PAGES=1).
+               Runs on D1 when CLOUDFLARE_D1_DATABASE is set (provisioned,
+               bound, and bootstrapped by the flow), otherwise on the
+               existing Neon backend.
+  all          Deploy to every target in parallel (schema applies once;
+               heartbeat choice applies per target).
 
 Options:
   --profile dev|prod   Backend profile to deploy (also read from $PROFILE).
                        Missing and interactive: arrow-key picker (default prod).
                        Missing and non-interactive: abort.
-  --target vercel      Deploy target; only valid with the prod profile
+  --target vercel|cloudflare|all
+                        Deploy targets; only valid with the prod profile
                        (dev has no deploy target). Defaults to vercel.
-  --project <name>     Vercel project to link when .vercel/project.json is
+  --project <name>     Vercel-only: project to link when .vercel/project.json is
                        missing or names a different project (also read from
                        $VERCEL_PROJECT and .env.vercel). A mismatch switches
                        the link interactively after confirmation; in a
                        non-interactive run the flag itself is the opt-in.
                        Missing and interactive: prompt (default package
-                       name), persisted to .env.vercel before the env sync.
+                       name), persisted to .env.vercel (.env.local when the
+                       link lives there) before the env sync.
                        Missing and non-interactive: abort.
-  --sync-env           Sync .env.vercel to Vercel production env before a prod deploy.
+  --sync-env           Sync the target env file before a prod deploy.
   --no-sync-env        Skip the env sync. prod without a flag asks interactively
                        (default yes); non-interactive defaults to skip.
   --apply-schema       Apply sql/schema.sql to the Neon database before a prod deploy.
   --no-apply-schema    Skip the schema apply (same interactive/non-interactive
                        defaults as --sync-env).
+  --heartbeat cron-job|none
+                       Prod auto-scan heartbeat: cron-job upserts + enables
+                       the target's scan job (needs CRONJOB_API_KEY; one
+                       job per target, each hitting its own /api/cron/scan);
+                       none disables the target's scan job.
+                       Missing and interactive: picker (default cron-job),
+                       skipped without prompting when the app has no cron
+                       heartbeat endpoint or CRONJOB_API_KEY is unset.
+                       Missing and non-interactive: skip wiring (job untouched).
+
+Step isolation: each target runs as named steps (vercel: link, auth,
+env-sync, schema, domains, heartbeat, deploy, ready; cloudflare: auth,
+project, env-sync, isolation, d1, schema, domain, heartbeat, build, deploy). A step
+failure no longer aborts the run: interactive callers are asked
+whether to continue (default No); non-interactive callers fail fast.
+Parallel runs are not transactional: a fatal error or a declined prompt
+in one target stops the whole run.
 
 Examples:
   npm run deploy -- --profile prod --target vercel --sync-env
   npm run deploy -- --profile prod --target vercel --sync-env --apply-schema
-  npm run deploy -- --project codepg-tts
+  npm run deploy -- --profile prod --target vercel --sync-env --apply-schema --heartbeat cron-job
+  npm run deploy -- --target cloudflare --sync-env --apply-schema --heartbeat cron-job
+  npm run deploy -- --target all --sync-env --apply-schema --heartbeat cron-job
+  npm run deploy -- --project project-catalog
   PROFILE=prod node scripts/deploy.mjs --target vercel --no-sync-env`)
 }
 
+let resolvedVercelBin = null
+let vercelBinResolved = false
 function vercelBin() {
-  const found = spawnSync('command -v vercel', { shell: true, encoding: 'utf8' })
-  if (found.status === 0 && found.stdout.trim()) {
-    return 'vercel'
+  // One `command -v` probe per process; every CLI call below reuses it.
+  if (!vercelBinResolved) {
+    const found = spawnSync('command -v vercel', { shell: true, encoding: 'utf8' })
+    resolvedVercelBin = found.status === 0 && found.stdout.trim() ? 'vercel' : null
+    vercelBinResolved = true
   }
-  return null
+  return resolvedVercelBin
 }
 
 function runVercelCli(args, { cwd = ROOT_DIR, capture = false } = {}) {
@@ -125,7 +194,7 @@ function checkVercelAuth() {
   })
   // whoami prints the username on success; only the exit code matters here.
   if (status !== 0) {
-    fail('Vercel CLI is not authenticated. Run `vercel login` and retry the deploy.')
+    throw new Error('Vercel CLI is not authenticated. Run `vercel login` and retry the deploy.')
   }
 }
 
@@ -148,12 +217,9 @@ function linkedProjectName() {
 }
 
 function mergedProjectEnv() {
-  return {
-    ...parseEnvFile(join(ROOT_DIR, '.env')),
-    ...parseEnvFile(join(ROOT_DIR, '.env.local')),
-    ...parseEnvFile(join(ROOT_DIR, '.env.vercel')),
-    ...process.env,
-  }
+  // Unified load order via target-env (`.env` < `.env.local` < `.env.prod` <
+  // `.env.vercel` < shell).
+  return loadTargetEnv('vercel', ROOT_DIR)
 }
 
 function packageDefaultProjectName() {
@@ -169,7 +235,7 @@ async function promptProjectName() {
   const fallback = packageDefaultProjectName()
   const hint = fallback ? ` [${fallback}]` : ''
   for (;;) {
-    const answer = await ask(`${c.cyan}Vercel project name${c.reset}${hint}: `, process.stderr)
+    const answer = await withPrompt(() => ask(`${c.cyan}Vercel project name${c.reset}${hint}: `, process.stderr))
     const raw = String(answer ?? '').trim()
     if (raw.toLowerCase() === 'q') {
       fail('Deploy cancelled.')
@@ -184,15 +250,14 @@ async function promptProjectName() {
   }
 }
 
-function persistProjectName(name) {
-  const file = join(ROOT_DIR, '.env.vercel')
+function persistEnvValue(file, label, key, value) {
   let current = ''
   try {
-    current = String(parseEnvFile(file).VERCEL_PROJECT || '').trim()
+    current = String(parseEnvFile(file)[key] || '').trim()
   } catch {
     current = ''
   }
-  if (current === name) {
+  if (current === value) {
     return
   }
   let content = ''
@@ -201,8 +266,56 @@ function persistProjectName(name) {
   } catch {
     content = ''
   }
-  writeFileSync(file, upsertEnvLine(content, 'VERCEL_PROJECT', name))
-  console.log('-> Saved VERCEL_PROJECT to .env.vercel for future deploys.')
+  writeFileSync(file, upsertEnvLine(content, key, value))
+  logEvent({ action: 'env_saved', details: { key, label } })
+}
+
+function persistProjectName(name) {
+  // Prefer the overlay that already carries VERCEL_PROJECT (.env.local in
+  // apps that keep the link slug out of the synced env); default .env.vercel.
+  // All syncs exclude the local-only link slug, so either file is safe.
+  const vercelFile = join(ROOT_DIR, '.env.vercel')
+  const localFile = join(ROOT_DIR, '.env.local')
+  const hasKey = file => {
+    try {
+      return String(parseEnvFile(file).VERCEL_PROJECT || '').trim() !== ''
+    } catch {
+      return false
+    }
+  }
+  const useLocal = hasKey(localFile) && !hasKey(vercelFile)
+  persistEnvValue(useLocal ? localFile : vercelFile, useLocal ? '.env.local' : '.env.vercel', 'VERCEL_PROJECT', name)
+}
+
+// Prompt loop for a fresh APP_BASE_URL: validates the input as an absolute
+// URL, persists it to the target overlay file, and returns the raw value.
+// `q`/empty cancels the deploy. Serialized through withPrompt so parallel
+// flows never share stdin. Vercel-only: the Cloudflare claim loop persists
+// after the API confirms (persist-after-attach), so it uses askBaseUrl.
+async function promptBaseUrl(label, file) {
+  const raw = await askBaseUrl(label)
+  persistEnvValue(file, label, 'APP_BASE_URL', raw)
+  return raw
+}
+
+// Prompt without persist: the caller saves only what the platform accepts.
+async function askBaseUrl(label = '.env.cloudflare') {
+  const answer = await withPrompt(() => ask(`New APP_BASE_URL for ${label} (full URL, q to cancel): `, process.stderr))
+  const raw = String(answer ?? '').trim()
+  if (!raw || raw.toLowerCase() === 'q') {
+    fail('Deploy cancelled.')
+  }
+  let host = ''
+  try {
+    host = new URL(raw).hostname
+  } catch {
+    host = ''
+  }
+  if (!host) {
+    console.error(`Invalid URL (need https://host/...): ${raw}`)
+    return askBaseUrl(label)
+  }
+  return raw
 }
 
 function ensureRemoteProject(name) {
@@ -210,11 +323,12 @@ function ensureRemoteProject(name) {
   if (inspect.status === 0) {
     return
   }
-  console.log(`-> Creating Vercel project ${name}...`)
   const created = runVercelCli(['projects', 'add', name])
   if (created.status !== 0) {
-    fail(`Failed to create Vercel project ${name}. Create it in the dashboard and retry.`)
+    logEvent({ action: 'vercel_project_create_error', details: { project: name, exit_code: created.status } })
+    throw new Error(`Failed to create Vercel project ${name}. Create it in the dashboard and retry.`)
   }
+  logEvent({ action: 'vercel_project_create', details: { project: name } })
 }
 
 // Link a checkout with no .vercel/project.json, or switch the link when
@@ -234,9 +348,9 @@ async function ensureVercelLink(projectFlag) {
     // A stale or malformed VERCEL_PROJECT must not block a checkout that is
     // already linked and was not explicitly targeted with --project.
     if (projectFlag || !linked) {
-      fail(error?.message || error)
+      throw new Error(error?.message || String(error))
     }
-    console.error(`-> ${error?.message || error} Keeping the existing link to ${linked}.`)
+    logEvent({ action: 'vercel_link_stale', details: { error: error?.message || error, linked, level: 'WARN' } })
   }
   const decision = decideLinkAction({ linked, requested })
   if (decision.action === 'keep') {
@@ -245,10 +359,8 @@ async function ensureVercelLink(projectFlag) {
   checkVercelAuth()
   if (decision.action === 'switch') {
     if (process.stdin.isTTY) {
-      const ok = await promptYesNo(
-        `Switch Vercel link from ${decision.from} to ${decision.name}`,
-        true,
-        process.stderr,
+      const ok = await withPrompt(() =>
+        promptYesNo(`Switch Vercel link from ${decision.from} to ${decision.name}`, true, process.stderr),
       )
       if (!ok) {
         fail('Deploy cancelled: Vercel link unchanged.')
@@ -266,7 +378,7 @@ async function ensureVercelLink(projectFlag) {
     name = await promptProjectName()
   }
   if (!name) {
-    fail('Vercel project is not linked: pass --project <name>, set VERCEL_PROJECT in .env.vercel, or run interactively.')
+    throw new Error('Vercel project is not linked: pass --project <name>, set VERCEL_PROJECT in .env.vercel, or run interactively.')
   }
   persistProjectName(name)
   ensureRemoteProject(name)
@@ -277,8 +389,10 @@ async function ensureVercelLink(projectFlag) {
   )
   const linkedNow = runVercelCli(['link', '--yes', '--project', name])
   if (linkedNow.status !== 0 || !existsSync(projectFile)) {
-    fail(`Failed to link Vercel project ${name}. Run 'vercel link' from the repo root and retry.`)
+    logEvent({ action: 'vercel_link_error', details: { project: name, exit_code: linkedNow.status } })
+    throw new Error(`Failed to link Vercel project ${name}. Run 'vercel link' from the repo root and retry.`)
   }
+  logEvent({ action: 'vercel_link', details: { project: name, switched: decision.action === 'switch' } })
 }
 
 function trimJsonPayload(value) {
@@ -395,10 +509,13 @@ function fetchDeploymentBlockDetail(deploymentId) {
 }
 
 async function waitForReadyDeployment(deploymentUrl, deploymentId = '') {
-  console.log('-> Waiting for Vercel deployment to become ready...')
-  console.log(
-    `-> Vercel deployment log command: vercel inspect ${deploymentUrl} --logs --wait --timeout ${DEPLOY_WAIT_TIMEOUT}`,
-  )
+  logEvent({
+    action: 'vercel_deploy_wait',
+    details: {
+      deployment_url: deploymentUrl,
+      log_command: `vercel inspect ${deploymentUrl} --logs --wait --timeout ${DEPLOY_WAIT_TIMEOUT}`,
+    },
+  })
   let inspectOutput = ''
   let inspectStatus = 0
   let logStatus = 0
@@ -444,15 +561,9 @@ async function waitForReadyDeployment(deploymentUrl, deploymentId = '') {
     console.error(`Reference: ${errorLink}`)
   }
 
-  if (inspectStatus !== 0) {
-    process.exit(inspectStatus)
-  }
-
-  if (logStatus !== 0) {
-    process.exit(logStatus)
-  }
-
-  process.exit(1)
+  throw new Error(
+    `Vercel deployment did not reach READY${readyState ? ` (state: ${readyState})` : ''} -> ${deploymentUrl}`,
+  )
 }
 
 async function runDeployWithRetry(appVersion) {
@@ -486,23 +597,18 @@ async function runDeployWithRetry(appVersion) {
     }
   }
 
-  process.exit(status)
+  throw new Error(`vercel deploy --prod failed after ${DEPLOY_MAX_ATTEMPTS} attempt(s) (exit ${status}).`)
 }
 function configuredBaseUrl() {
-  if (process.env.APP_BASE_URL) {
-    return process.env.APP_BASE_URL.trim()
-  }
-  const merged = {
-    ...parseEnvFile(join(ROOT_DIR, '.env')),
-    ...parseEnvFile(join(ROOT_DIR, '.env.vercel')),
-  }
-  return String(merged.APP_BASE_URL || '').trim()
+  // Unified load order via target-env (shell first, then `.env` <
+  // `.env.local` < `.env.prod` < `.env.vercel`).
+  return String(loadTargetEnv('vercel', ROOT_DIR).APP_BASE_URL || '').trim()
 }
 
 function configuredDomain() {
   const baseUrl = configuredBaseUrl()
   if (!baseUrl) {
-    fail('Missing APP_BASE_URL in shell env, .env, or .env.vercel.')
+    fail('Missing APP_BASE_URL in shell env, .env, .env.prod, or .env.vercel.')
   }
   try {
     return new URL(baseUrl).hostname
@@ -532,13 +638,13 @@ function writeManagedDomainState(managedDomain) {
 function listOtherVercelAppDomains(projectIdValue, currentDomain) {
   const { status, output } = runVercelApi(`/v9/projects/${projectIdValue}/domains`)
   if (status !== 0) {
-    fail('Failed to list Vercel project domains. Check `vercel whoami` auth and network, then retry.')
+    throw new Error('Failed to list Vercel project domains. Check `vercel whoami` auth and network, then retry.')
   }
   let payload = {}
   try {
     payload = JSON.parse(output || '{}')
   } catch {
-    fail('Failed to parse Vercel project domains output. Re-run with a working `vercel` CLI and retry.')
+    throw new Error('Failed to parse Vercel project domains output. Re-run with a working `vercel` CLI and retry.')
   }
   const recordedDomain = readManagedDomainState()
   const domains = Array.isArray(payload) ? payload : Array.isArray(payload.domains) ? payload.domains : []
@@ -554,13 +660,35 @@ function listOtherVercelAppDomains(projectIdValue, currentDomain) {
   return prioritized
 }
 
+// Attaches the production domain. Returns a discriminated status: 'attached'
+// when the hostname is (or becomes) on the project, 'conflict' when the add
+// was refused because the hostname is taken elsewhere (the caller retries with
+// a fresh URL), 'error' for anything else (auth, network, rate limit) — a
+// misclassified transport error must never masquerade as a taken hostname.
+const DOMAIN_CONFLICT_PATTERN = /already|in use|is taken|unavailable|reserved|used by/i
+
 function ensureProjectDomain(projectIdValue, domain) {
   const { status } = runVercelApi(`/v9/projects/${projectIdValue}/domains/${domain}`)
   if (status === 0) {
-    return
+    return { status: 'attached' }
   }
-  console.log(`-> Adding project production domain ${domain}...`)
-  runVercelApi(`/v10/projects/${projectIdValue}/domains`, ['-X', 'POST', '-f', `name=${domain}`], { capture: false })
+  const added = runVercelApi(`/v10/projects/${projectIdValue}/domains`, ['-X', 'POST', '-f', `name=${domain}`], {
+    capture: true,
+  })
+  if (added.status !== 0) {
+    const detail = added.output.trim().split('\n').slice(-1)[0] || `vercel exited ${added.status}`
+    if (DOMAIN_CONFLICT_PATTERN.test(added.output)) {
+      logEvent({ action: 'vercel_domain_conflict', details: { project_id: projectIdValue, domain } })
+      return { status: 'conflict' }
+    }
+    logEvent({ action: 'vercel_domain_add_error', details: { project_id: projectIdValue, domain, error: detail } })
+    return { status: 'error', message: detail }
+  }
+  if (runVercelApi(`/v9/projects/${projectIdValue}/domains/${domain}`).status === 0) {
+    logEvent({ action: 'vercel_domain_add', details: { project_id: projectIdValue, domain } })
+    return { status: 'attached' }
+  }
+  return { status: 'error', message: 'added but not listed' }
 }
 
 function removeProjectDomain(projectIdValue, domain) {
@@ -571,27 +699,49 @@ function removeProjectDomain(projectIdValue, domain) {
   if (status !== 0) {
     return
   }
-  console.log(`-> Removing previous production domain ${domain}...`)
-  runVercelApi(`/v9/projects/${projectIdValue}/domains/${domain}`, ['-X', 'DELETE', '--dangerously-skip-permissions'], {
-    capture: false,
-  })
+  const removed = runVercelApi(
+    `/v9/projects/${projectIdValue}/domains/${domain}`,
+    ['-X', 'DELETE', '--dangerously-skip-permissions'],
+    { capture: false },
+  )
+  if (removed.status === 0) {
+    logEvent({ action: 'vercel_domain_remove', details: { project_id: projectIdValue, domain } })
+  }
 }
 
-function syncProjectDomains() {
-  const configuredDomainValue = configuredDomain()
+async function syncProjectDomains() {
   const projectIdValue = projectId()
   if (!projectIdValue) {
-    fail('Failed to determine the Vercel project ID from .vercel/project.json.')
+    throw new Error('Failed to determine the Vercel project ID from .vercel/project.json.')
   }
 
-  ensureProjectDomain(projectIdValue, configuredDomainValue)
-
-  for (const obsoleteDomain of listOtherVercelAppDomains(projectIdValue, configuredDomainValue)) {
-    if (!obsoleteDomain) continue
-    removeProjectDomain(projectIdValue, obsoleteDomain)
+  // Domain claim with conflict retry: only a genuine "hostname taken"
+  // refusal asks for a fresh APP_BASE_URL; any other failure (auth, network,
+  // rate limit) throws immediately rather than looping on a prompt that
+  // cannot help. configuredDomain() re-reads the files every iteration, so
+  // the heartbeat/deploy steps that run after this one see the final URL.
+  for (;;) {
+    const configuredDomainValue = configuredDomain()
+    const claimed = ensureProjectDomain(projectIdValue, configuredDomainValue)
+    if (claimed.status === 'attached') {
+      for (const obsoleteDomain of listOtherVercelAppDomains(projectIdValue, configuredDomainValue)) {
+        if (!obsoleteDomain) continue
+        removeProjectDomain(projectIdValue, obsoleteDomain)
+      }
+      writeManagedDomainState(configuredDomainValue)
+      return
+    }
+    if (claimed.status === 'error') {
+      throw new Error(`Failed to attach domain ${configuredDomainValue}: ${claimed.message}`)
+    }
+    logEvent({ action: 'vercel_domain_unavailable', details: { domain: configuredDomainValue, level: 'WARN' } })
+    if (!process.stdin.isTTY) {
+      throw new Error(
+        `Domain ${configuredDomainValue} is unavailable; set APP_BASE_URL in .env.vercel to an available hostname and retry.`,
+      )
+    }
+    await promptBaseUrl('.env.vercel', join(ROOT_DIR, '.env.vercel'))
   }
-
-  writeManagedDomainState(configuredDomainValue)
 }
 
 // Interactive defaults: every interview question resolves on Enter.
@@ -599,7 +749,7 @@ const DEFAULT_PROFILE = 'prod'
 const DEFAULT_CONFIRM = 'yes'
 
 const SYNC_ENV_CHOICES = [
-  { value: 'yes', label: 'Yes', description: 'sync .env.vercel first' },
+  { value: 'yes', label: 'Yes', description: 'sync the target env file first' },
   { value: 'no', label: 'No', description: 'dashboard env already carries PROFILE=prod' },
 ]
 
@@ -621,24 +771,43 @@ function renderProfilePicker() {
   }
 }
 
-function renderConfirmPicker() {
+function renderTargetsPicker() {
   return (entries, state) => {
     const lines = []
     for (let i = 0; i < entries.length; i++) {
       const item = entries[i]
       const cursor = i === state.cursor ? `${c.cyan}>${c.reset}` : ' '
-      lines.push(` ${cursor} ${c.green}${item.label}${c.reset} ${c.gray}(${item.description})${c.reset}`)
+      const mark = state.selected.has(i) ? `${c.green}[x]${c.reset}` : '[ ]'
+      lines.push(` ${cursor} ${mark} ${c.green}${item.value}${c.reset} ${c.gray}(${item.description})${c.reset}`)
     }
-    lines.push('', `${c.dim}Up/Down: move | Enter: confirm (default yes) | q: cancel${c.reset}`)
+    lines.push('', `${c.dim}Up/Down: move | Space: toggle | Enter: confirm | q: cancel${c.reset}`)
     return lines
   }
 }
 
-// Linear interview: profile -> sync-env -> apply-schema -> exit. Flag/env
-// seeds skip their node; q/Ctrl-C aborts via fail. Non-interactive callers
-// never enter the graph (see deployVercelWithTarget branch below).
+// Linear interview: target -> profile -> sync-env -> apply-schema -> heartbeat ->
+// exit. Flag/env seeds skip their node; q/Ctrl-C aborts
+// via fail. Non-interactive callers never enter the graph (see
+// deployVercelWithTarget branch below).
 function buildDeployGraph() {
   const graph = {
+    target: {
+      message: 'Select deploy targets (space to toggle, enter to confirm):',
+      async process(ctx) {
+        const valid = Array.isArray(ctx.targets) && ctx.targets.length > 0
+        if (!valid || !ctx.targets.every(value => TARGETS.some(entry => entry.value === value))) {
+          const picked = await ctx.selectMany(TARGETS, {
+            initialSelected: [0],
+            render: renderTargetsPicker(),
+          })
+          if (!picked || picked.length === 0) {
+            fail('Deploy cancelled.')
+          }
+          ctx.targets = picked.map(item => item.value)
+        }
+        return graph.profile
+      },
+    },
     profile: {
       message: 'Select deploy profile:',
       async process(ctx) {
@@ -653,18 +822,18 @@ function buildDeployGraph() {
           ctx.profile = picked.value
         }
         if (ctx.profile !== 'prod') {
-          fail("Target 'vercel' supports only the prod profile; dev has no deploy target.")
+          fail(`Target '${(ctx.targets || [DEFAULT_TARGET]).join(',')}' supports only the prod profile; dev has no deploy target.`)
         }
         return graph.syncEnv
       },
     },
     syncEnv: {
-      message: 'Sync .env.vercel to Vercel production env before deploy?',
+      message: 'Sync the target env file before deploy?',
       async process(ctx) {
         if (ctx.syncEnv !== 'yes' && ctx.syncEnv !== 'no') {
           const picked = await ctx.selectOne(SYNC_ENV_CHOICES, {
             defaultValue: DEFAULT_CONFIRM,
-            render: renderConfirmPicker(),
+            render: renderOptionPicker(),
           })
           if (!picked) {
             fail('Deploy cancelled.')
@@ -680,13 +849,38 @@ function buildDeployGraph() {
         if (ctx.applySchema !== 'yes' && ctx.applySchema !== 'no') {
           const picked = await ctx.selectOne(APPLY_SCHEMA_CHOICES, {
             defaultValue: DEFAULT_CONFIRM,
-            render: renderConfirmPicker(),
+            render: renderOptionPicker(),
           })
           if (!picked) {
             fail('Deploy cancelled.')
           }
           ctx.applySchema = picked.value
         }
+        return graph.heartbeat
+      },
+    },
+    heartbeat: {
+      message: 'Sync the cron-job.org auto-scan heartbeat?',
+      async process(ctx) {
+        // An explicit flag always reaches the step (which skips with a notice
+        // on unsupported apps and throws on missing secrets). Otherwise skip
+        // without prompting when there is nothing to wire: no cron endpoint
+        // in the app, or no operator API key to manage the job with.
+        if (['cron-job', 'none'].includes(ctx.heartbeat)) {
+          return null
+        }
+        if (!isHeartbeatSupported(ROOT_DIR) || !isHeartbeatConfigurable()) {
+          ctx.heartbeat = 'skip'
+          return null
+        }
+        const picked = await ctx.selectOne(HEARTBEAT_CHOICES, {
+          defaultValue: 'cron-job',
+          render: renderOptionPicker('default cron-job.org'),
+        })
+        if (!picked) {
+          fail('Deploy cancelled.')
+        }
+        ctx.heartbeat = picked.value
         return null
       },
     },
@@ -696,12 +890,14 @@ function buildDeployGraph() {
 
 async function runDeployInterview(options) {
   const graph = buildDeployGraph()
-  return interactiveShell(graph.profile, {
+  return interactiveShell(graph.target, {
     options: {
       ctx: {
+        targets: options.targetFlags.length > 0 ? [...options.targetFlags] : [],
         profile: options.profileFlag || process.env.PROFILE || '',
         syncEnv: options.syncEnvFlag || '',
         applySchema: options.applySchemaFlag || '',
+        heartbeat: resolveHeartbeatFlag(options),
       },
       output: process.stderr,
     },
@@ -730,8 +926,37 @@ function resolveProdConfirmSync(profile, flag, skipNotice) {
   return 'no'
 }
 
+// Explicit --heartbeat flag, otherwise empty (caller prompts or skips).
+function resolveHeartbeatFlag(options) {
+  if (options?.heartbeatFlag) return options.heartbeatFlag
+  return ''
+}
+
 function parseArgs(argv) {
-  const options = { profileFlag: '', targetFlag: '', projectFlag: '', syncEnvFlag: '', applySchemaFlag: '' }
+  const options = {
+    profileFlag: '',
+    targetFlags: [],
+    projectFlag: '',
+    syncEnvFlag: '',
+    applySchemaFlag: '',
+    heartbeatFlag: '',
+  }
+  const pushTargets = raw => {
+    for (const part of String(raw || '')
+      .split(',')
+      .map(piece => piece.trim().toLowerCase())
+      .filter(Boolean)) {
+      if (part === 'all') {
+        for (const entry of TARGETS) {
+          if (!options.targetFlags.includes(entry.value)) {
+            options.targetFlags.push(entry.value)
+          }
+        }
+      } else if (!options.targetFlags.includes(part)) {
+        options.targetFlags.push(part)
+      }
+    }
+  }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     const next = argv[i + 1]
@@ -741,9 +966,9 @@ function parseArgs(argv) {
       options.profileFlag = next || ''
       if (next !== undefined) i++
     } else if (arg.startsWith('--target=')) {
-      options.targetFlag = arg.slice('--target='.length)
+      pushTargets(arg.slice('--target='.length))
     } else if (arg === '--target') {
-      options.targetFlag = next || ''
+      pushTargets(next || '')
       if (next !== undefined) i++
     } else if (arg.startsWith('--project=')) {
       options.projectFlag = arg.slice('--project='.length)
@@ -758,12 +983,17 @@ function parseArgs(argv) {
       options.applySchemaFlag = 'yes'
     } else if (arg === '--no-apply-schema') {
       options.applySchemaFlag = 'no'
+    } else if (arg.startsWith('--heartbeat=')) {
+      options.heartbeatFlag = arg.slice('--heartbeat='.length)
+    } else if (arg === '--heartbeat') {
+      options.heartbeatFlag = next || ''
+      if (next !== undefined) i++
     } else if (arg === '-h' || arg === '--help' || arg === 'help') {
       usage()
       process.exit(0)
-    } else if (arg === 'vercel' && !options.targetFlag) {
+    } else if (arg === 'vercel' && !options.targetFlags.includes('vercel')) {
       // Legacy `deploy.sh vercel` positional: treat as --target vercel.
-      options.targetFlag = 'vercel'
+      options.targetFlags.push('vercel')
     } else {
       fail(`Unknown option: ${arg}`)
     }
@@ -774,26 +1004,67 @@ function parseArgs(argv) {
 function runScript(script, env = process.env) {
   console.log(formatCommand('node', [`scripts/${script}`]))
   const result = spawnSync('node', [join(SCRIPT_DIR, script)], { cwd: ROOT_DIR, stdio: 'inherit', env })
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1)
+  if ((result.status ?? 1) !== 0) {
+    throw new Error(`scripts/${script} failed (exit ${result.status ?? 1}).`)
+  }
+}
+
+// Prompts share one stdin across parallel flows; the queue lives in a shared
+// module so heartbeat prompts (heartbeat.mjs) use the same chain.
+
+// Step isolation: each deploy step runs through here so one failure no longer
+// aborts the whole run. Interactive callers are asked whether to continue
+// (default No, preserving fail-fast unless opted in); non-interactive callers
+// fail fast with the step name attached. Explicit cancellations (q answers)
+// still exit immediately via fail() and never reach the prompt.
+async function runSteps(target, steps) {
+  for (const step of steps) {
+    const startedAt = Date.now()
+    logEvent({ action: 'deploy_step_start', details: { target, step: step.name } })
+    try {
+      await step.run()
+      logEvent({
+        action: 'deploy_step_end',
+        details: { target, step: step.name, elapsed_ms: Date.now() - startedAt },
+      })
+    } catch (error) {
+      const message = errorMessage(error)
+      logEvent({
+        action: 'deploy_step_error',
+        details: { target, step: step.name, elapsed_ms: Date.now() - startedAt, error: message },
+      })
+      if (process.stdin.isTTY) {
+        const proceed = await withPrompt(() =>
+          promptYesNo(`Step "${step.name}" failed: ${message}. Continue anyway`, false, process.stderr),
+        )
+        if (!proceed) {
+          fail(`Deploy cancelled after step "${step.name}" failed.`)
+        }
+        logEvent({ action: 'deploy_step_continue', details: { target, step: step.name, level: 'WARN' } })
+      } else {
+        fail(`Step "${step.name}" failed: ${message}`)
+      }
+    }
   }
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
-  // Unknown --target fails fast, before any prompt; the prod-only gate runs
-  // after profile resolution inside deployVercelWithTarget.
-  if (options.targetFlag && options.targetFlag !== 'vercel') {
-    fail(`Unknown target: ${options.targetFlag}`)
+  // Unknown --target values fail fast, before any prompt; the prod-only gate
+  // runs after profile resolution inside deployWithTarget.
+  const unknown = options.targetFlags.filter(value => !TARGETS.some(entry => entry.value === value))
+  if (unknown.length > 0) {
+    fail(`Unknown target: ${unknown.join(', ')} (expected ${TARGETS.map(entry => entry.value).join('|')} or all).`)
   }
-  await deployVercelWithTarget(options)
+  await deployWithTarget(options)
 }
 
-async function deployVercelWithTarget(options) {
-  const target = options.targetFlag || 'vercel'
-  if (target !== 'vercel') {
-    fail(`Unknown target: ${target}`)
-  }
+async function deployWithTarget(options) {
+  // One run can deploy both platforms: flags seed the interview (repeatable /
+  // comma-separated `--target`, or `all`); an empty seed prompts a
+  // multi-select; non-interactive without flags keeps the Vercel default.
+  const seeded = [...options.targetFlags]
+  const targets = seeded.length > 0 ? seeded : [DEFAULT_TARGET]
   // Explicit invalid sources fail fast; the interview only fills gaps. The
   // Vercel link (a side effect: project creation, .env.vercel write) is
   // deferred to runDeployFlow so no flag error can touch Vercel.
@@ -804,34 +1075,619 @@ async function deployVercelWithTarget(options) {
   if (envProfile && envProfile !== 'dev' && envProfile !== 'prod') {
     fail('PROFILE is mandatory: pass --profile dev|prod, set $PROFILE, or run interactively.')
   }
+  if (options.heartbeatFlag && !HEARTBEAT_PROVIDERS.includes(options.heartbeatFlag)) {
+    fail(`Unknown heartbeat: ${options.heartbeatFlag} (expected cron-job|none).`)
+  }
   const seededProfile = options.profileFlag || process.env.PROFILE || ''
+  // The heartbeat answer only gates the interview when wiring is possible:
+  // without an endpoint or an API key the node skips silently.
+  const needsHeartbeatAnswer =
+    !resolveHeartbeatFlag(options) && isHeartbeatSupported(ROOT_DIR) && isHeartbeatConfigurable()
   if (
     process.stdin.isTTY &&
     seededProfile !== 'dev' &&
-    (seededProfile === '' || !options.syncEnvFlag || !options.applySchemaFlag)
+    (seededProfile === '' ||
+      seeded.length === 0 ||
+      !options.syncEnvFlag ||
+      !options.applySchemaFlag ||
+      needsHeartbeatAnswer)
   ) {
     const answers = await runDeployInterview(options)
-    await runDeployFlow(answers.profile, answers.syncEnv, answers.applySchema, options.projectFlag)
+    await runDeployTargets(answers.targets, {
+      profile: answers.profile,
+      syncEnv: answers.syncEnv,
+      applySchema: answers.applySchema,
+      heartbeat: answers.heartbeat,
+      projectFlag: options.projectFlag,
+    })
     return
   }
   const profileValue = resolveProfileSync(options.profileFlag)
   if (profileValue !== 'prod') {
-    fail("Target 'vercel' supports only the prod profile; dev has no deploy target.")
+    fail(`Target '${targets.join(',')}' supports only the prod profile; dev has no deploy target.`)
   }
   const syncEnv = resolveProdConfirmSync(
     profileValue,
     options.syncEnvFlag,
-    '-> Non-interactive prod deploy without --sync-env: skipping Vercel env sync.',
+    '-> Non-interactive prod deploy without --sync-env: skipping target env sync.',
   )
   const applySchema = resolveProdConfirmSync(
     profileValue,
     options.applySchemaFlag,
     '-> Non-interactive prod deploy without --apply-schema: skipping schema apply.',
   )
-  await runDeployFlow(profileValue, syncEnv, applySchema, options.projectFlag)
+  let heartbeat = resolveHeartbeatFlag(options)
+  if (!heartbeat) {
+    console.error(
+      '-> Non-interactive prod deploy without --heartbeat: skipping heartbeat wiring (cron-job.org job untouched).',
+    )
+    heartbeat = 'skip'
+  }
+  await runDeployTargets(targets, {
+    profile: profileValue,
+    syncEnv,
+    applySchema,
+    heartbeat,
+    projectFlag: options.projectFlag,
+  })
 }
 
-async function runDeployFlow(profileValue, syncEnv, applySchema, projectFlag) {
+// Runs each selected target. The Neon schema apply is shared, so it runs
+// once up front whenever a Neon-backed flow needs it (Vercel always; the
+// Cloudflare flow only outside D1 mode, where it runs on Neon); the D1 flow
+// applies its own schema. Env sync and heartbeat are per target (each target
+// owns its job URL — deploying both with `cron-job` creates one scan job per
+// target).
+// Multiple targets deploy concurrently (Promise.all): step-failure prompts
+// are mutex-serialized through withPrompt, and no step mutates shared process
+// state, so flows cannot cross-talk. A "no" at any prompt still aborts the
+// whole run via fail().
+async function runDeployTargets(targets, { profile, syncEnv, applySchema, heartbeat, projectFlag }) {
+  const d1Mode = targets.includes('cloudflare') && isCloudflareD1Mode()
+  let neonSchema = applySchema
+  if (applySchema === 'yes' && (targets.includes('vercel') || (targets.includes('cloudflare') && !d1Mode))) {
+    logEvent({ action: 'neon_schema_apply' })
+    runScript('apply-schema.mjs', { ...process.env, PROFILE: 'prod' })
+    neonSchema = 'done'
+  }
+  // One scan job per running app (per-target titles): each target wires its
+  // own job, so every deployment owns its heartbeat and a platform outage
+  // fails over to the surviving target's job. The shared minute-claim keeps
+  // the two jobs mutually exclusive (one runs, the other exits on `guard`).
+  const runOne = async target => {
+    const startedAt = Date.now()
+    logEvent({
+      action: 'deploy_start',
+      details: { target, profile, sync_env: syncEnv, apply_schema: applySchema, heartbeat },
+    })
+    try {
+      const url =
+        target === 'cloudflare'
+          ? await runCloudflareFlow(syncEnv, d1Mode ? applySchema : neonSchema, heartbeat, d1Mode)
+          : await runDeployFlow(profile, syncEnv, neonSchema, heartbeat, projectFlag)
+      logEvent({ action: 'deploy_end', details: { target, url, elapsed_ms: Date.now() - startedAt } })
+    } catch (error) {
+      logEvent({
+        action: 'deploy_error',
+        details: { target, elapsed_ms: Date.now() - startedAt, error: errorMessage(error) },
+      })
+      throw error
+    }
+  }
+  if (targets.length > 1) {
+    logEvent({ action: 'deploy_parallel', details: { targets } })
+    await Promise.all(targets.map(runOne))
+  } else {
+    await runOne(targets[0])
+  }
+}
+
+// Cloudflare Pages target. Reads `.env.prod` overlaid by `.env.cloudflare`
+// (never `.env.vercel`), so the two targets keep independent URLs; the Neon
+// schema step is shared (see runDeployTargets). Load order matches
+// loadTargetEnv: `.env` < `.env.local` < `.env.prod` < overlay < shell.
+function cloudflareEnv() {
+  return loadTargetEnv('cloudflare', ROOT_DIR)
+}
+
+function cloudflareBaseUrl() {
+  const baseUrl = String(cloudflareEnv().APP_BASE_URL || '').trim()
+  if (!baseUrl) {
+    fail('Missing APP_BASE_URL in shell env, .env, or .env.cloudflare.')
+  }
+  try {
+    void new URL(baseUrl).hostname
+  } catch {
+    fail(`APP_BASE_URL must be a valid absolute URL. Received: ${baseUrl}`)
+  }
+  return baseUrl
+}
+
+function hostOf(url) {
+  try {
+    return new URL(String(url || '')).hostname
+  } catch {
+    return ''
+  }
+}
+
+async function cloudflareApi(path, { method = 'GET', body } = {}) {
+  const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim()
+  if (!token) {
+    throw new Error('CLOUDFLARE_API_TOKEN is empty: cannot manage Pages custom domains.')
+  }
+  const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+    method,
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  const payload = await response.json().catch(() => ({}))
+  return { ok: response.ok && payload.success !== false, payload }
+}
+
+function pagesDomainNames(payload) {
+  const result = payload?.result
+  const list = Array.isArray(result) ? result : []
+  return list.map(entry => String(entry?.name || '').trim()).filter(Boolean)
+}
+
+// Production branch of the Pages project. `pages project list --json` omits
+// it, so read the project object. Required because `wrangler pages deploy`
+// defaults to the *checkout* branch: a deploy from a worktree (the default
+// workflow) would otherwise land as a non-production preview while the run
+// still reports success.
+async function cloudflareProductionBranch(project) {
+  const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
+  if (!accountId) {
+    throw new Error('CLOUDFLARE_ACCOUNT_ID is empty: cannot resolve the Pages production branch.')
+  }
+  const response = await cloudflareApi(`/accounts/${accountId}/pages/projects/${project}`)
+  if (!response.ok) {
+    throw new Error(`Failed to read Pages project ${project} (production branch).`)
+  }
+  return String(response.payload?.result?.production_branch || '').trim()
+}
+
+// Attaches a custom hostname to the Pages project. Returns a discriminated
+// status: 'attached' when the hostname is (or becomes) on the project,
+// 'conflict' when the API refused because it is taken elsewhere (caller
+// retries with a fresh URL), 'error' otherwise (auth, permission, network) —
+// a permission failure must never masquerade as a taken hostname and trap the
+// caller in a prompt loop that cannot help.
+const CF_DOMAIN_CONFLICT_PATTERN = /already|in use|is taken|unavailable|reserved|used by|duplicate/i
+
+async function claimCloudflareCustomDomain(project, host) {
+  const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
+  if (!accountId) {
+    throw new Error('CLOUDFLARE_ACCOUNT_ID is empty: cannot manage Pages custom domains.')
+  }
+  const base = `/accounts/${accountId}/pages/projects/${project}/domains`
+  const listed = await cloudflareApi(base)
+  if (listed.ok && pagesDomainNames(listed.payload).includes(host)) {
+    return { status: 'attached' }
+  }
+  const added = await cloudflareApi(base, { method: 'POST', body: { name: host } })
+  if (!added.ok) {
+    const detail = (added.payload?.errors || []).map(error => error?.message).filter(Boolean).join('; ')
+    if (CF_DOMAIN_CONFLICT_PATTERN.test(detail)) {
+      logEvent({ action: 'cloudflare_domain_conflict', details: { project, domain: host } })
+      return { status: 'conflict' }
+    }
+    logEvent({
+      action: 'cloudflare_domain_attach_error',
+      details: { project, domain: host, error: detail || 'unknown Cloudflare API error' },
+    })
+    return { status: 'error', message: detail || 'unknown Cloudflare API error' }
+  }
+  const verify = await cloudflareApi(base)
+  if (verify.ok && pagesDomainNames(verify.payload).includes(host)) {
+    logEvent({ action: 'cloudflare_domain_attach', details: { project, domain: host } })
+    return { status: 'attached' }
+  }
+  return { status: 'error', message: 'added but not listed' }
+}
+
+function cloudflareProjectName() {
+  // Overlay owns the name (mirrors VERCEL_PROJECT); the generated config is
+  // the fallback so a checkout that predates CLOUDFLARE_PROJECT keeps
+  // working. Generated-file read compacted here because this is the only
+  // caller that touches disk for it (sync-cloudflare-env.mjs has its own).
+  let generatedName = ''
+  try {
+    const content = readFileSync(join(ROOT_DIR, GENERATED_WRANGLER_CONFIG), 'utf8')
+    generatedName = /^name\s*=\s*"([^"]+)"/m.exec(content)?.[1] || ''
+  } catch {
+    generatedName = ''
+  }
+  const name = resolveCloudflareProjectName(cloudflareEnv(), generatedName)
+  if (!name) {
+    throw new Error('Missing CLOUDFLARE_PROJECT in .env.cloudflare: set it to the Pages project name.')
+  }
+  return name
+}
+
+function seedWranglerToken() {
+  // Wrangler authenticates from the process env, but the operator token lives
+  // in `.env.local` (never synced anywhere): seed it so `wrangler` children
+  // see it. Shell values always win.
+  const merged = loadTargetEnv('cloudflare', ROOT_DIR)
+  for (const key of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
+    if (!process.env[key] && String(merged[key] || '').trim()) {
+      process.env[key] = String(merged[key]).trim()
+    }
+  }
+}
+
+// Regenerates the gitignored root `wrangler.toml` from the overlay
+// (idempotent, so both the auth step and env-sync can call it): `--no-sync-env`
+// runs still get a complete config for `pages deploy` (env-sync rewrites it to
+// the drifted-only set when it runs). Split shared with
+// sync-cloudflare-env.mjs so vars/secrets/local-only handling cannot drift.
+function ensureGeneratedConfig(d1 = null) {
+  const { vars } = splitCloudflareEnv(loadTargetFileEnv('cloudflare', ROOT_DIR))
+  const project = cloudflareProjectName()
+  writeFileSync(
+    join(ROOT_DIR, GENERATED_WRANGLER_CONFIG),
+    renderWranglerConfig({ project, vars: desiredPagesVars(vars), d1 }),
+  )
+  return project
+}
+
+// Auth + project assurance in a single `pages project list`: verifies the
+// token (bad auth fails the list) and creates the Pages project when
+// missing, so the env-sync child (PAGES_PROJECT_ASSURED) and the no-sync
+// project step below never list a second time. The flag doubles as the
+// success marker: when the auth step fails but an interactive caller
+// continues anyway, the project step retries the assurance.
+function ensureCloudflareProjectAssured() {
+  seedWranglerToken()
+  try {
+    ensurePagesProject(cloudflareProjectName())
+  } catch (error) {
+    throw new Error(
+      `Cloudflare Pages project check failed (${error?.message || error}). ` +
+        'Set CLOUDFLARE_API_TOKEN (+ CLOUDFLARE_ACCOUNT_ID for scoped tokens) and retry the deploy.',
+    )
+  }
+  process.env.PAGES_PROJECT_ASSURED = '1'
+}
+
+function runCloudflareBuild() {
+  console.log(`${formatCommand('npm', ['run', 'build'])} (CF_PAGES=1)`)
+  const result = spawnSync('npm', ['run', 'build'], {
+    cwd: ROOT_DIR,
+    stdio: 'inherit',
+    env: { ...process.env, CF_PAGES: '1' },
+  })
+  if ((result.status ?? 1) !== 0) {
+    throw new Error(`Cloudflare build failed (exit ${result.status ?? 1}).`)
+  }
+}
+
+function runCloudflareDeploy(branch = '') {
+  const project = cloudflareProjectName()
+  const bin = wranglerBin()
+  // No `--config`: Pages rejects custom config paths and auto-discovers the
+  // generated root `wrangler.toml`; `--project-name` selects the Pages project
+  // since the config carries no account binding. `--branch` pins the deploy to
+  // the project's production branch so a worktree checkout still ships to prod.
+  const args = ['pages', 'deploy', '.svelte-kit/cloudflare', '--project-name', project]
+  if (branch) {
+    args.push('--branch', branch)
+  }
+  const fullArgs = bin === 'npx' ? ['wrangler', ...args] : args
+  const result = spawnSync(bin, fullArgs, {
+    cwd: ROOT_DIR,
+    encoding: 'utf8',
+  })
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
+  process.stderr.write(output)
+  if ((result.status ?? 1) !== 0) {
+    throw new Error(`wrangler pages deploy failed (exit ${result.status ?? 1}).`)
+  }
+  const match = /https:\/\/[^\s"']+\.pages\.dev/.exec(output)
+  return match ? match[0] : ''
+}
+
+// D1 mode is explicit: the Cloudflare flow provisions, binds, and bootstraps
+// a D1 database only when CLOUDFLARE_D1_DATABASE names one; otherwise the
+// target runs on the existing Neon backend (same file deploys both kinds).
+function isCloudflareD1Mode() {
+  return resolveD1DatabaseName(loadTargetEnv('cloudflare', ROOT_DIR)) !== ''
+}
+
+// D1 binding name derived from the package name (`project-catalog` ->
+// `PROJECT_CATALOG_D1`), so the file carries no per-app literals. Callers in
+// D1 mode always pass it explicitly to renderWranglerConfig.
+function d1BindingName() {
+  let pkg = ''
+  try {
+    pkg = String(JSON.parse(readFileSync(join(ROOT_DIR, 'package.json'), 'utf8')).name || '')
+  } catch {
+    pkg = ''
+  }
+  const slug = pkg
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+  return `PROJECT_${slug || 'APP'}_D1`
+}
+
+// Forbidden keys outside D1 mode: Vercel credentials must never exist on the
+// Pages project, but the Neon URL is the backend there. Derived by suffix so
+// no per-app database key name lives in shared code.
+const NEON_MODE_FORBIDDEN_KEYS = new Set(
+  [...CLOUDFLARE_FORBIDDEN_KEYS].filter(key => !key.endsWith('DATABASE_URL')),
+)
+
+// Hard isolation gate: forbidden keys on the Pages project are a fatal
+// misconfiguration (in D1 mode a remote Neon URL silently wins over the D1
+// binding; anywhere, Vercel credentials re-couple the target). The env sync
+// removes them; this re-reads to prove it and aborts before build/deploy when
+// one survives. A failed read is only a warning — the sync already did its
+// best.
+async function assertCloudflareIsolation(forbidden = CLOUDFLARE_FORBIDDEN_KEYS) {
+  let envVars
+  try {
+    ;({ envVars } = await fetchPagesEnvState({
+      project: cloudflareProjectName(),
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+      token: process.env.CLOUDFLARE_API_TOKEN,
+    }))
+  } catch (error) {
+    logEvent({ action: 'cloudflare_isolation_skip', details: { error: error?.message || error, level: 'WARN' } })
+    return
+  }
+  const found = Object.keys(envVars).filter(key => forbidden.has(key))
+  if (found.length > 0) {
+    throw new Error(
+      `Cloudflare Pages still carries forbidden key(s): ${found.join(', ')}. ` +
+        'Re-run `npm run env:sync:cloudflare -- --prune` and retry.',
+    )
+  }
+}
+
+// Post-deploy safety net: `wrangler pages deploy` replaces the managed plain
+// vars with the generated `[vars]` (which the sync always writes in full), so a
+// missing key means the deploy dropped something. Re-read the remote plain vars
+// and warn on any desired key that is missing or different; never fails the
+// deploy.
+async function verifyCloudflareEnvVars() {
+  try {
+    const { vars } = splitCloudflareEnv(loadTargetFileEnv('cloudflare', ROOT_DIR))
+    const { envVars } = await fetchPagesEnvState({
+      project: cloudflareProjectName(),
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+      token: process.env.CLOUDFLARE_API_TOKEN,
+    })
+    const { missing, changed } = diffDesiredVars(desiredPagesVars(vars), envVars)
+    const drifted = [...missing, ...changed]
+    if (drifted.length > 0) {
+      console.error(
+        `-> WARNING: Cloudflare Pages does not match ${drifted.length} desired var(s) (${drifted.join(', ')}). ` +
+          'Re-run the Cloudflare deploy to re-apply the full [vars] set.',
+      )
+    }
+  } catch (error) {
+    logEvent({ action: 'cloudflare_verify_skip', details: { error: error?.message || error, level: 'WARN' } })
+  }
+}
+
+async function runCloudflareFlow(syncEnv, applySchema, heartbeat, d1Mode) {
+  const startedAt = Date.now()
+  const state = { baseUrl: '', deploymentUrl: '', productionHost: '', productionBranch: '', customClaimed: false, d1: null }
+  // Pre-flight validation stays fatal: without a base URL no step can work.
+  state.baseUrl = cloudflareBaseUrl()
+  // The auth step caches the production host (one `pages project list
+  // --json`) so the domain and deploy steps never list again.
+  await runSteps('cloudflare', [
+    {
+      name: 'auth',
+      run: async () => {
+        // Generate first: the deploy and secret writes need the config at its
+        // standard root path; this also makes --no-sync-env work on a fresh
+        // checkout.
+        ensureGeneratedConfig()
+        ensureCloudflareProjectAssured()
+        const project = cloudflareProjectName()
+        state.productionHost = getPagesProjectDomain(project)
+        if (!state.productionHost) {
+          logEvent({
+            action: 'cloudflare_production_host_unresolved',
+            details: { level: 'WARN' },
+          })
+        }
+        state.productionBranch = await cloudflareProductionBranch(project)
+        if (!state.productionBranch) {
+          logEvent({
+            action: 'cloudflare_production_branch_unresolved',
+            details: { level: 'WARN' },
+          })
+        }
+      },
+    },
+    {
+      name: 'project',
+      run: () => {
+        if (syncEnv === 'yes' || process.env.PAGES_PROJECT_ASSURED === '1') return
+        ensurePagesProject(cloudflareProjectName())
+      },
+    },
+    {
+      name: 'env-sync',
+      run: () => {
+        if (syncEnv !== 'yes') {
+          logEvent({ action: 'cloudflare_env_sync_skip' })
+          return
+        }
+        logEvent({ action: 'cloudflare_env_sync' })
+        runScript('sync-cloudflare-env.mjs')
+        state.productionHost = state.productionHost || getPagesProjectDomain(cloudflareProjectName())
+      },
+    },
+    {
+      name: 'isolation',
+      run: async () => {
+        // Runs regardless of --sync-env: a surviving forbidden key would
+        // silently re-couple the target (Neon URL over D1 in D1 mode,
+        // Vercel credentials anywhere).
+        await assertCloudflareIsolation(d1Mode ? CLOUDFLARE_FORBIDDEN_KEYS : NEON_MODE_FORBIDDEN_KEYS)
+      },
+    },
+    {
+      name: 'd1',
+      run: () => {
+        if (!d1Mode) {
+          logEvent({ action: 'cloudflare_neon_backend' })
+          return
+        }
+        const databaseName = resolveD1DatabaseName(cloudflareEnv())
+        const { status, databaseId } = ensureD1Database(databaseName)
+        state.d1 = { binding: d1BindingName(), databaseName, databaseId }
+        logEvent({ action: status === 'created' ? 'd1_database_created' : 'd1_database_ready', details: { databaseName, databaseId } })
+        // Regenerate the config with the binding: the env sync writes it without
+        // one, and `wrangler pages deploy` reads the config at deploy time.
+        ensureGeneratedConfig(state.d1)
+      },
+    },
+    {
+      name: 'schema',
+      run: () => {
+        if (d1Mode) {
+          if (applySchema !== 'yes') {
+            logEvent({ action: 'd1_schema_skip' })
+            return
+          }
+          runScript('apply-d1-schema.mjs', { ...process.env, CLOUDFLARE_D1_DATABASE: state.d1.databaseName })
+          return
+        }
+        if (applySchema === 'done') {
+          logEvent({ action: 'neon_schema_applied' })
+          return
+        }
+        if (applySchema !== 'yes') {
+          logEvent({ action: 'neon_schema_skip' })
+          return
+        }
+        logEvent({ action: 'neon_schema_apply' })
+        runScript('apply-schema.mjs', { ...process.env, PROFILE: 'prod' })
+      },
+    },
+    {
+      // Custom-domain claim before heartbeat (mirrors the Vercel domains
+      // step): when APP_BASE_URL names the auto production domain there is
+      // nothing to claim. A `*.pages.dev` that is NOT the production host is
+      // unclaimable by type (Cloudflare-owned) — fail fast, never POST, never
+      // prompt-persist. Otherwise attach the custom host; the claim is
+      // persisted to .env.cloudflare only after the API confirms it, and the
+      // heartbeat step below re-reads the files, so the scan job always
+      // targets the final URL.
+      name: 'domain',
+      run: async () => {
+        const project = cloudflareProjectName()
+        let productionHost = state.productionHost || getPagesProjectDomain(project)
+        state.productionHost = productionHost
+        let baseHost = hostOf(state.baseUrl)
+        if (!baseHost) {
+          return
+        }
+        if (!productionHost) {
+          throw new Error(
+            'Could not resolve the Pages production domain; set APP_BASE_URL in .env.cloudflare to the production hostname and retry.',
+          )
+        }
+        if (baseHost === productionHost) {
+          return
+        }
+        if (baseHost.endsWith('.pages.dev')) {
+          throw new Error(
+            `APP_BASE_URL ${state.baseUrl} is a pages.dev hostname that does not belong to Pages project ${project} ` +
+              `(production https://${productionHost}). pages.dev hostnames are Cloudflare-owned and cannot be claimed ` +
+              `as custom domains: point APP_BASE_URL at https://${productionHost} or at a custom domain you control.`,
+          )
+        }
+        for (;;) {
+          const claimed = await claimCloudflareCustomDomain(project, baseHost)
+          if (claimed.status === 'attached') {
+            state.customClaimed = true
+            return
+          }
+          if (claimed.status === 'error') {
+            throw new Error(`Failed to attach custom domain ${baseHost}: ${claimed.message}`)
+          }
+          logEvent({ action: 'cloudflare_domain_unavailable', details: { domain: baseHost, level: 'WARN' } })
+          if (!process.stdin.isTTY) {
+            throw new Error(
+              `Custom domain ${baseHost} is unavailable; set APP_BASE_URL in .env.cloudflare to an available hostname and retry.`,
+            )
+          }
+          const raw = await askBaseUrl()
+          const candidate = hostOf(raw)
+          if (!candidate || candidate === productionHost) {
+            state.baseUrl = raw
+            return
+          }
+          if (candidate.endsWith('.pages.dev')) {
+            logEvent({ action: 'cloudflare_domain_unclaimable', details: { domain: candidate, level: 'WARN' } })
+            continue
+          }
+          // Persist only after the API confirms the claim: a rejected guess
+          // must never corrupt the overlay (see the prompt-loop it caused).
+          persistEnvValue(join(ROOT_DIR, '.env.cloudflare'), '.env.cloudflare', 'APP_BASE_URL', raw)
+          state.baseUrl = raw
+          baseHost = candidate
+        }
+      },
+    },
+    {
+      name: 'heartbeat',
+      run: async () => {
+        if (heartbeat === 'skip') {
+          logEvent({ action: 'heartbeat_skip', details: { target: 'cloudflare' } })
+          return
+        }
+        await applyHeartbeat(heartbeat, undefined, 'cloudflare')
+      },
+    },
+    {
+      name: 'build',
+      run: () => {
+        runCloudflareBuild()
+      },
+    },
+    {
+      name: 'deploy',
+      run: async () => {
+        state.deploymentUrl = runCloudflareDeploy(state.productionBranch)
+        // The deploy output carries the one-off preview URL; the stable site
+        // is the production domain (the account may suffix the subdomain, so
+        // resolve it from the project instead of trusting APP_BASE_URL).
+        state.productionHost = getPagesProjectDomain(cloudflareProjectName())
+        if (state.productionHost) {
+          logEvent({ action: 'cloudflare_production_domain', details: { domain: state.productionHost } })
+          const baseHost = hostOf(state.baseUrl)
+          if (baseHost && baseHost !== state.productionHost && !state.customClaimed) {
+            logEvent({
+              action: 'cloudflare_base_url_mismatch',
+              details: { app_base_url: state.baseUrl, production_domain: state.productionHost, level: 'WARN' },
+            })
+          }
+        }
+        await verifyCloudflareEnvVars()
+      },
+    },
+  ])
+
+  const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+  const liveUrl = state.productionHost ? `https://${state.productionHost}` : state.baseUrl
+  console.log(
+    `OK Cloudflare deploy complete -> ${liveUrl} (preview ${state.deploymentUrl || 'unknown'}, app ${state.baseUrl}, ${formatElapsedTime(elapsed)})`,
+  )
+  return liveUrl
+}
+
+async function runDeployFlow(profileValue, syncEnv, applySchema, heartbeat, projectFlag) {
   let appVersion = 'unknown'
   try {
     console.log(formatCommand('git', ['-C', ROOT_DIR, 'rev-parse', 'HEAD']))
@@ -844,42 +1700,84 @@ async function runDeployFlow(profileValue, syncEnv, applySchema, projectFlag) {
   }
   const baseUrl = configuredBaseUrl()
   const startedAt = Date.now()
+  const state = { deployOutput: '' }
 
-  // Link only after every flag is validated, and before the env sync so a
-  // prompted project name is persisted to .env.vercel in time.
-  await ensureVercelLink(projectFlag)
-
-  checkVercelAuth()
-
-  console.log(`-> Profile: ${profileValue}`)
-  if (syncEnv === 'yes') {
-    console.log('-> Syncing .env.vercel to Vercel production env...')
-    runScript('sync-vercel-env.mjs')
-  } else {
-    console.log('-> Skipping Vercel env sync; the dashboard env must already carry PROFILE=prod.')
-  }
-  if (applySchema === 'yes') {
-    console.log('-> Applying sql/schema.sql to the Neon database...')
-    runScript('apply-schema.mjs', { ...process.env, PROFILE: 'prod' })
-  } else {
-    console.log('-> Skipping schema apply; sql/schema.sql must already be applied to Neon.')
-  }
-  console.log('-> Deploying to Vercel...')
-  const deployOutput = await runDeployWithRetry(appVersion)
-
-  const deploymentUrl = extractDeploymentUrl(deployOutput)
-  if (!deploymentUrl) {
-    console.error('Failed to determine the Vercel deployment URL.')
-    console.error(deployOutput)
-    process.exit(1)
-  }
-
-  await waitForReadyDeployment(deploymentUrl, extractDeploymentId(deployOutput))
-
-  syncProjectDomains()
+  await runSteps('vercel', [
+    {
+      // Link only after every flag is validated, and before the env sync so
+      // a prompted project name is persisted to .env.vercel in time.
+      name: 'link',
+      run: () => ensureVercelLink(projectFlag),
+    },
+    { name: 'auth', run: () => checkVercelAuth() },
+    {
+      name: 'env-sync',
+      run: () => {
+        logEvent({ action: 'deploy_profile', details: { profile: profileValue } })
+        if (syncEnv !== 'yes') {
+          logEvent({ action: 'vercel_env_sync_skip' })
+          return
+        }
+        logEvent({ action: 'vercel_env_sync' })
+        runScript('sync-vercel-env.mjs')
+      },
+    },
+    {
+      name: 'schema',
+      run: () => {
+        if (applySchema === 'done') {
+          logEvent({ action: 'neon_schema_applied' })
+          return
+        }
+        if (applySchema !== 'yes') {
+          logEvent({ action: 'neon_schema_skip' })
+          return
+        }
+        logEvent({ action: 'neon_schema_apply' })
+        runScript('apply-schema.mjs', { ...process.env, PROFILE: 'prod' })
+      },
+    },
+    {
+      // Domains claim before heartbeat: a conflict-corrected APP_BASE_URL is
+      // persisted to .env.vercel by the claim loop, and the heartbeat step
+      // below re-reads the files, so the scan job always targets the final URL.
+      name: 'domains',
+      run: () => syncProjectDomains(),
+    },
+    {
+      name: 'heartbeat',
+      run: async () => {
+        if (heartbeat === 'skip') {
+          logEvent({ action: 'heartbeat_skip', details: { target: 'vercel' } })
+          return
+        }
+        await applyHeartbeat(heartbeat)
+      },
+    },
+    {
+      name: 'deploy',
+      run: async () => {
+        state.deployOutput = await runDeployWithRetry(appVersion)
+        const deploymentUrl = extractDeploymentUrl(state.deployOutput)
+        if (!deploymentUrl) {
+          console.error(state.deployOutput)
+          throw new Error('Failed to determine the Vercel deployment URL.')
+        }
+        state.deploymentUrl = deploymentUrl
+        state.deploymentId = extractDeploymentId(state.deployOutput)
+      },
+    },
+    {
+      name: 'ready',
+      run: () => waitForReadyDeployment(state.deploymentUrl, state.deploymentId),
+    },
+  ])
 
   const elapsed = Math.floor((Date.now() - startedAt) / 1000)
-  console.log(`OK Vercel deploy complete -> ${baseUrl} (${formatElapsedTime(elapsed)})`)
+  // Re-read: the domains step may have corrected APP_BASE_URL after a conflict.
+  const liveUrl = configuredBaseUrl() || baseUrl
+  console.log(`OK Vercel deploy complete -> ${liveUrl} (${formatElapsedTime(elapsed)})`)
+  return liveUrl
 }
 
 main().catch(error => {

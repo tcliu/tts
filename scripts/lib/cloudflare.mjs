@@ -162,6 +162,24 @@ export const CLOUDFLARE_SECRET_KEYS = new Set([
   'ADMIN_PASSWORD_HASH',
   'SESSION_SECRET',
   'CRON_SECRET',
+  'CLOUDFLARE_SCAN_TOKEN',
+  'CLOUDFLARE_ACCOUNT_ID',
+  'VERCEL_TOKEN',
+  'VERCEL_PROJECT_CATALOG_ACCOUNTS',
+  'VERCEL_ACCOUNT_NAME',
+  'VERCEL_TEAM_ID',
+  'VERCEL_TEAM_SLUG',
+])
+
+// Keys that must never exist on the Cloudflare Pages project, whatever the
+// app: a synced Neon URL silently wins over the D1 binding, and synced Vercel
+// credentials would re-couple the Cloudflare target to Vercel. The union
+// covers every sibling's key names; names an app never sets are harmless
+// no-ops. The env sync removes them; deploy.mjs re-reads to prove it before
+// deploying.
+export const CLOUDFLARE_FORBIDDEN_KEYS = new Set([
+  'PROJECT_CATALOG_DATABASE_URL',
+  'DATABASE_URL',
   'VERCEL_TOKEN',
   'VERCEL_PROJECT_CATALOG_ACCOUNTS',
   'VERCEL_ACCOUNT_NAME',
@@ -171,12 +189,16 @@ export const CLOUDFLARE_SECRET_KEYS = new Set([
 
 export const CLOUDFLARE_LOCAL_ONLY_KEYS = LOCAL_ONLY_ENV_KEYS
 
-export function splitCloudflareEnv(raw = {}) {
+export function splitCloudflareEnv(raw = {}, { forbidden = CLOUDFLARE_FORBIDDEN_KEYS } = {}) {
   const project = String(raw?.CLOUDFLARE_PROJECT || '').trim()
   const vars = {}
   const secrets = {}
   for (const [key, value] of Object.entries(raw)) {
-    if (!value || CLOUDFLARE_LOCAL_ONLY_KEYS.has(key)) continue
+    // Forbidden keys are neither vars nor secrets: a Neon URL or Vercel
+    // credential left in the overlay must never be written to the project.
+    // The set is injectable so Neon-backed apps (no D1) can forbid only
+    // Vercel credentials; the default is the full isolation set.
+    if (!value || CLOUDFLARE_LOCAL_ONLY_KEYS.has(key) || forbidden.has(key)) continue
     if (CLOUDFLARE_SECRET_KEYS.has(key)) {
       secrets[key] = value
     } else {
@@ -204,10 +226,76 @@ export function desiredPagesVars(vars = {}) {
 // already be excluded by the caller, and the forced build vars come from
 // desiredPagesVars. Pure (string in, string out) so tests assert it without
 // disk.
-export function renderWranglerConfig({ project, vars = {} }) {
+export function renderWranglerConfig({ project, vars = {}, d1 = null }) {
   const lines = [`name = ${JSON.stringify(project)}`, ...WRANGLER_STATIC_STANZA, '[vars]']
   for (const [key, value] of Object.entries(vars)) {
     lines.push(`${key} = ${JSON.stringify(String(value))}`)
   }
+  if (d1) {
+    // The binding name is per-app (callers pass it explicitly); no default
+    // lives in shared code. Fail closed on a partial descriptor rather than
+    // rendering `binding = undefined` into a config wrangler would push.
+    for (const key of ['binding', 'databaseName', 'databaseId']) {
+      if (!d1[key]) {
+        throw new Error(`renderWranglerConfig: d1.${key} is required.`)
+      }
+    }
+    lines.push(
+      '',
+      '[[d1_databases]]',
+      `binding = ${JSON.stringify(d1.binding)}`,
+      `database_name = ${JSON.stringify(d1.databaseName)}`,
+      `database_id = ${JSON.stringify(d1.databaseId)}`,
+    )
+  }
   return `${lines.join('\n')}\n`
+}
+
+// D1 database name for the target overlay: CLOUDFLARE_D1_DATABASE, or '' when
+// unset (callers fail loudly or apply their own default; shared code owns no
+// per-app database name).
+export function resolveD1DatabaseName(merged = {}) {
+  return String(merged?.CLOUDFLARE_D1_DATABASE || '').trim()
+}
+
+function parseD1Databases(output) {
+  try {
+    const parsed = JSON.parse(String(output || ''))
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+// D1 database id from `wrangler d1 list --json`; '' when absent. Field names
+// vary across wrangler versions (uuid vs database_id), so accept both.
+export function findD1DatabaseId(listOutput, name) {
+  const entry = parseD1Databases(listOutput).find(db => String(db?.name || '').trim() === name)
+  return entry ? String(entry.uuid || entry.database_id || '').trim() : ''
+}
+
+// Idempotent D1 provisioning: list, create when missing, re-list for the id
+// (wrangler's create output is not machine-readable). Mirrors
+// `ensurePagesProject`; the runner is injectable so tests stub wrangler.
+export function ensureD1Database(name, runner = defaultWranglerRunner, cwd = process.cwd()) {
+  const list = () => runner(['d1', 'list', '--json'], { cwd, capture: true })
+  const listed = list()
+  if (listed.status !== 0) {
+    throw new Error(`wrangler d1 list failed (exit ${listed.status}).`)
+  }
+  const existing = findD1DatabaseId(listed.output, name)
+  if (existing) {
+    return { status: 'exists', databaseId: existing }
+  }
+  console.log(`-> Creating Cloudflare D1 database ${name}...`)
+  const created = runner(['d1', 'create', name], { cwd })
+  if (created.status !== 0) {
+    throw new Error(`Failed to create D1 database ${name} (exit ${created.status}). Create it in the dashboard and retry.`)
+  }
+  const relisted = list()
+  const createdId = findD1DatabaseId(relisted.output, name)
+  if (!createdId) {
+    throw new Error(`Created D1 database ${name} but could not resolve its id; run \`wrangler d1 list\` and retry.`)
+  }
+  return { status: 'created', databaseId: createdId }
 }

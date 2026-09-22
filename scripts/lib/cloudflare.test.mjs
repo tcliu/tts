@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest'
 import {
   desiredPagesVars,
   detectProductionBranch,
+  ensureD1Database,
   ensurePagesProject,
+  findD1DatabaseId,
   getPagesProjectDomain,
   renderWranglerConfig,
   resolveCloudflareProjectName,
+  resolveD1DatabaseName,
   splitCloudflareEnv,
 } from './cloudflare.mjs'
 
@@ -154,7 +157,7 @@ describe('desiredPagesVars', () => {
 })
 
 describe('splitCloudflareEnv', () => {
-  it('splits vars, secrets, and local-only keys; drops empties', () => {
+  it('splits vars, secrets, and local-only keys; drops empties and forbidden keys', () => {
     expect(
       splitCloudflareEnv({
         CLOUDFLARE_PROJECT: 'codepg-projects',
@@ -162,17 +165,107 @@ describe('splitCloudflareEnv', () => {
         ADMIN_USERNAME: 'admin',
         EMPTY: '',
         DATABASE_URL: 'postgres://x',
+        VERCEL_TOKEN: 'v',
         CRON_SECRET: 's',
+        CLOUDFLARE_SCAN_TOKEN: 't',
       }),
     ).toEqual({
       project: 'codepg-projects',
       vars: { ADMIN_USERNAME: 'admin' },
-      secrets: { DATABASE_URL: 'postgres://x', CRON_SECRET: 's' },
+      secrets: { CRON_SECRET: 's', CLOUDFLARE_SCAN_TOKEN: 't' },
     })
   })
 
   it('returns an empty project when the overlay key is missing', () => {
     expect(splitCloudflareEnv({ ADMIN_USERNAME: 'admin' }).project).toBe('')
+  })
+
+  it('accepts a narrower forbidden set for Neon-backed apps', () => {
+    const vercelOnly = new Set(['VERCEL_TOKEN'])
+    expect(
+      splitCloudflareEnv({ DATABASE_URL: 'postgres://x', VERCEL_TOKEN: 'v' }, { forbidden: vercelOnly }),
+    ).toEqual({ project: '', vars: {}, secrets: { DATABASE_URL: 'postgres://x' } })
+  })
+})
+
+describe('renderWranglerConfig with D1', () => {
+  it('appends a D1 binding when provided', () => {
+    const config = renderWranglerConfig({
+      project: 'my-app',
+      vars: { PROFILE: 'prod' },
+      d1: { binding: 'MY_APP_D1', databaseName: 'my-app-d1', databaseId: 'abc-123' },
+    })
+    expect(config).toContain('[vars]')
+    expect(config).toContain('[[d1_databases]]')
+    expect(config).toContain('binding = "MY_APP_D1"')
+    expect(config).toContain('database_name = "my-app-d1"')
+    expect(config).toContain('database_id = "abc-123"')
+  })
+
+  it('omits the D1 block without a database', () => {
+    expect(renderWranglerConfig({ project: 'x', vars: {} })).not.toContain('d1_databases')
+  })
+
+  it('fails closed on a partial D1 descriptor', () => {
+    expect(() => renderWranglerConfig({ project: 'x', vars: {}, d1: { databaseName: 'd', databaseId: 'i' } }))
+      .toThrow('d1.binding is required')
+    expect(() => renderWranglerConfig({ project: 'x', vars: {}, d1: { binding: 'B' } }))
+      .toThrow('d1.databaseName is required')
+  })
+})
+
+describe('resolveD1DatabaseName', () => {
+  it('prefers the overlay value and returns empty when unset', () => {
+    expect(resolveD1DatabaseName({ CLOUDFLARE_D1_DATABASE: 'custom-d1' })).toBe('custom-d1')
+    expect(resolveD1DatabaseName({})).toBe('')
+  })
+})
+
+describe('findD1DatabaseId', () => {
+  const d1List = JSON.stringify([
+    { uuid: 'id-1', name: 'my-app-d1' },
+    { database_id: 'id-2', name: 'other-d1' },
+  ])
+
+  it('accepts uuid and database_id fields', () => {
+    expect(findD1DatabaseId(d1List, 'my-app-d1')).toBe('id-1')
+    expect(findD1DatabaseId(d1List, 'other-d1')).toBe('id-2')
+    expect(findD1DatabaseId(d1List, 'missing-d1')).toBe('')
+    expect(findD1DatabaseId('not json', 'my-app-d1')).toBe('')
+  })
+})
+
+describe('ensureD1Database', () => {
+  const d1List = JSON.stringify([{ uuid: 'id-1', name: 'my-app-d1' }])
+
+  it('returns the existing id without creating', () => {
+    const calls = []
+    const runner = args => {
+      calls.push(args.join(' '))
+      return { status: 0, output: d1List }
+    }
+    expect(ensureD1Database('my-app-d1', runner)).toEqual({ status: 'exists', databaseId: 'id-1' })
+    expect(calls).toEqual(['d1 list --json'])
+  })
+
+  it('creates and re-lists when missing', () => {
+    const calls = []
+    let listed = 0
+    const runner = args => {
+      calls.push(args.join(' '))
+      if (args.includes('create')) {
+        return { status: 0, output: '' }
+      }
+      listed += 1
+      return { status: 0, output: listed === 1 ? '[]' : d1List }
+    }
+    expect(ensureD1Database('my-app-d1', runner)).toEqual({ status: 'created', databaseId: 'id-1' })
+    expect(calls).toEqual(['d1 list --json', 'd1 create my-app-d1', 'd1 list --json'])
+  })
+
+  it('throws when listing fails', () => {
+    const runner = () => ({ status: 1, output: '' })
+    expect(() => ensureD1Database('my-app-d1', runner)).toThrow('d1 list failed')
   })
 })
 

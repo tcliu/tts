@@ -16,8 +16,12 @@
 //               already present. Cloudflare never returns secret values, so an
 //               updated value is undetectable; the default `always` re-puts
 //               every secret so rotations always land.
-//   * `--prune` removes remote keys absent from the .env files (plain vars and
-//               secrets alike), mirroring `sync-vercel-env.mjs --prune`.
+//   * `--prune` removes remote secrets absent from the .env files,
+//               mirroring `sync-vercel-env.mjs --prune`.
+//   * forbidden keys (Vercel creds here — NEON_BACKEND_FORBIDDEN_KEYS below;
+//               the canonical set also covers the Neon URL for D1-backed apps)
+//               are always removed: a surviving Vercel credential would
+//               re-couple this target to Vercel.
 // `--dry-run` reports the plan without writing. Empty local values are skipped
 // (the remote value survives); local-only keys are never synced.
 import { spawn } from 'node:child_process'
@@ -25,6 +29,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseEnvFile } from './env-file.mjs'
+import { logEvent } from './log-event.mjs'
 import {
   CLOUDFLARE_LOCAL_ONLY_KEYS,
   desiredPagesVars,
@@ -53,6 +58,16 @@ const SOURCE_FILES = ['.env.prod', '.env.cloudflare']
 const GENERATED_FILE = join(ROOT_DIR, GENERATED_WRANGLER_CONFIG)
 const SECRET_CONCURRENCY = 4
 const SECRET_MODES = ['always', 'missing']
+// tts serves Cloudflare from Neon (no D1 backend), so DATABASE_URL must
+// sync: only Vercel credentials are forbidden here. (Divergence from the
+// canonical sync: documented parity exception for the Neon backend.)
+const NEON_BACKEND_FORBIDDEN_KEYS = new Set([
+  'VERCEL_TOKEN',
+  'VERCEL_PROJECT_CATALOG_ACCOUNTS',
+  'VERCEL_ACCOUNT_NAME',
+  'VERCEL_TEAM_ID',
+  'VERCEL_TEAM_SLUG',
+])
 
 function fail(message) {
   console.error(message)
@@ -140,7 +155,8 @@ async function main() {
   }
   // Split shared with deploy.mjs (splitCloudflareEnv): local-only keys log as
   // skipped, empty values keep the remote value, secrets go to the store.
-  const { project: overlayProject, vars, secrets } = splitCloudflareEnv(raw)
+  // NEON_BACKEND_FORBIDDEN_KEYS above: DATABASE_URL must sync on this app.
+  const { project: overlayProject, vars, secrets } = splitCloudflareEnv(raw, { forbidden: NEON_BACKEND_FORBIDDEN_KEYS })
   for (const key of Object.keys(raw)) {
     if (CLOUDFLARE_LOCAL_ONLY_KEYS.has(key)) {
       console.log(`skipped ${key} (local-only; never synced)`)
@@ -172,7 +188,10 @@ async function main() {
     if (secretsMode === 'missing') {
       fail(`Cannot use --secrets=missing without remote env vars: ${error?.message || error}`)
     }
-    console.error(`-> Could not read remote Pages env vars (${error?.message || error}); syncing all vars.`)
+    logEvent({
+      action: 'cloudflare_env_read_fallback',
+      details: { error: error?.message || error, level: 'WARN' },
+    })
   }
 
   const varDiff = remote
@@ -183,11 +202,17 @@ async function main() {
     : { missing: Object.keys(secrets), present: [] }
   if (remote) {
     const drifted = varDiff.drift
-    console.log(
-      `-> vars: ${varDiff.missing.length} missing, ${varDiff.changed.length} changed, ${varDiff.unchanged.length} unchanged` +
-        (drifted.length > 0 ? ` (${drifted.join(', ')})` : ''),
-    )
-    console.log(`-> secrets: ${secretDiff.missing.length} missing, ${secretDiff.present.length} present`)
+    logEvent({
+      action: 'cloudflare_env_drift',
+      details: {
+        vars_missing: varDiff.missing.length,
+        vars_changed: varDiff.changed.length,
+        vars_unchanged: varDiff.unchanged.length,
+        drifted,
+        secrets_missing: secretDiff.missing.length,
+        secrets_present: secretDiff.present.length,
+      },
+    })
   }
 
   // Always write the full desired set: the deploy replaces the managed plain
@@ -238,31 +263,46 @@ async function main() {
     )
   }
 
-  // Prune: remote secrets no longer in the .env universe. The deploy already
-  // reconciles plain vars to `[vars]` (replace semantics), so only secrets need
-  // an explicit delete. Opt-in, like the Vercel sync.
-  const orphans = remote
-    ? findOrphanKeys(remote.envVars, desiredKeys).filter(key => remote.envVars[key]?.type !== 'plain_text')
-    : []
-  if (orphans.length > 0) {
-    if (!prune) {
-      console.log(
-        `Skipped ${orphans.length} unmanaged secret(s) (${orphans.join(', ')}). Re-run with --prune to remove them.`,
+  // Forbidden keys (Vercel creds here; DATABASE_URL must sync on this Neon
+  // backend) must never exist on the Pages project. Remove them
+  // unconditionally, unlike the opt-in --prune below.
+  const forbidden = remote ? Object.keys(remote.envVars).filter(key => NEON_BACKEND_FORBIDDEN_KEYS.has(key)) : []
+  // Prune: remote secrets no longer in the .env universe (opt-in, like the
+  // Vercel sync). Forbidden keys are excluded here — they are always removed.
+  const unmanaged = remote
+    ? findOrphanKeys(remote.envVars, desiredKeys).filter(
+        key => remote.envVars[key]?.type !== 'plain_text' && !NEON_BACKEND_FORBIDDEN_KEYS.has(key),
       )
-    } else if (dryRun) {
-      for (const key of orphans) {
-        console.log(`would prune secret ${key}`)
-      }
-    } else {
+    : []
+  if (forbidden.length > 0) {
+    console.log(
+      `${dryRun ? 'Would remove' : 'Removing'} ${forbidden.length} forbidden key(s) from the Pages project (${forbidden.join(', ')}).`,
+    )
+  }
+  if (unmanaged.length > 0 && !prune) {
+    console.log(
+      `Skipped ${unmanaged.length} unmanaged secret(s) (${unmanaged.join(', ')}). Re-run with --prune to remove them.`,
+    )
+  }
+  // One PATCH carries both deletions so the config hash is read once and the
+  // forbidden-key removal cannot race the prune's stale hash.
+  const toDelete = [...new Set([...forbidden, ...(prune ? unmanaged : [])])]
+  if (toDelete.length > 0) {
+    if (!dryRun) {
       await patchPagesEnvVars({
         project,
-        envVars: Object.fromEntries(orphans.map(key => [key, null])),
+        envVars: Object.fromEntries(toDelete.map(key => [key, null])),
         configHash: remote.configHash,
         accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
         token: process.env.CLOUDFLARE_API_TOKEN,
       })
-      for (const key of orphans) {
-        console.log(`pruned secret ${key}`)
+    }
+    for (const key of forbidden) {
+      console.log(dryRun ? `would remove forbidden key ${key}` : `removed forbidden key ${key}`)
+    }
+    for (const key of unmanaged) {
+      if (prune) {
+        console.log(dryRun ? `would prune secret ${key}` : `pruned secret ${key}`)
       }
     }
   }

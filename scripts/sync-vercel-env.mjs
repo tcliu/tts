@@ -17,6 +17,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LOCAL_ONLY_ENV_KEYS, parseEnvFile } from './env-file.mjs'
+import { logEvent } from './log-event.mjs'
 import { formatCommand } from './_terminal.mjs'
 import { runWithConcurrency } from './lib/concurrency.mjs'
 import { loadTargetFileEnv } from './lib/target-env.mjs'
@@ -129,7 +130,10 @@ async function main() {
   try {
     remote = await pullVercelEnv()
   } catch (error) {
-    console.error(`-> env pull failed (${error?.message || error}); syncing all keys instead.`)
+    logEvent({
+      action: 'vercel_env_pull_fallback',
+      details: { error: error?.message || error, level: 'WARN' },
+    })
   }
 
   const pending = []

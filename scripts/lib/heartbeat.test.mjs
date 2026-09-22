@@ -1,6 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
 
-import { applyHeartbeat, confirmScanJobOverwrite } from './heartbeat.mjs'
+import {
+  applyHeartbeat,
+  confirmScanJobOverwrite,
+  disableCronJobHeartbeat,
+  isHeartbeatConfigurable,
+  isHeartbeatSupported,
+  syncCronJobHeartbeat,
+} from './heartbeat.mjs'
 
 function stubSteps() {
   const calls = []
@@ -44,5 +54,54 @@ describe('confirmScanJobOverwrite', () => {
   it('keeps the overwrite without prompting when non-interactive', async () => {
     // vitest has no TTY, so this resolves true without reading stdin.
     await expect(confirmScanJobOverwrite({ existing: { jobId: 7 }, diff: ['enabled'] })).resolves.toBe(true)
+  })
+})
+
+function fixtureRoot({ withEndpoint = false } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'heartbeat-'))
+  if (withEndpoint) {
+    const endpointDir = join(dir, 'src', 'routes', 'api', 'cron', 'scan')
+    mkdirSync(endpointDir, { recursive: true })
+    writeFileSync(join(endpointDir, '+server.ts'), 'export function GET() {}')
+  }
+  return dir
+}
+
+describe('isHeartbeatSupported', () => {
+  it('detects the cron endpoint', () => {
+    expect(isHeartbeatSupported(fixtureRoot({ withEndpoint: true }))).toBe(true)
+    expect(isHeartbeatSupported(fixtureRoot())).toBe(false)
+  })
+})
+
+describe('isHeartbeatConfigurable', () => {
+  it('needs the operator API key', () => {
+    // Injected values keep the test hermetic (the no-arg path reads the real
+    // env: shell, .env.local).
+    expect(isHeartbeatConfigurable({ apiKey: 'key' })).toBe(true)
+    expect(isHeartbeatConfigurable({ apiKey: '  ' })).toBe(false)
+    expect(isHeartbeatConfigurable({ apiKey: '' })).toBe(false)
+  })
+})
+
+describe('heartbeat skip without endpoint', () => {
+  it('sync skips without touching secrets or network', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await expect(syncCronJobHeartbeat('vercel', { root: fixtureRoot() })).resolves.toBeUndefined()
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('action=heartbeat_unsupported_skip'))
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('disable skips without touching secrets or network', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await expect(disableCronJobHeartbeat('vercel', { root: fixtureRoot() })).resolves.toBeUndefined()
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('action=heartbeat_unsupported_skip'))
+    } finally {
+      log.mockRestore()
+    }
   })
 })
