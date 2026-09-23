@@ -30,24 +30,33 @@ export interface I18nStore<TKey extends string = string, TLocale extends string 
 
 export const I18N_CONTEXT_KEY = 'i18n'
 
+function readInitialLocale<TKey extends string, TLocale extends string>(
+  dictionaries: Record<TLocale, Record<TKey, string>>,
+  defaultLocale: TLocale,
+  storageKey: string | null,
+): TLocale {
+  if (!browser) return defaultLocale
+  try {
+    const saved = storageKey ? localStorage.getItem(storageKey) : null
+    if (saved !== null && Object.prototype.hasOwnProperty.call(dictionaries, saved)) {
+      return saved as TLocale
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return defaultLocale
+}
+
 export function createI18nStore<TKey extends string, TLocale extends string>(
   dictionaries: Record<TLocale, Record<TKey, string>>,
   defaultLocale: TLocale,
   storageKey: string | null,
 ): I18nStore<TKey, TLocale> {
-  let current = $state<TLocale>(defaultLocale)
+  const initialLocale = readInitialLocale(dictionaries, defaultLocale, storageKey)
+  let current = $state<TLocale>(initialLocale)
 
   if (browser) {
-    try {
-      const saved = storageKey ? localStorage.getItem(storageKey) : null
-      if (saved !== null && Object.prototype.hasOwnProperty.call(dictionaries, saved)) {
-        current = saved as TLocale
-      }
-    } catch {
-      // ignore storage errors
-    }
-    // svelte-ignore state_referenced_locally -- intentional one-time read of the initial locale
-    document.documentElement.lang = current
+    document.documentElement.lang = initialLocale
   }
 
   return {
