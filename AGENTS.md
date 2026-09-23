@@ -111,10 +111,15 @@ Project-specific development conventions for the TTS web app.
 - All user-facing strings go through the context i18n store (`src/lib/i18n.svelte.ts`):
   components call `getI18nContext()` once and render `i18n.t('dotted.key')`;
   plain `.ts` helpers receive the store explicitly instead of calling
-  `getContext`. Add each new string to every locale (`en`, `zh-TW`, `zh-CN`).
+  `getContext`. Locale dictionaries are nested `as const` trees grouped by
+  feature (`src/lib/locales/{en,zh-CN,zh-TW}.ts`): `en` defines the key set
+  (`MessageKey` is its recursive dotted-path union) and every other locale is
+  typed `LocaleMessages<typeof en>`, so a missing key fails the build. Add each
+  new string to every locale (`en`, `zh-TW`, `zh-CN`).
   Keys are namespaced by area (`auth.signIn.failed`, `cache.clearAll`,
   `table.text`); `admin.*` stays flat because the server resolves those keys
-  dynamically. Surface server failures as stable wire codes mapped to
+  dynamically. The store factory/type are the generic `createAppI18n()`/`I18nStore`.
+  Surface server failures as stable wire codes mapped to
   localized strings; never surface raw English literals or technical detail
   as user-facing errors. Locale persistence stays in the `tts:web-settings`
   blob owned by `use-settings` (`settings.locale` delegates to the store).

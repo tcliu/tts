@@ -1,4 +1,4 @@
-import { createTtsI18n } from '$lib/i18n.svelte'
+import { createAppI18n } from '$lib/i18n.svelte'
 import { useSettings, type SettingsHandle } from '$lib/use-settings.svelte'
 
 export function createSettingsHost(): { settings: SettingsHandle; dispose: () => void } {
@@ -6,7 +6,7 @@ export function createSettingsHost(): { settings: SettingsHandle; dispose: () =>
   // where getContext is unavailable, so inject the store explicitly instead
   // of resolving the layout's context. Each test hydrates and mutates its own
   // locale with no cross-test leakage.
-  const i18n = createTtsI18n()
+  const i18n = createAppI18n()
   let handle: SettingsHandle | null = null
   const dispose = $effect.root(() => {
     handle = useSettings(i18n)

@@ -6,7 +6,7 @@ import {
   updateAdminProperties,
   type AdminProperty,
 } from '$lib/admin-client'
-import type { MessageKey, TtsI18n } from '$lib/i18n.svelte'
+import type { MessageKey, I18nStore } from '$lib/i18n.svelte'
 
 export function useAdminProperties(onSignedOut: () => void) {
   let properties = $state<AdminProperty[]>([])
@@ -33,7 +33,7 @@ export function useAdminProperties(onSignedOut: () => void) {
   function validateDraft(
     property: AdminProperty,
     raw: string,
-    i18n: TtsI18n,
+    i18n: I18nStore,
   ): { ok: true; value: number } | { ok: false; error: string } {
     // Label keys arrive as wire data; fall back to the property key when the
     // server sends a key with no dictionary entry (t returns the key itself).
@@ -69,7 +69,7 @@ export function useAdminProperties(onSignedOut: () => void) {
     }
   }
 
-  function apply(i18n: TtsI18n): string | null {
+  function apply(i18n: I18nStore): string | null {
     if (pending) return null
     const changed = properties.filter(
       property => hasDraftValue(property.key) && draftValues[property.key] !== String(property.value),

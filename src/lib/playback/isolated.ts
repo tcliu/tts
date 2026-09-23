@@ -1,5 +1,5 @@
 import { segmentLanguageName } from '../ui-text'
-import type { TtsI18n } from '../i18n.svelte'
+import type { I18nStore } from '../i18n.svelte'
 import { splitHighlightRanges } from '../tts-reference'
 import { trimWhitespaceRange, highlightBoundaries, activeBoundaryAt } from './boundaries'
 import { activeHighlightRange } from '../tts-reference'
@@ -33,7 +33,7 @@ export interface IsolatedContext {
   get sessionOffset(): number
   get effectiveSpeed(): number
   get cacheScopeId(): string
-  i18n: TtsI18n
+  i18n: I18nStore
   get sessionSegmentsLength(): number
 }
 

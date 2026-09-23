@@ -3,7 +3,7 @@ import { splitTtsSegments } from '../tts-reference'
 import { getCachedSynthesis, peekCachedSynthesis } from '../tts-client'
 import { CANONICAL_SYNTHESIS_RATE, canonicalRate } from '../tts-cache-key'
 import { segmentLanguageName } from '../ui-text'
-import type { TtsI18n } from '../i18n.svelte'
+import type { I18nStore } from '../i18n.svelte'
 import { hasNonEmptySelection, trimmedContentRange, type ReusableScopedSegment } from './selection-scope'
 import { buildSegmentMeta } from './segment-meta'
 import { LocalizedPlaybackError, type PlaybackController, type SegmentMeta } from './types'
@@ -15,7 +15,7 @@ import { readAudioDuration } from './audio-helpers'
  */
 export interface ContentDeps {
   getContent: () => string
-  i18n: TtsI18n
+  i18n: I18nStore
   getCacheScopeId: () => string
   getEffectiveSpeed: () => number
 }

@@ -1,4 +1,4 @@
-import type { TtsI18n } from './i18n.svelte'
+import type { I18nStore } from './i18n.svelte'
 
 export class AdminAuthError extends Error {
   constructor(message = 'Admin session expired') {
@@ -22,7 +22,7 @@ export function adminErrorCode(error: unknown): string {
   return 'request_failed'
 }
 
-export function adminErrorMessage(code: string, i18n: TtsI18n): string {
+export function adminErrorMessage(code: string, i18n: I18nStore): string {
   switch (code) {
     case 'rate_limited':
       return i18n.t('admin.errorRateLimited')

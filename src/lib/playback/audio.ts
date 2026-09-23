@@ -1,9 +1,9 @@
-import type { TtsI18n } from '../i18n.svelte'
+import type { I18nStore } from '../i18n.svelte'
 
 import type { PlaybackController } from './types'
 
 interface AudioPlaybackDeps {
-  i18n: TtsI18n
+  i18n: I18nStore
   getCurrentAudio: () => HTMLAudioElement | null
   setCurrentAudio: (audio: HTMLAudioElement | null) => void
   getCurrentAudioUrl: () => string

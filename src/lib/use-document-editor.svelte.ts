@@ -1,6 +1,6 @@
 import type { SettingsHandle } from './use-settings.svelte'
 import type { DocumentsHandle } from './use-documents.svelte'
-import type { TtsI18n } from './i18n.svelte'
+import type { I18nStore } from './i18n.svelte'
 import { readTextFile } from './upload-text'
 import { browser } from '$app/environment'
 import {
@@ -19,7 +19,7 @@ const UPLOAD_NOTICE_MS = 4000
 interface DocumentEditorDeps {
   settings: SettingsHandle
   documents: DocumentsHandle
-  i18n: TtsI18n
+  i18n: I18nStore
   resetPlaybackSession: () => void
   closeDrawer: () => void
   focusEditor: () => void

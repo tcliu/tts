@@ -1,6 +1,6 @@
 import { SPEEDS } from '../tts-reference'
 import { toWrittenLang } from '../tts-reference'
-import type { TtsI18n } from '../i18n.svelte'
+import type { I18nStore } from '../i18n.svelte'
 import { getCachedSynthesis } from '../tts-client'
 import { readAudioDuration } from './audio-helpers'
 import { buildSegmentMeta } from '../playback/segment-meta'
@@ -73,7 +73,7 @@ export interface VoiceSwitchDeps {
   playback: VoiceSwitchPlayback
   voice: VoiceResolvers
   ops: VoiceSwitchOps
-  i18n: TtsI18n
+  i18n: I18nStore
   defaultSpeed: number
 }
 

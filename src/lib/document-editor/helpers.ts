@@ -1,4 +1,4 @@
-import type { TtsI18n } from '../i18n.svelte'
+import type { I18nStore } from '../i18n.svelte'
 import type { DocumentsHandle } from '../use-documents.svelte'
 
 export type DiscardKind = 'new' | 'open' | 'delete' | 'clone' | 'upload'
@@ -18,7 +18,7 @@ export function createDraftCacheId(): string {
   return `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-export function nextAvailableDraftName(documents: DocumentsHandle, i18n: TtsI18n): string {
+export function nextAvailableDraftName(documents: DocumentsHandle, i18n: I18nStore): string {
   const baseName = i18n.t('documents.namePlaceholder')
   const existingNames = new Set(documents.documents.map(document => document.name))
   let fallbackName = baseName

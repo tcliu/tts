@@ -19,7 +19,7 @@ import {
   type SegmentMeta,
 } from './use-playback.svelte'
 import type { SettingsHandle } from './use-settings.svelte'
-import { createTtsI18n } from './i18n.svelte'
+import { createAppI18n } from './i18n.svelte'
 import { splitHighlightRanges, splitTtsSegments, type TtsBoundary, type TtsSegment } from './tts-reference'
 import { createPlaybackHost } from '../test/create-playback.svelte'
 import { getCachedSynthesis, peekCachedSynthesis } from './tts-client'
@@ -91,7 +91,7 @@ function createSettings(content: string): SettingsHandle {
 
 function createDeps(content = 'Hello world. Second segment here.', editor?: CodeEditorHandle): PlaybackDeps {
   return {
-    i18n: createTtsI18n(),
+    i18n: createAppI18n(),
     settings: createSettings(content),
     getEditor: editor ? () => editor : createEditor,
     getCacheScopeId: () => 'doc-a',
@@ -1431,7 +1431,7 @@ describe('usePlayback segment language override', () => {
     const selectVoice = vi.fn()
     const content = 'First paragraph here.\n\nSecond paragraph here.'
     const deps: PlaybackDeps = {
-      i18n: createTtsI18n(),
+      i18n: createAppI18n(),
       settings: {
         locale: 'en',
         speed: 1,
@@ -1489,7 +1489,7 @@ describe('usePlayback segment language override', () => {
       return { edge: 'en-US-AriaNeural', name: 'Aria', gender: 'Female' }
     })
     const deps: PlaybackDeps = {
-      i18n: createTtsI18n(),
+      i18n: createAppI18n(),
       settings: {
         locale: 'en',
         speed: 1,
@@ -1613,7 +1613,7 @@ describe('usePlayback voice override during playback', () => {
 
   function createSpyDeps(content = 'First paragraph here.\n\nSecond paragraph here.') {
     const deps: PlaybackDeps = {
-      i18n: createTtsI18n(),
+      i18n: createAppI18n(),
       settings: {
         locale: 'en',
         speed: 1,

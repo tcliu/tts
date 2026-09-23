@@ -1,5 +1,5 @@
 import { REFERENCE_LANGUAGES, SPEEDS, defaultGroupByLanguage, defaultVoiceByLanguage, SPOKEN_GROUP, toWrittenLang, voiceForSelection } from './tts-reference'
-import { getI18nContext, type Locale, type TtsI18n } from './i18n.svelte'
+import { getI18nContext, type Locale, type I18nStore } from './i18n.svelte'
 
 const STORAGE_KEY = 'tts:web-settings'
 const SAVE_DEBOUNCE_MS = 300
@@ -27,7 +27,7 @@ export interface SettingsHandle {
   hydrate: () => () => void
 }
 
-export function useSettings(provided?: TtsI18n): SettingsHandle {
+export function useSettings(provided?: I18nStore): SettingsHandle {
   const i18n = provided ?? getI18nContext()
   let storageReady = $state(false)
   let saveTimer: ReturnType<typeof setTimeout> | null = null

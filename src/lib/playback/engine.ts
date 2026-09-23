@@ -2,7 +2,7 @@ import { activeHighlightRange } from '../tts-reference'
 import { splitHighlightRanges, type TtsSegment } from '../tts/segment'
 import { CANONICAL_SYNTHESIS_RATE } from '../tts-cache-key'
 import { segmentLanguageName } from '../ui-text'
-import type { TtsI18n } from '../i18n.svelte'
+import type { I18nStore } from '../i18n.svelte'
 import { getCachedSynthesis } from '../tts-client'
 import { buildSegmentMeta } from './segment-meta'
 import { LocalizedPlaybackError } from './types'
@@ -93,7 +93,7 @@ export interface PlaybackEngineDeps {
   highlight: HighlightDeps
   lifecycle: PlaybackLifecycle
   settings: {
-    i18n: TtsI18n
+    i18n: I18nStore
     synthesisConcurrency: number
   }
   getCacheScopeId: () => string

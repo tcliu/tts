@@ -16,7 +16,7 @@ import {
   peekCachedSynthesis,
 } from './tts-client'
 import { CANONICAL_SYNTHESIS_RATE, canonicalRate } from './tts-cache-key'
-import type { TtsI18n } from './i18n.svelte'
+import type { I18nStore } from './i18n.svelte'
 import {
   hasNonEmptySelection,
   trimmedContentRange,
@@ -135,7 +135,7 @@ export interface PlaybackHandle {
 
 export interface PlaybackDeps {
   settings: SettingsHandle
-  i18n: TtsI18n
+  i18n: I18nStore
   getEditor: () => CodeEditorHandle | null
   getCacheScopeId: () => string
   prepareForPlayback: () => void
