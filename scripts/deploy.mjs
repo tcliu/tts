@@ -36,6 +36,7 @@ import {
   ensureD1Database,
   ensurePagesProject,
   GENERATED_WRANGLER_CONFIG,
+  generatedWranglerProjectName,
   getPagesProjectDomain,
   renderWranglerConfig,
   resolveCloudflareProjectName,
@@ -620,7 +621,7 @@ function readManagedDomainState() {
     const state = JSON.parse(readFileSync(DOMAIN_STATE_FILE, 'utf8'))
     return String(state.managedDomain || '').trim()
   } catch (error) {
-    console.error('Failed to read managed domain state:', error?.message || error)
+    logEvent({ action: 'vercel_domain_state_error', details: { error: error?.message || error, level: 'WARN' } })
     return ''
   }
 }
@@ -1240,17 +1241,9 @@ async function cloudflareProductionBranch(project) {
 
 function cloudflareProjectName() {
   // Overlay owns the name (mirrors VERCEL_PROJECT); the generated config is
-  // the fallback so a checkout that predates CLOUDFLARE_PROJECT keeps
-  // working. Generated-file read compacted here because this is the only
-  // caller that touches disk for it (sync-cloudflare-env.mjs has its own).
-  let generatedName = ''
-  try {
-    const content = readFileSync(join(ROOT_DIR, GENERATED_WRANGLER_CONFIG), 'utf8')
-    generatedName = /^name\s*=\s*"([^"]+)"/m.exec(content)?.[1] || ''
-  } catch {
-    generatedName = ''
-  }
-  const name = resolveCloudflareProjectName(cloudflareEnv(), generatedName)
+  // the fallback so a checkout that predates the key keeps working (shared
+  // helper, also used by the env sync and heartbeat flows).
+  const name = resolveCloudflareProjectName(cloudflareEnv(), generatedWranglerProjectName(ROOT_DIR))
   if (!name) {
     throw new Error('Missing CLOUDFLARE_PROJECT in .env.cloudflare: set it to the Pages project name.')
   }
