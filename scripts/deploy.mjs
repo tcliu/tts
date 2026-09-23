@@ -869,6 +869,16 @@ function buildDeployGraph() {
           }
           return null
         }
+        // Bypass the heartbeat node when there is nothing to ask: the
+        // interview chrome prints every entered node's message, so entering
+        // it just to skip would show a phantom question. The node keeps its
+        // own guard as a safety net.
+        if (!shouldAskHeartbeat({ heartbeat: ctx.heartbeat })) {
+          if (!ctx.heartbeat) {
+            ctx.heartbeat = 'skip'
+          }
+          return null
+        }
         return graph.heartbeat
       },
     },

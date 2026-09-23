@@ -506,9 +506,7 @@ export function buildChangesDialog({
       const tone = entries === null ? c.yellow : c.dim
       body.push(padRight(truncate(`${tone}${note}${c.reset}`, contentW), contentW))
     }
-    for (let i = body.length - entryStart; i < pairsH; i++) {
-      body.push(`${padRight('', leftW)}${separator} ${padRight('', rightW)}`)
-    }
+    // The trailing `while (body.length < listH)` pad below fills the rest.
   } else {
     for (let i = 0; i < pairsH; i++) {
       const entryIndex = window.first + i
@@ -530,10 +528,16 @@ export function buildChangesDialog({
   if (body.length > listH) body.length = listH
   for (const row of body) lines.push(side(row))
   // Fullscreen mode covers the frame's own status line, so the dialog carries
-  // its key hints as a footer row behind a separator, like the tab line.
-  if (footer) {
+  // its key hints as a footer row behind a separator, like the tab line. When
+  // side mode was requested but the pane cannot split (too narrow, or nothing
+  // to split), say so — otherwise the `v` key reads as broken.
+  const sideHint = viewMode === 'side' && !sideActive ? `${c.yellow}side-by-side unavailable${c.reset}` : ''
+  // Only extend a footer the caller asked for: an absent footer keeps the
+  // bare dialog height (`listH + 5`), so the hint never adds a row by itself.
+  const footerText = footer ? [footer, sideHint].filter(Boolean).join(` ${c.dim}·${c.reset} `) : ''
+  if (footerText) {
     lines.push(side('─'.repeat(contentW)))
-    lines.push(side(padRight(truncate(footer, contentW), contentW)))
+    lines.push(side(padRight(truncate(footerText, contentW), contentW)))
   }
   lines.push(border(`└${'─'.repeat(inner)}┘`))
   return {

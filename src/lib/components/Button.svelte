@@ -10,6 +10,12 @@
     pending?: boolean
     type?: 'button' | 'submit' | 'reset'
     className?: string
+    /**
+     * Drop the size-class padding for tight inline icon buttons. Uses an
+     * important `p-0` because Tailwind emits the size class's `p-*` after it,
+     * so a plain `p-0` would lose the cascade.
+     */
+    unpadded?: boolean
     ariaPressed?: boolean
     onClick?: (event: MouseEvent) => void
     onKeyDown?: (event: KeyboardEvent) => void
@@ -21,6 +27,8 @@
     tooltipAlign?: 'center' | 'left' | 'right'
     badge?: string | number
     icon?: Snippet
+    /** Override the icon box class (defaults to the size's icon box). */
+    iconClass?: string
     children?: Snippet
     buttonEl?: HTMLButtonElement | null
   }
@@ -33,6 +41,7 @@
     pending = false,
     type = 'button',
     className = '',
+    unpadded = false,
     onClick,
     onKeyDown,
     preventFocusSteal = false,
@@ -44,6 +53,7 @@
     tooltipAlign = 'center',
     badge,
     icon,
+    iconClass,
     children,
     buttonEl = $bindable<HTMLButtonElement | null>(null),
   }: Props = $props()
@@ -101,7 +111,7 @@
     },
   } as const
 
-  const iconSizeClass = $derived(SIZE_CLASS[size].iconBox)
+  const iconSizeClass = $derived(iconClass || SIZE_CLASS[size].iconBox)
 
   const disabledState = $derived(disabled || pending)
 
@@ -126,7 +136,7 @@
   // position utilities via `className` (`relative` outranks `absolute` in the
   // stylesheet, so the override silently loses). Position the Button with a wrapper or in-flow layout instead.
   const baseClass = $derived.by(() => {
-    const common = `${isIconOnly ? SIZE_CLASS[size].iconOnly : SIZE_CLASS[size].withChildren} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
+    const common = `${isIconOnly ? SIZE_CLASS[size].iconOnly : SIZE_CLASS[size].withChildren}${unpadded ? ' p-0!' : ''} cursor-pointer outline-none transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40`
     if (variant === 'primary') {
       return `${common} ${primaryClasses[accent]}`
     }

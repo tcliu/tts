@@ -551,14 +551,18 @@ function changesCounts(view) {
 
 // Branch names over the side-by-side subpanes, following the diff's own
 // sides: uncommitted diffs HEAD against the worktree, ahead diffs the base
-// against the branch, behind diffs the branch against the base.
+// against the branch, behind diffs the branch against the base. A newly added
+// entry (untracked `??` or staged add `A`) has no HEAD side — its diff is
+// `/dev/null` vs the file — so the before label says so instead of `HEAD`.
 function changesSideLabels(view) {
   if (!view) return ['', '']
   const base = view.base ?? '?'
   const branch = view.row.branch ?? '?'
   if (view.tab === 1) return [base, branch]
   if (view.tab === 2) return [branch, base]
-  return ['HEAD', branch]
+  const entry = view.files?.[view.cursors?.[0] ?? 0]
+  const before = entry && (entry.code === '??' || entry.code === 'A') ? '(new file)' : 'HEAD'
+  return [before, branch]
 }
 
 function changesContext(view) {

@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { LOCAL_ONLY_ENV_KEYS } from '../env-file.mjs'
+import { logEvent } from '../log-event.mjs'
 import { loadTargetEnv } from './target-env.mjs'
 
 // Generated wrangler config must sit at the project root under a standard
@@ -96,12 +97,18 @@ export function getPagesProjectDomain(project, runner = defaultWranglerRunner, c
     const result = runner(['pages', 'project', 'list', '--json'], { cwd, capture: true })
     if (result.status !== 0) {
       const detail = tailWranglerOutput(result.output)
-      console.warn(`-> Could not list Cloudflare Pages projects (exit ${result.status}${detail ? `: ${detail}` : ''}).`)
+      logEvent({
+        action: 'cloudflare_project_list_warn',
+        details: { exit_code: result.status, error: detail, level: 'WARN' },
+      })
       return ''
     }
     output = result.output
   } catch (error) {
-    console.warn(`-> Could not list Cloudflare Pages projects (${error?.message || error}).`)
+    logEvent({
+      action: 'cloudflare_project_list_warn',
+      details: { error: error?.message || error, level: 'WARN' },
+    })
     return ''
   }
   const entry = projectEntry(project, output)
@@ -126,9 +133,15 @@ export function detectProductionBranch(cwd = process.cwd()) {
     if (branch) {
       return branch
     }
-    console.warn('-> git reported no current branch; using "main" for the Pages project.')
+    logEvent({
+      action: 'cloudflare_branch_warn',
+      details: { reason: 'no-current-branch', level: 'WARN' },
+    })
   } catch (error) {
-    console.warn(`-> Could not read the git branch (${error?.message || error}); using "main".`)
+    logEvent({
+      action: 'cloudflare_branch_warn',
+      details: { reason: 'read-error', error: error?.message || error, level: 'WARN' },
+    })
   }
   return 'main'
 }
@@ -182,6 +195,7 @@ export function resolveCloudflareProjectName(merged = {}, generatedName = '') {
   }
   return String(generatedName || '').trim()
 }
+
 
 // Production app URL for the Cloudflare target, derived from the Pages
 // project instead of APP_BASE_URL: the live hostname is the production

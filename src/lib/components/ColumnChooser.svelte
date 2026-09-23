@@ -4,6 +4,7 @@
   import RefreshIcon from '$lib/icons/RefreshIcon.svelte'
   import { createFocusoutClose } from '$lib/actions/use-focusout-close'
   import { useDropdown } from '$lib/actions/use-dropdown.svelte'
+  import { positionPanel } from '$lib/position-panel.svelte'
 
   export interface ChooserColumn {
     key: string
@@ -88,7 +89,8 @@
          so focusout-close cannot win the race with the label click. -->
     <div
       bind:this={panelRef}
-      class="panel absolute right-0 top-[calc(100%+4px)] z-40 max-h-[50dvh] min-w-36 overflow-auto rounded-lg border border-slate-700 bg-slate-900/95 p-1.5 shadow-2xl shadow-slate-950/60 backdrop-blur"
+      use:positionPanel={() => ({ getTrigger: () => triggerRef, getOpen: () => open, align: 'right' })}
+      class="panel fixed left-0 top-0 z-40 max-h-[50dvh] min-w-36 overflow-auto rounded-lg border border-slate-700 bg-slate-900/95 p-1.5 shadow-2xl shadow-slate-950/60 backdrop-blur"
       role="group"
       aria-label={label}
       onpointerdown={event => event.preventDefault()}>
