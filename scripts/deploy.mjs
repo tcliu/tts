@@ -1292,12 +1292,16 @@ function ensureGeneratedConfig(d1 = null) {
 // continues anyway, the project step retries the assurance.
 function ensureCloudflareProjectAssured() {
   seedWranglerToken()
+  const project = cloudflareProjectName()
+  const hasToken = Boolean(String(process.env.CLOUDFLARE_API_TOKEN || '').trim())
+  const hasAccountId = Boolean(String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim())
+  const context = `project "${project}", wrangler bin "${wranglerBin()}", token ${hasToken ? 'present' : 'missing'}, account ${hasAccountId ? 'present' : 'missing'}`
   try {
-    ensurePagesProject(cloudflareProjectName())
+    ensurePagesProject(project)
   } catch (error) {
     throw new Error(
-      `Cloudflare Pages project check failed (${error?.message || error}). ` +
-        'Set CLOUDFLARE_API_TOKEN (+ CLOUDFLARE_ACCOUNT_ID for scoped tokens) and retry the deploy.',
+      `Cloudflare Pages project check failed (${context}): ${error?.message || error} ` +
+        'Set CLOUDFLARE_API_TOKEN (+ CLOUDFLARE_ACCOUNT_ID for scoped tokens) in shell or .env.local and retry the deploy.',
     )
   }
   process.env.PAGES_PROJECT_ASSURED = '1'
@@ -1362,6 +1366,7 @@ function d1BindingName() {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/^_|_$/g, '')
+    .replace(/^PROJECT_/, '')
   return `PROJECT_${slug || 'APP'}_D1`
 }
 

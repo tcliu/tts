@@ -49,11 +49,26 @@ export function defaultWranglerRunner(args, { cwd, input, capture = false } = {}
   return { status: result.status ?? 1, output: `${result.stdout ?? ''}${result.stderr ?? ''}` }
 }
 
+// Last non-empty lines of captured wrangler output, so failures carry the
+// platform's own reason (bad token, missing account, network) instead of a
+// bare exit code. Never includes credential values: wrangler prints
+// diagnostics, not the token itself.
+export function tailWranglerOutput(output, maxLines = 8) {
+  return String(output || '')
+    .split('\n')
+    .map(line => line.trimEnd())
+    .filter(line => line.trim() !== '')
+    .slice(-maxLines)
+    .join('\n')
+    .trim()
+}
+
 export function listPagesProjects(runner = defaultWranglerRunner, cwd = process.cwd()) {
   // `--json` (never the table): machine-read, no box-drawing parse.
   const { status, output } = runner(['pages', 'project', 'list', '--json'], { cwd, capture: true })
   if (status !== 0) {
-    throw new Error(`wrangler pages project list failed (exit ${status}).`)
+    const detail = tailWranglerOutput(output)
+    throw new Error(`wrangler pages project list failed (exit ${status})${detail ? `: ${detail}` : '.'}`)
   }
   return output
 }
@@ -80,6 +95,8 @@ export function getPagesProjectDomain(project, runner = defaultWranglerRunner, c
   try {
     const result = runner(['pages', 'project', 'list', '--json'], { cwd, capture: true })
     if (result.status !== 0) {
+      const detail = tailWranglerOutput(result.output)
+      console.warn(`-> Could not list Cloudflare Pages projects (exit ${result.status}${detail ? `: ${detail}` : ''}).`)
       return ''
     }
     output = result.output
@@ -133,8 +150,9 @@ export function ensurePagesProject(
   console.log(`-> Creating Cloudflare Pages project ${project}...`)
   const created = runner(['pages', 'project', 'create', project, '--production-branch', productionBranch], { cwd })
   if (created.status !== 0) {
+    const detail = tailWranglerOutput(created.output)
     throw new Error(
-      `Failed to create Cloudflare Pages project ${project} (exit ${created.status}). Create it in the dashboard and retry.`,
+      `Failed to create Cloudflare Pages project ${project} (exit ${created.status})${detail ? `: ${detail}` : '.'} Create it in the dashboard and retry.`,
     )
   }
   return 'created'
@@ -318,7 +336,8 @@ export function ensureD1Database(name, runner = defaultWranglerRunner, cwd = pro
   const list = () => runner(['d1', 'list', '--json'], { cwd, capture: true })
   const listed = list()
   if (listed.status !== 0) {
-    throw new Error(`wrangler d1 list failed (exit ${listed.status}).`)
+    const detail = tailWranglerOutput(listed.output)
+    throw new Error(`wrangler d1 list failed (exit ${listed.status})${detail ? `: ${detail}` : '.'}`)
   }
   const existing = findD1DatabaseId(listed.output, name)
   if (existing) {
@@ -327,7 +346,8 @@ export function ensureD1Database(name, runner = defaultWranglerRunner, cwd = pro
   console.log(`-> Creating Cloudflare D1 database ${name}...`)
   const created = runner(['d1', 'create', name], { cwd })
   if (created.status !== 0) {
-    throw new Error(`Failed to create D1 database ${name} (exit ${created.status}). Create it in the dashboard and retry.`)
+    const detail = tailWranglerOutput(created.output)
+    throw new Error(`Failed to create D1 database ${name} (exit ${created.status})${detail ? `: ${detail}` : '.'} Create it in the dashboard and retry.`)
   }
   const relisted = list()
   const createdId = findD1DatabaseId(relisted.output, name)
