@@ -158,6 +158,18 @@ export function ensurePagesProject(
   return 'created'
 }
 
+// Project name from the last generated config: fallback so a checkout that
+// predates CLOUDFLARE_PROJECT keeps working. Shared by the env sync and the
+// deploy/heartbeat flows so the fallback cannot drift.
+export function generatedWranglerProjectName(root = process.cwd()) {
+  try {
+    const content = readFileSync(join(root, GENERATED_WRANGLER_CONFIG), 'utf8')
+    return /^name\s*=\s*"([^"]+)"/m.exec(content)?.[1] || ''
+  } catch {
+    return ''
+  }
+}
+
 // Pages project name: the `CLOUDFLARE_PROJECT` overlay key owns it (mirrors
 // VERCEL_PROJECT for Vercel); a stale generated config is the fallback so a
 // checkout that predates the key keeps working. `merged` is the unified
@@ -169,18 +181,6 @@ export function resolveCloudflareProjectName(merged = {}, generatedName = '') {
     return fromOverlay
   }
   return String(generatedName || '').trim()
-}
-
-// Project name from the last generated config: fallback so a checkout that
-// predates CLOUDFLARE_PROJECT keeps working. Shared by the env sync and the
-// deploy/heartbeat flows so the fallback cannot drift.
-export function generatedWranglerProjectName(root = process.cwd()) {
-  try {
-    const content = readFileSync(join(root, GENERATED_WRANGLER_CONFIG), 'utf8')
-    return /^name\s*=\s*"([^"]+)"/m.exec(content)?.[1] || ''
-  } catch {
-    return ''
-  }
 }
 
 // Production app URL for the Cloudflare target, derived from the Pages
